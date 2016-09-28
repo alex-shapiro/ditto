@@ -1,0 +1,6 @@
+[package]
+name = "ditto"
+version = "0.1.0"
+authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
+
+[dependencies]
