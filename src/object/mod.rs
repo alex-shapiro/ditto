@@ -4,8 +4,10 @@ mod uid;
 pub use self::element::Element;
 pub use self::uid::UID;
 use std::collections::HashMap;
+use op::LocalOp;
+use op::local::Put;
+use op::local::Delete;
 use op::remote::UpdateObject;
-use op::Local;
 use Counter;
 use Site;
 use Value;
@@ -33,7 +35,7 @@ impl Object {
         UpdateObject::new(key.to_string(), None, deleted_uids)
     }
 
-    pub fn execute_remote(&mut self, op: UpdateObject) -> Local {
+    pub fn execute_remote(&mut self, op: UpdateObject) -> Box<LocalOp> {
         let mut elements = &mut self.0;
         let deleted_uids = op.deleted_uids;
         let default: Vec<Element> = vec![];
@@ -47,13 +49,13 @@ impl Object {
             .collect();
 
         let key = op.key;
-        let local_op =
+        let local_op: Box<LocalOp> =
             match op.new_element {
                 Some(element) => {
                     key_elements.push(element.clone());
-                    Local::put(key.clone(), element.value)},
+                    Box::new(Put::new(key.clone(), element.value))},
                 None =>
-                    Local::delete(key.clone()),
+                    Box::new(Delete::new(key.clone())),
             };
         elements.insert(key, key_elements);
         local_op
@@ -71,4 +73,10 @@ fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {
         Some(elts) =>
             elts.iter().map(|e| e.uid.clone()).collect(),
     }
+}
+
+#[test]
+fn new() {
+    let object = Object::new();
+    assert!(object.0.len() == 0);
 }

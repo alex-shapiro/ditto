@@ -1,5 +1,6 @@
 use object::Element;
 use object::UID;
+use op::RemoteOp;
 
 pub struct UpdateObject {
     pub path: Vec<i64>,
@@ -18,3 +19,5 @@ impl UpdateObject {
         }
     }
 }
+
+impl RemoteOp for UpdateObject { }
