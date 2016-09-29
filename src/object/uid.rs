@@ -1,4 +1,6 @@
-#[derive(Clone)]
+use std::cmp::Ordering;
+
+#[derive(Clone,Eq)]
 pub struct UID {
     key: String,
     site: u32,
@@ -14,6 +16,34 @@ impl UID {
 impl PartialEq for UID {
     fn eq(&self, other: &UID) -> bool {
         self.site == other.site && self.counter == other.counter
+    }
+}
+
+impl PartialOrd for UID {
+    fn partial_cmp(&self, other: &UID) -> Option<Ordering> {
+        if self.site < other.site {
+            Some(Ordering::Less)
+        } else if self.site == other.site && self.counter < other.counter {
+            Some(Ordering::Less)
+        } else if self.site == other.site && self.counter == other.counter {
+            Some(Ordering::Equal)
+        } else {
+            Some(Ordering::Greater)
+        }
+    }
+}
+
+impl Ord for UID {
+    fn cmp(&self, other: &UID) -> Ordering {
+        if self.site < other.site {
+            Ordering::Less
+        } else if self.site == other.site && self.counter < other.counter {
+            Ordering::Less
+        } else if self.site == other.site && self.counter == other.counter {
+            Ordering::Equal
+        } else {
+            Ordering::Greater
+        }
     }
 }
 

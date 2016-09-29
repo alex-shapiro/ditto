@@ -35,6 +35,26 @@ impl Object {
         UpdateObject::new(key.to_string(), None, deleted_uids)
     }
 
+    pub fn get(&mut self, key: &str) -> Option<&mut Element> {
+        let key_elements: Option<&mut Vec<Element>> = self.0.get_mut(key);
+        match key_elements {
+            None =>
+                None,
+            Some(key_elements) =>
+                key_elements.iter_mut().min_by_key(|e| e.uid.clone()),
+        }
+    }
+
+    pub fn replace(&mut self, key: &str, value: Value) -> bool {
+        match self.get(key) {
+            None =>
+                false,
+            Some(element) => {
+                element.value = value;
+                true},
+        }
+    }
+
     pub fn execute_remote(&mut self, op: UpdateObject) -> Box<LocalOp> {
         let mut elements = &mut self.0;
         let deleted_uids = op.deleted_uids;
