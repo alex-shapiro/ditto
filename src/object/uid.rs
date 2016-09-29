@@ -2,8 +2,8 @@ use std::cmp::Ordering;
 
 #[derive(Clone,Eq)]
 pub struct UID {
-    key: String,
-    site: u32,
+    pub key: String,
+    pub site: u32,
     counter: u32,
 }
 

@@ -35,18 +35,38 @@ impl Object {
         UpdateObject::new(key.to_string(), None, deleted_uids)
     }
 
-    pub fn get(&mut self, key: &str) -> Option<&mut Element> {
-        let key_elements: Option<&mut Vec<Element>> = self.0.get_mut(key);
+    pub fn get_by_key(&mut self, key: &str) -> Option<&mut Element> {
+        let key_elements = self.0.get_mut(key);
+        match key_elements {
+            None =>
+                None,
+            Some(elements) =>
+                elements.iter_mut().min_by_key(|e| e.uid.site),
+        }
+    }
+
+    pub fn get_by_uid(&mut self, uid: &UID) -> Option<&mut Element> {
+        let key_elements = self.0.get_mut(&uid.key);
         match key_elements {
             None =>
                 None,
             Some(key_elements) =>
-                key_elements.iter_mut().min_by_key(|e| e.uid.clone()),
+                key_elements.iter_mut().find(|e| &e.uid == uid),
         }
     }
 
-    pub fn replace(&mut self, key: &str, value: Value) -> bool {
-        match self.get(key) {
+    pub fn replace_by_key(&mut self, key: &str, value: Value) -> bool {
+        match self.get_by_key(key) {
+            None =>
+                false,
+            Some(element) => {
+                element.value = value;
+                true},
+        }
+    }
+
+    pub fn replace_by_uid(&mut self, uid: &UID, value: Value) -> bool {
+        match self.get_by_uid(uid) {
             None =>
                 false,
             Some(element) => {
@@ -56,29 +76,29 @@ impl Object {
     }
 
     pub fn execute_remote(&mut self, op: UpdateObject) -> Box<LocalOp> {
-        let mut elements = &mut self.0;
-        let deleted_uids = op.deleted_uids;
-        let default: Vec<Element> = vec![];
-        let mut key_elements: Vec<Element> =
-            elements
-            .get(&op.key)
-            .unwrap_or(&default)
-            .iter()
-            .filter(|e| !deleted_uids.contains(&e.uid))
-            .map(|e| e.clone())
-            .collect();
+        let mut key_elements: Vec<Element> = {
+            let deleted_uids = op.deleted_uids;
+            let default: Vec<Element> = vec![];
+            self.0
+                .get(&op.key)
+                .unwrap_or(&default)
+                .iter()
+                .filter(|e| !deleted_uids.contains(&e.uid))
+                .map(|e| e.clone())
+                .collect()
+        };
 
+        op.new_element.map(|e| key_elements.push(e));
         let key = op.key;
-        let local_op: Box<LocalOp> =
-            match op.new_element {
-                Some(element) => {
-                    key_elements.push(element.clone());
-                    Box::new(Put::new(key.clone(), element.value))},
-                None =>
-                    Box::new(Delete::new(key.clone())),
-            };
-        elements.insert(key, key_elements);
-        local_op
+        match key_elements.len() > 0 {
+            true => {
+                self.0.insert(key.clone(), key_elements);
+                let elt = self.get_by_key(&key).unwrap();
+                Box::new(Put::new(key, elt.value.clone()))},
+            false => {
+                self.0.remove(&key);
+                Box::new(Delete::new(key))},
+        }
     }
 }
 
@@ -96,7 +116,90 @@ fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {
 }
 
 #[test]
-fn new() {
+fn test_new() {
     let object = Object::new();
     assert!(object.0.len() == 0);
+}
+
+#[test]
+fn test_put() {
+    let mut object = Object::new();
+    let op = object.put("foo", Value::Num(23.0), 1, 2);
+
+    assert!(op.path == vec![]);
+    assert!(op.key == "foo".to_string());
+    assert!(op.new_element.unwrap().uid == UID::new("foo", 1, 2));
+    assert!(op.deleted_uids == vec![]);
+
+    assert!(object.0.get("foo").unwrap().len() == 1);
+    {
+        let element = object.get_by_key("foo").unwrap();
+        assert!(element.value == Value::Num(23.0));
+    }
+}
+
+#[test]
+fn test_delete() {
+    let mut object = Object::new();
+    let _  = object.put("bar", Value::Bool(true), 2, 4);
+    let op = object.delete("bar");
+
+    assert!(op.path == vec![]);
+    assert!(op.key == "bar".to_string());
+    assert!(op.new_element == None);
+    assert!(op.deleted_uids.len() == 1);
+    assert!(object.get_by_key("bar") == None);
+}
+
+#[test]
+fn test_execute_remote() {
+    let mut object = Object::new();
+    let elt = Element::new("baz", Value::Num(1.0), 2, 101);
+    let _   = object.put("baz", Value::Num(0.0), 3, 69);
+    let op2 = UpdateObject::new("baz".to_string(), Some(elt), vec![]);
+    let op3 = object.execute_remote(op2);
+    let op3_unwrapped = op3.as_any().downcast_ref::<Put>().unwrap();
+
+    assert!(op3_unwrapped.path == vec![]);
+    assert!(op3_unwrapped.key == "baz".to_string());
+    assert!(op3_unwrapped.value == Value::Num(1.0));
+    assert!(object.0.get("baz").unwrap().len() == 2);
+}
+
+#[test]
+fn test_execute_remote_2() {
+    let mut object = Object::new();
+    let elt1 = Element::new("foo", Value::Bool(false), 1, 1);
+    let elt2 = Element::new("foo", Value::Bool(true), 2, 1);
+    let op1 = UpdateObject::new("foo".to_string(), Some(elt1.clone()), vec![]);
+    let op2 = UpdateObject::new("foo".to_string(), Some(elt2.clone()), vec![]);
+    let op3 = UpdateObject::new("foo".to_string(), None, vec![elt1.uid]);
+
+    object.execute_remote(op1);
+    object.execute_remote(op2);
+    { assert!(object.get_by_key("foo").unwrap().value == Value::Bool(false)) }
+
+    let op4 = object.execute_remote(op3);
+    let op4_unwrapped = op4.as_any().downcast_ref::<Put>().unwrap();
+
+    assert!(op4_unwrapped.path == vec![]);
+    assert!(op4_unwrapped.key == "foo".to_string());
+    assert!(op4_unwrapped.value == Value::Bool(true));
+}
+
+#[test]
+fn test_replace_by_key() {
+    let mut object = Object::new();
+    object.put("foo", Value::Num(1.0), 1, 1);
+    assert!(object.replace_by_key("foo", Value::Bool(true)));
+    assert!(object.get_by_key("foo").unwrap().value == Value::Bool(true));
+}
+
+#[test]
+fn test_replace_by_uid() {
+    let mut object = Object::new();
+    let op1 = object.put("foo", Value::Num(1.0), 1, 1);
+    let uid = op1.new_element.unwrap().uid;
+    assert!(object.replace_by_uid(&uid, Value::Bool(true)));
+    assert!(object.get_by_uid(&uid).unwrap().value == Value::Bool(true));
 }

@@ -1,3 +1,4 @@
+use std::any::Any;
 use op::LocalOp;
 
 pub struct Delete {
@@ -11,4 +12,8 @@ impl Delete {
     }
 }
 
-impl LocalOp for Delete { }
+impl LocalOp for Delete {
+    fn path(&self) -> &Vec<i64> { &self.path }
+
+    fn as_any(&self) -> &Any { self }
+}

@@ -1,4 +1,5 @@
 use Value;
+use std::any::Any;
 use op::LocalOp;
 
 pub struct Put {
@@ -13,4 +14,8 @@ impl Put {
     }
 }
 
-impl LocalOp for Put { }
+impl LocalOp for Put {
+    fn path(&self) -> &Vec<i64> { &self.path }
+
+    fn as_any(&self) -> &Any { self }
+}
