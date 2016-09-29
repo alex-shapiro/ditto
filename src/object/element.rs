@@ -1,13 +1,16 @@
+use Counter;
 use object::uid::UID;
+use Site;
 use Value;
 
+#[derive(Clone)]
 pub struct Element {
-    uid: UID,
-    value: Value,
+    pub uid: UID,
+    pub value: Value,
 }
 
 impl Element {
-    pub fn new(key: &str, value: Value, site: u32, counter: u32) -> Element {
+    pub fn new(key: &str, value: Value, site: Site, counter: Counter) -> Element {
         let uid = UID::new(key, site, counter);
         Element{uid: uid, value: value}
     }

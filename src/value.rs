@@ -1,6 +1,8 @@
-#[derive(PartialEq)]
+use Object;
+
+#[derive(PartialEq,Clone)]
 pub enum Value {
-    Obj,
+    Obj(Object),
     Arr,
     MutStr,
     Str(String),
