@@ -1,5 +1,8 @@
+extern crate rand;
+
 mod object;
 mod op;
+mod sequence;
 mod value;
 
 pub use object::Object;
