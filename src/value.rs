@@ -8,4 +8,5 @@ pub enum Value {
     Str(String),
     Num(f64),
     Bool(bool),
+    Null,
 }

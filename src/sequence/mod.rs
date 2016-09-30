@@ -1,2 +1,2 @@
-mod path;
-mod uid;
+pub mod path;
+pub mod uid;

@@ -1,5 +1,6 @@
 extern crate rand;
 
+mod array;
 mod object;
 mod op;
 mod sequence;
