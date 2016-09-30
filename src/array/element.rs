@@ -4,9 +4,16 @@ use sequence::path::Path;
 use Value;
 use Counter;
 
+#[derive(Clone)]
 pub struct Element {
-    uid: UID,
-    value: Value,
+    pub uid: UID,
+    pub value: Value,
+}
+
+impl PartialEq for Element {
+    fn eq(&self, other: &Element) -> bool {
+        self.uid == other.uid
+    }
 }
 
 impl Element {
