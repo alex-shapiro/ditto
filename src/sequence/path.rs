@@ -6,7 +6,7 @@ use Site;
 static BASE_LEVEL: u32 = 3;
 static BOUNDARY: u32 = 10;
 
-#[derive(Clone, PartialEq)]
+#[derive(Clone, PartialEq, PartialOrd)]
 pub struct PathElt {
     pub index: u32,
     pub site: u32,

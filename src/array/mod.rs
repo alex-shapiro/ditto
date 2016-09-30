@@ -5,8 +5,12 @@ use Index;
 use Site;
 use Counter;
 use sequence::path;
+use sequence::uid::UID;
 use self::element::Element;
+use op::LocalOp;
 use op::remote::UpdateArray;
+use op::local::InsertItem;
+use op::local::DeleteItem;
 
 #[derive(Clone,PartialEq)]
 pub struct Array(Vec<Element>);
@@ -42,6 +46,50 @@ impl Array {
             Some(UpdateArray::delete(element.uid))
         } else {
             None
+        }
+    }
+
+    pub fn execute_remote(&mut self, op: UpdateArray) -> Vec<Box<LocalOp>> {
+        let delete_ops: Vec<DeleteItem> =
+            op.deletes.into_iter()
+            .map(|uid| self.delete_remote(uid))
+            .filter(|op| op.is_some())
+            .map(|op| op.unwrap())
+            .collect();
+
+        let insert_ops: Vec<InsertItem> =
+            op.inserts.into_iter()
+            .map(|elt| self.insert_remote(elt))
+            .filter(|op| op.is_some())
+            .map(|op| op.unwrap())
+            .collect();
+
+        let mut local_ops: Vec<Box<LocalOp>> = vec![];
+        for op in delete_ops { local_ops.push(Box::new(op)); }
+        for op in insert_ops { local_ops.push(Box::new(op)); }
+        local_ops
+    }
+
+    fn insert_remote(&mut self, element: Element) -> Option<InsertItem> {
+        let path = element.uid.path.clone();
+        let ref mut elements = self.0;
+        match elements.iter().position(|e| path < e.uid.path) {
+            Some(index) => {
+                elements.insert(index, element.clone());
+                Some(InsertItem::new(index-1, element.value.clone()))},
+            None =>
+                None,
+        }
+    }
+
+    fn delete_remote(&mut self, uid: UID) -> Option<DeleteItem> {
+        let ref mut elements = self.0;
+        match elements.iter().position(|e| uid == e.uid) {
+            Some(index) => {
+                elements.remove(index);
+                Some(DeleteItem::new(index-1))},
+            None =>
+                None,
         }
     }
 }
