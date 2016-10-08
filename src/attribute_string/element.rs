@@ -1,4 +1,4 @@
-use sequence::attr::{AttrOpen,AttrClose};
+use super::attr::{AttrOpen,AttrClose};
 use sequence::path;
 use sequence::path::Path;
 use sequence::uid::UID;
@@ -8,7 +8,6 @@ use Value;
 #[derive(Clone)]
 pub enum EltValue {
     None,
-    Item(Value),
     Text(String),
     AttrOpen(AttrOpen),
     AttrClose(AttrClose),
@@ -42,10 +41,6 @@ impl Element {
         Self::new(EltValue::None, path::max(), 0)
     }
 
-    pub fn new_item(value: Value, path: Path, counter: Counter) -> Self {
-        Self::new(EltValue::Item(value), path, counter)
-    }
-
     pub fn new_text(value: String, path: Path, counter: Counter) -> Self {
         Self::new(EltValue::Text(value), path, counter)
     }
@@ -58,13 +53,6 @@ impl Element {
     pub fn new_attr_close(key: String, path: Path, counter: Counter) -> Self {
         let attr_close = AttrClose::new(key);
         Self::new(EltValue::AttrClose(attr_close), path, counter)
-    }
-
-    pub fn item(&self) -> Option<&Value> {
-        match &self.value {
-            &EltValue::Item(ref item) => Some(item),
-            _ => None,
-        }
     }
 
     pub fn text(&self) -> Option<&str> {

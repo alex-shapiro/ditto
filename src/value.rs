@@ -5,7 +5,7 @@ use Array;
 pub enum Value {
     Obj(Object),
     Arr(Array),
-    MutStr,
+    AttrStr,
     Str(String),
     Num(f64),
     Bool(bool),

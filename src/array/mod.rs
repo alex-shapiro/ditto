@@ -110,7 +110,6 @@ mod tests {
         assert!(array.len() == 0);
         assert!(array.0[0] == Element::start_marker());
         assert!(array.0[1] == Element::end_marker());
-        assert!(array.len() == 0);
     }
 
     #[test]
