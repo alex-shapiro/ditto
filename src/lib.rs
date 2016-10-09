@@ -1,14 +1,15 @@
 extern crate rand;
 
 mod array;
-mod attribute_string;
+mod attributed_string;
 mod object;
 mod op;
 mod sequence;
 mod value;
 
-pub use object::Object;
 pub use array::Array;
+pub use attributed_string::AttributedString;
+pub use object::Object;
 pub use value::Value;
 
 pub type Site = u32;
