@@ -14,13 +14,6 @@ impl Index {
             Index::Part{index: index, offset: offset}
         }
     }
-
-    pub fn index(&self) -> usize {
-        match self {
-            &Index::Whole{index: i} => i,
-            &Index::Part{index: i, offset: _} => i,
-        }
-    }
 }
 
 pub struct Range {
@@ -30,8 +23,8 @@ pub struct Range {
 
 impl Range {
     pub fn new(vec_len: usize) -> Self {
-        let start = Index::Whole{index: 0};
-        let end = Index::Whole{index: vec_len - 1};
+        let start = Index::Whole{index: 1};
+        let end = Index::Whole{index: vec_len - 2};
         Range{start: start, end: end}
     }
 
@@ -115,8 +108,8 @@ mod tests {
     #[test]
     fn test_new() {
         let range = Range::new(43);
-        assert!(range.start.index() == 0);
-        assert!(range.end.index() == 42);
+        assert!(range.start == Index::Whole{index: 1});
+        assert!(range.end == Index::Whole{index: 41});
     }
 
     #[test]
