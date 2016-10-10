@@ -29,7 +29,7 @@ pub struct Element {
 }
 
 impl Element {
-    fn new(value: EltValue, path: Path, counter: Counter) -> Self {
+    pub fn new(value: EltValue, path: Path, counter: Counter) -> Self {
         Element{uid: UID::new(path, counter), value: value}
     }
 
@@ -78,6 +78,10 @@ impl Element {
 
     pub fn len(&self) -> usize {
         self.value.len()
+    }
+
+    pub fn path(&self) -> &Path {
+        &self.uid.path
     }
 }
 
