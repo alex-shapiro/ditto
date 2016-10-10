@@ -6,16 +6,6 @@ pub enum Index {
     Part{index: usize, offset: usize}
 }
 
-impl Index {
-    pub fn new(elt: &Element, index: usize, offset: usize) -> Self {
-        if elt.len() == offset {
-            Index::Whole{index: index}
-        } else {
-            Index::Part{index: index, offset: offset}
-        }
-    }
-}
-
 pub struct Range {
     start: Index,
     end: Index,
