@@ -55,6 +55,34 @@ impl Element {
         Self::new(EltValue::AttrClose(attr_close), path, counter)
     }
 
+    pub fn is_marker(&self) -> bool {
+        match &self.value {
+            &EltValue::None => true,
+            _ => false
+        }
+    }
+
+    pub fn is_text(&self) -> bool {
+        match &self.value {
+            &EltValue::Text(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_attr_open(&self) -> bool {
+        match &self.value {
+            &EltValue::AttrOpen(_) => true,
+            _ => false
+        }
+    }
+
+    pub fn is_attr_close(&self) -> bool {
+        match &self.value {
+            &EltValue::AttrClose(_) => true,
+            _ => false
+        }
+    }
+
     pub fn text(&self) -> Option<&str> {
         match &self.value {
             &EltValue::Text(ref str) => Some(str),

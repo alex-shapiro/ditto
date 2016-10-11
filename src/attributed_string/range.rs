@@ -1,90 +1,121 @@
 use super::element::Element;
 
-#[derive(PartialEq)]
+#[derive(Clone,PartialEq,PartialOrd)]
 pub enum Index {
     Whole{index: usize},
     Part{index: usize, offset: usize}
 }
 
+impl Index {
+    fn new(index: usize, offset: usize) -> Self {
+        match offset {
+            0 => Index::Whole{index: index},
+            _ => Index::Part{index: index, offset: offset},
+        }
+    }
+}
+
+
 pub struct Range {
     start: Index,
-    end: Index,
+    stop: Index,
 }
 
 impl Range {
-    pub fn new(vec_len: usize) -> Self {
-        let start = Index::Whole{index: 1};
-        let end = Index::Whole{index: vec_len - 2};
-        Range{start: start, end: end}
-    }
-
+    /// Create a new Range that excludes all attributes bounding the
+    /// in-range text. Used in operations that don't affect
+    /// bounding attributes (ie text insert/replace).
     pub fn excluding_boundary_attrs(elements: &[Element], start: usize, len: usize) -> Self {
-        let mut range = Range::new(elements.len());
-        let mut started = false;
-        let mut char_index: usize = 0;
-        let mut elt_index:  usize = 0;
-        let mut elements = elements.iter();
         let stop = start + len;
+        let mut in_range = false;
+        let mut char_index:   usize = 0;
+        let mut elt_index:    usize = 0;
 
-        while let Some(elt) = elements.next() {
+        let mut start_index:  usize = 0;
+        let mut start_offset: usize = 0;
+        let mut stop_index:   usize = 0;
+        let mut stop_offset:  usize = 0;
+
+        for elt in elements {
             let elt_len = elt.len();
-
-            if !started {
-                if char_index == start && elt.text().is_some() {
-                    range.start = Index::Whole{index: elt_index};
-                    started = true;
-                } else if char_index + elt_len > start {
-                    range.start = Index::Part{index: elt_index, offset: start-char_index};
-                    started = true;
+            if !in_range {
+                if char_index + elt_len > start {
+                    start_index = elt_index;
+                    start_offset = start - char_index;
+                    in_range = true;
+                } else if elt.text().is_some() {
+                    start_index = elt_index;
                 }
             } else {
-                if char_index == stop {
-                    range.end = Index::Whole{index: elt_index - 1};
+                if char_index + elt_len > stop {
+                    stop_index = elt_index;
+                    stop_offset = stop - char_index;
+                    break;
+                } else if char_index + elt_len == stop {
+                    stop_index = elt_index;
+                    break;
+                } else if elt.text().is_some() {
+                    stop_index = elt_index;
+                }
+            }
+            char_index += elt_len;
+            elt_index += 1;
+        }
+        Range::new(start_index, start_offset, stop_index, stop_offset)
+    }
+
+    /// Create a new Range that includes all attributes bounding the
+    /// in-range text. Used in operations that affect bounding
+    /// attributes (ie text delete, attribute put/delete)
+    pub fn including_boundary_attrs(elements: &[Element], start: usize, len: usize) -> Self {
+        let stop = start + len;
+        let mut in_range = false;
+        let mut char_index:   usize = 0;
+        let mut elt_index:    usize = 0;
+
+        let mut start_index:  usize = 0;
+        let mut start_offset: usize = 0;
+        let mut stop_index:   usize = 0;
+        let mut stop_offset:  usize = 0;
+
+        for elt in elements {
+            let elt_len = elt.len();
+            if !in_range {
+                if char_index + elt_len > start {
+                    start_index = elt_index;
+                    start_offset = start - char_index;
+                    in_range = true;
+                } else if char_index == start && elt.is_attr_open() {
+                    start_index = elt_index;
+                    in_range = true;
+                } else if elt.is_attr_open() || elt.is_text() {
+                    start_index = elt_index;
+                }
+            } else {
+                if char_index == stop && !elt.is_marker() && !elt.is_attr_close() {
+                    stop_index = elt_index - 1;
                     break;
                 } else if char_index + elt_len > stop {
-                    range.end = Index::Part{index: elt_index, offset: stop-char_index};
+                    stop_index = elt_index;
+                    stop_offset = stop - char_index;
                     break;
+                } else if elt.is_text() || elt.is_attr_open() {
+                    stop_index = elt_index;
                 }
             }
-
             char_index += elt_len;
             elt_index += 1;
         }
-        range
+        Range::new(start_index, start_offset, stop_index, stop_offset)
     }
 
-    pub fn including_boundary_attrs(elements: &[Element], start: usize, len: usize) -> Self {
-        let mut range = Range::new(elements.len());
-        let mut started = false;
-        let mut char_index: usize = 0;
-        let mut elt_index: usize = 0;
-        let mut elements = elements.iter();
-        let stop = start + len;
-
-        while let Some(elt) = elements.next() {
-            let elt_len = elt.len();
-
-            if !started {
-                if char_index == start && (elt.attr_open().is_some() || elt.text().is_some()) {
-                    range.start = Index::Whole{index: elt_index};
-                    started = true;
-                } else if char_index < start && char_index + elt_len > start {
-                    range.start = Index::Part{index: elt_index, offset: start-char_index};
-                    started = true;
-                }
-            } else {
-                if char_index == stop && (elt.attr_close().is_none()) {
-                    range.end = Index::Whole{index: elt_index - 1};
-                    break;
-                } else if char_index < stop && char_index + elt_len > stop {
-                    range.end = Index::Part{index: elt_index, offset: stop-char_index};
-                    break;
-                }
-            }
-            char_index += elt_len;
-            elt_index += 1;
+    fn new(start_index: usize, start_offset: usize, stop_index: usize, stop_offset: usize) -> Self {
+        let start = Index::new(start_index, start_offset);
+        let stop = Index::new(stop_index, stop_offset);
+        match start <= stop {
+            true  => Range{start: start, stop: stop},
+            false => Range{start: start.clone(), stop: start},
         }
-        range
     }
 }
 
