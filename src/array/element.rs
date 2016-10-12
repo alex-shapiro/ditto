@@ -1,7 +1,4 @@
 use sequence::uid::UID;
-use sequence::path;
-use sequence::path::Path;
-use Counter;
 use Value;
 
 #[derive(Clone)]
@@ -11,16 +8,16 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn new(value: Value, path: Path, counter: Counter) -> Element {
-        Element{uid: UID::new(path, counter), value: value}
+    pub fn new(value: Value, uid: UID) -> Element {
+        Element{uid: uid, value: value}
     }
 
     pub fn start_marker() -> Element {
-        Element::new(Value::Null, path::min(), 0)
+        Element::new(Value::Null, UID::min())
     }
 
     pub fn end_marker() -> Element {
-        Element::new(Value::Null, path::max(), 0)
+        Element::new(Value::Null, UID::max())
     }
 }
 

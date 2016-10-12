@@ -10,7 +10,7 @@ const MAX_LEVEL:  u32 = 32;
 const BOUNDARY:   u32 = 10;
 
 #[derive(Clone,PartialEq,Eq,Ord)]
-struct UID {
+pub struct UID {
     positions: BigUint,
     site: u32,
     counter: u32,

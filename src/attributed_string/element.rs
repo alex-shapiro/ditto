@@ -1,6 +1,4 @@
 use super::attr::{AttrOpen,AttrClose};
-use sequence::path;
-use sequence::path::Path;
 use sequence::uid::UID;
 use Counter;
 use Value;
@@ -30,35 +28,35 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn new(value: EltValue, path: Path, counter: Counter) -> Self {
-        Element{uid: UID::new(path, counter), value: value}
+    pub fn new(value: EltValue, uid: UID) -> Self {
+        Element{uid: uid, value: value}
     }
 
     pub fn start_marker() -> Self {
-        Self::new(EltValue::None, path::min(), 0)
+        Self::new(EltValue::None, UID::min())
     }
 
     pub fn end_marker() -> Self {
-        Self::new(EltValue::None, path::max(), 0)
+        Self::new(EltValue::None, UID::max())
     }
 
     pub fn between(elt1: &Element, elt2: &Element, text: String, replica: &Replica) -> Self {
-        let path = path::between(elt1.path(), elt2.path(), replica.site);
-        Self::new(EltValue::Text(text), path, replica.counter)
+        let uid = UID::between(&elt1.uid, &elt2.uid, replica);
+        Self::new(EltValue::Text(text), uid)
     }
 
-    pub fn new_text(value: String, path: Path, counter: Counter) -> Self {
-        Self::new(EltValue::Text(value), path, counter)
+    pub fn new_text(value: String, uid: UID) -> Self {
+        Self::new(EltValue::Text(value), uid)
     }
 
-    pub fn new_attr_open(key: String, value: String, path: Path, counter: Counter) -> Self {
+    pub fn new_attr_open(key: String, value: String, uid: UID) -> Self {
         let attr_open = AttrOpen::new(key, value);
-        Self::new(EltValue::AttrOpen(attr_open), path, counter)
+        Self::new(EltValue::AttrOpen(attr_open), uid)
     }
 
-    pub fn new_attr_close(key: String, path: Path, counter: Counter) -> Self {
+    pub fn new_attr_close(key: String, uid: UID) -> Self {
         let attr_close = AttrClose::new(key);
-        Self::new(EltValue::AttrClose(attr_close), path, counter)
+        Self::new(EltValue::AttrClose(attr_close), uid)
     }
 
     pub fn is_marker(&self) -> bool {
@@ -112,10 +110,6 @@ impl Element {
 
     pub fn len(&self) -> usize {
         self.value.len()
-    }
-
-    pub fn path(&self) -> &Path {
-        &self.uid.path
     }
 }
 

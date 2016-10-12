@@ -2,15 +2,13 @@ pub mod element;
 
 use Value;
 use Index;
-use Site;
-use Counter;
-use sequence::path;
 use sequence::uid::UID;
 use self::element::Element;
 use op::LocalOp;
 use op::remote::UpdateArray;
 use op::local::InsertItem;
 use op::local::DeleteItem;
+use Replica;
 
 #[derive(Clone,PartialEq)]
 pub struct Array(Vec<Element>);
@@ -24,15 +22,16 @@ impl Array {
         self.0.len() - 2
     }
 
-    pub fn insert(&mut self, index: Index, value: Value, site: Site, counter: Counter) -> Option<UpdateArray> {
+    pub fn insert(&mut self, index: Index, value: Value, replica: &Replica) -> Option<UpdateArray> {
         if index <= self.len() {
             let ref mut elements = self.0;
-            let path = {
-                let ref path1 = elements[index].uid.path;
-                let ref path2 = elements[index+1].uid.path;
-                path::between(path1, path2, site)
+            let uid = {
+                let ref uid1 = elements[index].uid;
+                let ref uid2 = elements[index+1].uid;
+                UID::between(uid1, uid2, replica)
             };
-            let element = Element::new(value, path, counter);
+
+            let element = Element::new(value, uid);
             elements.insert(index+1, element.clone());
             Some(UpdateArray::insert(element))
         } else {
@@ -71,9 +70,9 @@ impl Array {
     }
 
     fn insert_remote(&mut self, element: Element) -> Option<InsertItem> {
-        let path = element.uid.path.clone();
+        let uid = element.uid.clone();
         let ref mut elements = self.0;
-        match elements.iter().position(|e| path < e.uid.path) {
+        match elements.iter().position(|e| uid < e.uid) {
             Some(index) => {
                 elements.insert(index, element.clone());
                 Some(InsertItem::new(index-1, element.value.clone()))},
