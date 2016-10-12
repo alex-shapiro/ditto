@@ -17,8 +17,8 @@ impl Index {
 
 
 pub struct Range {
-    start: Index,
-    stop: Index,
+    pub start: Index,
+    pub stop: Index,
 }
 
 impl Range {

@@ -4,6 +4,7 @@ use sequence::path::Path;
 use sequence::uid::UID;
 use Counter;
 use Value;
+use Replica;
 
 #[derive(Clone)]
 pub enum EltValue {
@@ -39,6 +40,11 @@ impl Element {
 
     pub fn end_marker() -> Self {
         Self::new(EltValue::None, path::max(), 0)
+    }
+
+    pub fn between(elt1: &Element, elt2: &Element, text: String, replica: &Replica) -> Self {
+        let path = path::between(elt1.path(), elt2.path(), replica.site);
+        Self::new(EltValue::Text(text), path, replica.counter)
     }
 
     pub fn new_text(value: String, path: Path, counter: Counter) -> Self {
