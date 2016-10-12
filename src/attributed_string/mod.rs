@@ -33,7 +33,7 @@ impl AttributedString {
         Some(match range.start {
             Index::Whole{index: elt_index} =>
                 self.insert_between_elements(elt_index, text, replica),
-            Index::Part{index: elt_index, offset: offset} =>
+            Index::Part{index: elt_index, offset} =>
                 self.insert_in_element(elt_index, offset, text, replica),
         })
     }

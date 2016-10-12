@@ -1,7 +1,5 @@
 use super::attr::{AttrOpen,AttrClose};
 use sequence::uid::UID;
-use Counter;
-use Value;
 use Replica;
 
 #[derive(Clone)]
