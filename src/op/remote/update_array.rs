@@ -2,6 +2,8 @@ use array::element::Element;
 use sequence::uid::UID;
 use op::RemoteOp;
 
+
+#[derive(Debug)]
 pub struct UpdateArray {
     pub path: Vec<i64>,
     pub inserts: Vec<Element>,

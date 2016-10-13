@@ -10,7 +10,7 @@ use op::local::InsertItem;
 use op::local::DeleteItem;
 use Replica;
 
-#[derive(Clone,PartialEq)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Array(Vec<Element>);
 
 impl Array {
@@ -97,11 +97,14 @@ impl Array {
 mod tests {
     use super::*;
     use super::element::Element;
-    use Value;
     use op::LocalOp;
     use op::local::InsertItem;
     use op::local::DeleteItem;
     use std::any::Any;
+    use Replica;
+    use Value;
+
+    const REPLICA: Replica = Replica{site: 1, counter: 1};
 
     #[test]
     fn test_new() {
@@ -114,9 +117,9 @@ mod tests {
     #[test]
     fn test_insert() {
         let mut array = Array::new();
-        let _  = array.insert(0, Value::Str("a".to_string()), 1, 1);
-        let _  = array.insert(1, Value::Str("b".to_string()), 1, 2);
-        let op = array.insert(1, Value::Str("c".to_string()), 1, 3).unwrap();
+        let _  = array.insert(0, Value::Str("a".to_string()), &REPLICA);
+        let _  = array.insert(1, Value::Str("b".to_string()), &REPLICA);
+        let op = array.insert(1, Value::Str("c".to_string()), &REPLICA).unwrap();
 
         assert!(array.len() == 3);
         assert!(array.0[1].value == Value::Str("a".to_string()));
@@ -131,14 +134,14 @@ mod tests {
     #[test]
     fn test_insert_invalid_index() {
         let mut array = Array::new();
-        assert!(array.insert(1, Value::Bool(true), 1, 1).is_none());
+        assert!(array.insert(1, Value::Bool(true), &REPLICA).is_none());
     }
 
     #[test]
     fn test_delete() {
         let mut array = Array::new();
-        let op1 = array.insert(0, Value::Num(1.0), 1, 1).unwrap();
-        let _   = array.insert(1, Value::Num(2.0), 1, 1);
+        let op1 = array.insert(0, Value::Num(1.0), &REPLICA).unwrap();
+        let _   = array.insert(1, Value::Num(2.0), &REPLICA);
         let op2 = array.delete(0).unwrap();
 
         assert!(array.0[1].value == Value::Num(2.0));
@@ -148,7 +151,7 @@ mod tests {
     #[test]
     fn test_delete_invalid_index() {
         let mut array = Array::new();
-        array.insert(0, Value::Num(1.0), 1, 1);
+        array.insert(0, Value::Num(1.0), &REPLICA);
         assert!(array.delete(1).is_none());
     }
 
@@ -157,12 +160,25 @@ mod tests {
         let mut array1 = Array::new();
         let mut array2 = Array::new();
 
-        let op1 = array1.insert(0, Value::Num(1.0), 1, 1).unwrap();
-        let op2 = array1.insert(1, Value::Num(2.0), 1, 2).unwrap();
+        let op1 = array1.insert(0, Value::Num(1.0), &REPLICA).unwrap();
+        let op2 = array1.insert(1, Value::Num(2.0), &REPLICA).unwrap();
         let op3 = array1.delete(0).unwrap();
+
+        println!("{:?}", op1);
+        println!("{:?}", op2);
+        println!("{:?}", op3);
+
+        println!("{:?}", array2);
         let lops1 = array2.execute_remote(op1);
+
+        println!("{:?}", array2);
         let lops2 = array2.execute_remote(op2);
+
+        println!("{:?}", array2);
         let lops3 = array2.execute_remote(op3);
+
+        println!("{:?}", array2);
+
 
         assert!(array1 == array2);
         assert!(lops1.len() == 1);

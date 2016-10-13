@@ -1,6 +1,6 @@
 use super::element::Element;
 
-#[derive(Clone,PartialEq,PartialOrd)]
+#[derive(Clone,PartialEq,PartialOrd,Debug)]
 pub enum Index {
     Whole{index: usize},
     Part{index: usize, offset: usize}
@@ -15,7 +15,7 @@ impl Index {
     }
 }
 
-
+#[derive(Debug)]
 pub struct Range {
     pub start: Index,
     pub stop: Index,
@@ -80,6 +80,7 @@ impl Range {
 
         for elt in elements {
             let elt_len = elt.len();
+
             if !in_range {
                 if char_index + elt_len > start {
                     start_index = elt_index;
@@ -92,7 +93,7 @@ impl Range {
                     start_index = elt_index;
                 }
             } else {
-                if char_index == stop && !elt.is_marker() && !elt.is_attr_close() {
+                if char_index == stop && !elt.is_attr_close() {
                     stop_index = elt_index - 1;
                     break;
                 } else if char_index + elt_len > stop {
@@ -124,18 +125,66 @@ mod tests {
     use super::*;
     use super::super::element::*;
     use super::super::attr::*;
-    use sequence::path;
+    use sequence::uid::UID;
+    use Replica;
 
     #[test]
     fn test_new() {
-        let range = Range::new(43);
+        let range = Range::new(43, 0, 53, 3);
+        assert!(range.start == Index::Whole{index: 43});
+        assert!(range.stop == Index::Part{index: 53, offset: 3});
+    }
+
+    #[test]
+    fn test_excluding_boundary_attrs_0() {
+        let elements = test_elements();
+        let range = Range::excluding_boundary_attrs(&elements, 0, 17);
         assert!(range.start == Index::Whole{index: 1});
-        assert!(range.end == Index::Whole{index: 41});
+        assert!(range.stop == Index::Whole{index: 6});
     }
 
     #[test]
-    fn test_excluding_boundary_attrs() {
-        let elements = build_elements(vec![
+    fn test_excluding_boundary_attrs_1() {
+        let elements = test_elements();
+        let range = Range::excluding_boundary_attrs(&elements, 6, 11);
+        assert!(range.start == Index::Whole{index: 4});
+        assert!(range.stop == Index::Whole{index: 6});
+    }
+
+    #[test]
+    fn test_excluding_boundary_attrs_2() {
+        let elements = test_elements();
+        let range = Range::excluding_boundary_attrs(&elements, 4, 8);
+        assert!(range.start == Index::Part{index: 1, offset: 4});
+        assert!(range.stop == Index::Part{index: 6, offset: 3});
+    }
+
+    #[test]
+    fn test_including_boundary_attrs_0() {
+        let elements = test_elements();
+        let range = Range::including_boundary_attrs(&elements, 0, 17);
+        assert!(range.start == Index::Whole{index: 1});
+        assert!(range.stop == Index::Whole{index: 7});
+    }
+
+    #[test]
+    fn test_including_boundary_attrs_1() {
+        let elements = test_elements();
+        let range = Range::including_boundary_attrs(&elements, 6, 3);
+        assert!(range.start == Index::Whole{index: 2});
+        assert!(range.stop == Index::Whole{index: 5});
+    }
+
+    #[test]
+    fn test_including_boundary_attrs_2() {
+        let elements = test_elements();
+        let range = Range::including_boundary_attrs(&elements, 4, 12);
+        assert!(range.start == Index::Part{index: 1, offset: 4});
+        assert!(range.stop == Index::Part{index: 6, offset: 7});
+    }
+
+    fn test_elements() -> Vec<Element> {
+        build_elements(vec![
             text("hello "),
             attropen("A",""),
             attropen("B",""),
@@ -143,44 +192,7 @@ mod tests {
             attrclose("B"),
             text(" goodbye"),
             attrclose("A"),
-        ]);
-
-        let range0 = Range::excluding_boundary_attrs(&elements, 0, 17);
-        assert!(range0.start == Index::Whole{index: 1});
-        assert!(range0.end == Index::Whole{index: 6});
-
-        let range1 = Range::excluding_boundary_attrs(&elements, 6, 11);
-        assert!(range1.start == Index::Whole{index: 4});
-        assert!(range1.end == Index::Whole{index: 6});
-
-        let range2 = Range::excluding_boundary_attrs(&elements, 4, 8);
-        assert!(range2.start == Index::Part{index: 1, offset: 4});
-        assert!(range2.end == Index::Part{index: 6, offset: 3});
-    }
-
-    #[test]
-    fn test_including_boundary_attrs() {
-        let elements = build_elements(vec![
-            text("hello "),
-            attropen("A",""),
-            attropen("B",""),
-            text("and"),
-            attrclose("B"),
-            text(" goodbye"),
-            attrclose("A"),
-        ]);
-
-        let range0 = Range::including_boundary_attrs(&elements, 0, 17);
-        assert!(range0.start == Index::Whole{index: 1});
-        assert!(range0.end == Index::Whole{index: 7});
-
-        let range1 = Range::including_boundary_attrs(&elements, 6, 3);
-        assert!(range1.start == Index::Whole{index: 2});
-        assert!(range1.end == Index::Whole{index: 5});
-
-        let range2 = Range::including_boundary_attrs(&elements, 4, 12);
-        assert!(range2.start == Index::Part{index: 1, offset: 4});
-        assert!(range2.end == Index::Part{index: 6, offset: 7});
+        ])
     }
 
     fn text(value: &str) -> EltValue {
@@ -198,11 +210,11 @@ mod tests {
     fn build_elements(elt_values: Vec<EltValue>) -> Vec<Element> {
         let mut elements: Vec<Element> = vec![Element::start_marker()];
         let end_marker = Element::end_marker();
+        let replica = Replica::new(1,1);
 
         for value in elt_values {
-            let path = path::between(elements.last().unwrap().path(), end_marker.path(), 1);
-            let element = Element::new(value, path, 1);
-            elements.push(element);
+            let uid = UID::between(&elements.last().unwrap().uid, &end_marker.uid, &replica);
+            elements.push(Element::new(value, uid));
         }
         elements.push(end_marker);
         elements

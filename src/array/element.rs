@@ -1,7 +1,7 @@
 use sequence::uid::UID;
 use Value;
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub struct Element {
     pub uid: UID,
     pub value: Value,
