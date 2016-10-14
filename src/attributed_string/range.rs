@@ -13,7 +13,7 @@ pub struct Bound {
 }
 
 impl Bound {
-    pub fn get(elements: &[Element], char_index: usize) -> Self {
+    pub fn new(elements: &[Element], char_index: usize) -> Self {
         let mut current_char_index = 0;
         for (index, elt) in elements.iter().enumerate() {
             if current_char_index + elt.len() > char_index {
@@ -36,9 +36,9 @@ pub struct Range {
 
 impl Range {
     pub fn new(elements: &[Element], start: usize, len: usize) -> Self {
-        let lower = Bound::get(elements, start);
+        let lower = Bound::new(elements, start);
         let elements_rest = &elements[lower.index..elements.len()];
-        let mut upper = Bound::get(elements_rest, len + lower.offset);
+        let mut upper = Bound::new(elements_rest, len + lower.offset);
         upper.index += lower.index;
         Range{lower: lower, upper: upper}
     }
