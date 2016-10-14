@@ -41,12 +41,13 @@ impl AttributedString {
         Some(self.delete_in_range(&range, replica))
     }
 
-    // pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Option<UpdateAttributedString> {
-    //     if index >= self.len { return None }
-    //     let op1 = self.delete_text(index, len, replica).unwrap();
-    //     let op2 = self.insert_text(index, text, replica).unwrap();
-    //     Some(op1.merge(op2));
-    // }
+    pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Option<UpdateAttributedString> {
+        if index >= self.len { return None }
+        let mut op1 = self.delete_text(index, len, replica).unwrap();
+        let mut op2 = self.insert_text(index, text, replica).unwrap();
+        op1.merge(&mut op2);
+        Some(op1)
+    }
 
     // pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<Box<LocalOp>> {
     //     let delete_ops: Vec<DeleteText> =

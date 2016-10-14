@@ -16,6 +16,13 @@ impl UpdateAttributedString {
             deletes: deletes,
         }
     }
+
+    pub fn merge(&mut self, other: &mut UpdateAttributedString) {
+        self.inserts.append(&mut other.inserts);
+        self.deletes.append(&mut other.deletes);
+        self.inserts.sort();
+        self.deletes.sort();
+    }
 }
 
 impl RemoteOp for UpdateAttributedString { }
