@@ -1,11 +1,15 @@
 pub mod element;
 mod range;
 
+use std::mem;
 use self::element::Element;
 use self::range::Range;
 use self::range::Bound;
 use sequence::uid::UID;
+use op::LocalOp;
 use op::remote::UpdateAttributedString;
+use op::local::InsertText;
+use op::local::DeleteText;
 use Replica;
 
 #[derive(Clone,PartialEq)]
@@ -49,27 +53,44 @@ impl AttributedString {
         Some(op1)
     }
 
-    // pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<Box<LocalOp>> {
-    //     let delete_ops: Vec<DeleteText> =
-    //         op.deletes.into_iter()
-    //         .map(|uid| self.delete_remote(uid))
-    //         .filter(|op| op.is_some())
-    //         .map(|op| op.unwrap())
-    //         .collect();
+    pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<Box<LocalOp>> {
+        let elements = mem::replace(&mut self.elements, Vec::new());
+        let mut deletes = op.deletes.into_iter().peekable();
+        let mut inserts = op.inserts.into_iter().peekable();
+        let mut insert_ops: Vec<InsertText> = vec![];
+        let mut delete_ops: Vec<DeleteText> = vec![];
 
-    //     let insert_ops: Vec<InsertItem> =
-    //         op.inserts.into_iter()
-    //         .map(|elt| self.insert_remote(elt))
-    //         .filter(|op| op.is_some())
-    //         .map(|op| op.unwrap())
-    //         .collect();
+        let mut char_index = 0;
+        let max_elt = Element::end_marker();
+        let max_uid = UID::max();
 
-    //     let mut local_ops: Vec<Box<LocalOp>> = vec![];
-    //     for op in delete_ops { local_ops.push(Box::new(op)); }
-    //     for op in insert_ops { local_ops.push(Box::new(op)); }
-    //     local_ops
+        for elt in elements {
+            let should_delete_elt = {
+                let del = deletes.peek().unwrap_or(&max_uid);
+                del < &max_uid && del == &elt.uid};
+            if should_delete_elt {
+                deletes.next();
+                delete_ops.push(DeleteText::new(char_index, elt.len()));
+            } else {
+                // add inserts that precede the current element
+                while inserts.peek().unwrap_or(&max_elt) < &elt {
+                    let ins = inserts.next().unwrap();
+                    let text = ins.text().unwrap().to_string();
+                    char_index += text.len();
+                    self.elements.push(ins);
+                    insert_ops.push(InsertText::new(char_index, text));
+                }
+                // add the current element to self.elements
+                char_index += elt.len();
+                self.elements.push(elt);
+            }
+        }
 
-    // }
+        let mut local_ops: Vec<Box<LocalOp>> = vec![];
+        for op in delete_ops { local_ops.push(Box::new(op)); }
+        for op in insert_ops { local_ops.push(Box::new(op)); }
+        local_ops
+    }
 
     fn insert_at_index(&mut self, index: usize, text: String, replica: &Replica) -> UpdateAttributedString {
         let elt_new = {
