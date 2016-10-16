@@ -2,6 +2,7 @@ use attributed_string::element::Element;
 use sequence::uid::UID;
 use op::RemoteOp;
 
+#[derive(Debug)]
 pub struct UpdateAttributedString {
     pub path: Vec<i64>,
     pub inserts: Vec<Element>,
