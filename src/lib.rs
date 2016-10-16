@@ -18,10 +18,3 @@ pub use value::Value;
 pub type Site = u32;
 pub type Counter = u32;
 pub type Index = usize;
-
-#[cfg(test)]
-mod tests {
-    #[test]
-    fn it_works() {
-    }
-}

@@ -164,21 +164,9 @@ mod tests {
         let op2 = array1.insert(1, Value::Num(2.0), &REPLICA).unwrap();
         let op3 = array1.delete(0).unwrap();
 
-        println!("{:?}", op1);
-        println!("{:?}", op2);
-        println!("{:?}", op3);
-
-        println!("{:?}", array2);
         let lops1 = array2.execute_remote(op1);
-
-        println!("{:?}", array2);
         let lops2 = array2.execute_remote(op2);
-
-        println!("{:?}", array2);
         let lops3 = array2.execute_remote(op3);
-
-        println!("{:?}", array2);
-
 
         assert!(array1 == array2);
         assert!(lops1.len() == 1);
