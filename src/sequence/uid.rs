@@ -30,7 +30,7 @@ const BASE_LEVEL: usize = 3;
 const MAX_LEVEL:  usize = 32;
 const BOUNDARY:   usize = 10;
 
-#[derive(Clone,PartialEq,Eq,Ord)]
+#[derive(Clone,PartialEq,Eq)]
 pub struct UID {
     position: BigUint,
     pub site: u32,
@@ -136,6 +136,12 @@ fn big(num: usize) -> BigUint {
 
 impl PartialOrd for UID {
     fn partial_cmp(&self, other: &UID) -> Option<Ordering> {
+        Some(self.cmp(other))
+    }
+}
+
+impl Ord for UID {
+    fn cmp(&self, other: &UID) -> Ordering {
         let mut self_position = self.position.clone();
         let mut other_position = other.position.clone();
 
@@ -151,23 +157,23 @@ impl PartialOrd for UID {
 
         // compare
         if self_position < other_position {
-            Some(Ordering::Less)
+            Ordering::Less
         } else if self_position > other_position {
-            Some(Ordering::Greater)
+            Ordering::Greater
         } else if self_bits < other_bits {
-            Some(Ordering::Less)
+            Ordering::Less
         } else if self_bits > other_bits {
-            Some(Ordering::Greater)
+            Ordering::Greater
         } else if self.site < other.site {
-            Some(Ordering::Less)
+            Ordering::Less
         } else if self.site > other.site {
-            Some(Ordering::Greater)
+            Ordering::Greater
         } else if self.counter < other.counter {
-            Some(Ordering::Less)
+            Ordering::Less
         } else if self.counter > other.counter {
-            Some(Ordering::Greater)
+            Ordering::Greater
         } else {
-            Some(Ordering::Equal)
+            Ordering::Equal
         }
     }
 }
@@ -215,17 +221,23 @@ mod tests {
     #[test]
     fn test_ord() {
         let uid1 = UID::min();
-        let uid2 = UID{position: big(0b1010101), site: 1, counter: 5};
+        let uid2 = UID{position: big(0b10000101), site: 8, counter: 382};
         let uid3 = UID{position: big(0b1010101), site: 1, counter: 5};
-        let uid4 = UID{position: big(0b1101111), site: 4, counter: 4};
-        let uid5 = UID{position: big(0b11011111), site: 4, counter: 4};
-        let uid6 = UID::max();
+        let uid4 = UID{position: big(0b1010101), site: 1, counter: 5};
+        let uid5 = UID{position: big(0b1101111), site: 4, counter: 4};
+        let uid6 = UID{position: big(0b11011111), site: 4, counter: 4};
+        let uid7 = UID::max();
 
-        assert!(uid1 < uid2);
-        assert!(uid2 == uid3);
-        assert!(uid3 < uid4);
-        assert!(uid4 < uid5);
-        assert!(uid5 < uid6);
+        let mut uids: Vec<&UID> = vec![&uid5, &uid2, &uid6, &uid7, &uid1, &uid3, &uid4];
+        uids.sort();
+
+        assert!(uids[0] == &uid1);
+        assert!(uids[1] == &uid2);
+        assert!(uids[2] == &uid3);
+        assert!(uids[3] == &uid3);
+        assert!(uids[4] == &uid5);
+        assert!(uids[5] == &uid6);
+        assert!(uids[6] == &uid7);
     }
 
     #[test]
