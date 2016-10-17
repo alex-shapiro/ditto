@@ -1,6 +1,5 @@
-use Counter;
 use object::uid::UID;
-use Site;
+use Replica;
 use Value;
 
 #[derive(Clone,PartialEq)]
@@ -10,15 +9,22 @@ pub struct Element {
 }
 
 impl Element {
-    pub fn new(key: &str, value: Value, site: Site, counter: Counter) -> Element {
-        let uid = UID::new(key, site, counter);
-        Element{uid: uid, value: value}
+    pub fn new(key: &str, value: Value, replica: &Replica) -> Element {
+        Element{uid: UID::new(key, replica), value: value}
     }
 }
 
-#[test]
-fn test_new() {
-    let val = Value::Str("bar".to_string());
-    let elt = Element::new("foo", val, 1, 1);
-    assert!(elt.value == Value::Str("bar".to_string()));
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use Replica;
+    use Value;
+
+    #[test]
+    fn test_new() {
+        let replica = Replica{site: 1, counter: 1};
+        let val = Value::Str("bar".to_string());
+        let elt = Element::new("foo", val, &replica);
+        assert!(elt.value == Value::Str("bar".to_string()));
+    }
 }

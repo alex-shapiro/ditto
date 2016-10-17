@@ -1,7 +1,6 @@
 pub mod element;
 
 use Value;
-use Index;
 use sequence::uid::UID;
 use self::element::Element;
 use op::LocalOp;
@@ -22,7 +21,7 @@ impl Array {
         self.0.len() - 2
     }
 
-    pub fn insert(&mut self, index: Index, value: Value, replica: &Replica) -> Option<UpdateArray> {
+    pub fn insert(&mut self, index: usize, value: Value, replica: &Replica) -> Option<UpdateArray> {
         if index <= self.len() {
             let ref mut elements = self.0;
             let uid = {
@@ -39,7 +38,7 @@ impl Array {
         }
     }
 
-    pub fn delete(&mut self, index: Index) -> Option<UpdateArray> {
+    pub fn delete(&mut self, index: usize) -> Option<UpdateArray> {
         if index < self.len() {
             let element = self.0.remove(index+1);
             Some(UpdateArray::delete(element.uid))
