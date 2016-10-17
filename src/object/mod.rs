@@ -10,7 +10,7 @@ use op::remote::UpdateObject;
 use Replica;
 use Value;
 
-#[derive(Clone)]
+#[derive(Clone,PartialEq)]
 pub struct Object(HashMap<String, Vec<Element>>);
 
 impl Object {
@@ -33,13 +33,13 @@ impl Object {
         UpdateObject::new(key.to_string(), None, deleted_uids)
     }
 
-    pub fn get_by_key(&mut self, key: &str) -> Option<&mut Element> {
-        let key_elements = self.0.get_mut(key);
+    pub fn get_by_key(&self, key: &str) -> Option<&Element> {
+        let key_elements = self.0.get(key);
         match key_elements {
             None =>
                 None,
             Some(elements) =>
-                elements.iter_mut().min_by_key(|e| e.uid.site),
+                elements.iter().min_by_key(|e| e.uid.site),
         }
     }
 
@@ -50,16 +50,6 @@ impl Object {
                 None,
             Some(key_elements) =>
                 key_elements.iter_mut().find(|e| &e.uid == uid),
-        }
-    }
-
-    pub fn replace_by_key(&mut self, key: &str, value: Value) -> bool {
-        match self.get_by_key(key) {
-            None =>
-                false,
-            Some(element) => {
-                element.value = value;
-                true},
         }
     }
 
@@ -98,10 +88,6 @@ impl Object {
                 Box::new(Delete::new(key))},
         }
     }
-}
-
-impl PartialEq for Object {
-    fn eq(&self, _: &Object) -> bool { false }
 }
 
 fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {
@@ -198,15 +184,6 @@ mod tests {
         assert!(op4_unwrapped.path == vec![]);
         assert!(op4_unwrapped.key == "foo".to_string());
         assert!(op4_unwrapped.value == Value::Bool(true));
-    }
-
-    #[test]
-    fn test_replace_by_key() {
-        let mut object = Object::new();
-        let replica = Replica::new(1,1);
-        object.put("foo", Value::Num(1.0), &replica);
-        assert!(object.replace_by_key("foo", Value::Bool(true)));
-        assert!(object.get_by_key("foo").unwrap().value == Value::Bool(true));
     }
 
     #[test]
