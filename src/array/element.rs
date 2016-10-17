@@ -1,32 +1,28 @@
 use sequence::uid::UID;
-use sequence::path;
-use sequence::path::Path;
 use Value;
-use Counter;
 
-#[derive(Clone)]
+#[derive(Debug,Clone)]
 pub struct Element {
     pub uid: UID,
     pub value: Value,
 }
 
-impl PartialEq for Element {
-    fn eq(&self, other: &Element) -> bool {
-        self.uid == other.uid
-    }
-}
-
 impl Element {
-    pub fn new(value: Value, path: Path, counter: Counter) -> Element {
-        let uid = UID{path: path, counter: counter};
+    pub fn new(value: Value, uid: UID) -> Element {
         Element{uid: uid, value: value}
     }
 
     pub fn start_marker() -> Element {
-        Element::new(Value::Null, path::min(), 0)
+        Element::new(Value::Null, UID::min())
     }
 
     pub fn end_marker() -> Element {
-        Element::new(Value::Null, path::max(), 0)
+        Element::new(Value::Null, UID::max())
+    }
+}
+
+impl PartialEq for Element {
+    fn eq(&self, other: &Element) -> bool {
+        self.uid == other.uid
     }
 }

@@ -1,0 +1,482 @@
+pub mod element;
+mod range;
+
+use std::mem;
+use self::element::Element;
+use self::range::Range;
+use self::range::Bound;
+use sequence::uid::UID;
+use op::LocalOp;
+use op::remote::UpdateAttributedString;
+use op::local::InsertText;
+use op::local::DeleteText;
+use Replica;
+
+#[derive(Debug,Clone,PartialEq)]
+pub struct AttributedString{
+    elements: Vec<Element>,
+    len: usize,
+}
+
+impl AttributedString {
+    pub fn new() -> Self {
+        AttributedString{
+            elements: vec![Element::start_marker(), Element::end_marker()],
+            len: 0,
+        }
+    }
+
+    pub fn len(&self) -> usize {
+        self.len
+    }
+
+    pub fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Option<UpdateAttributedString> {
+        if index > self.len || text.is_empty() { return None }
+        self.len += text.len();
+        let bound = Bound::new(&self.elements, index);
+        Some(match bound.offset {
+            0 => self.insert_at_index(bound.index, text, replica),
+            _ => self.insert_in_index(bound.index, bound.offset, text, replica),
+        })
+    }
+
+    pub fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Option<UpdateAttributedString> {
+        if index + len > self.len || len == 0 { return None }
+
+        self.len -= len;
+        let range = Range::new(&self.elements, index, len);
+        Some(match range.lower.index == range.upper.index {
+            true  => self.delete_in_element(&range, replica),
+            false => self.delete_in_range(&range, replica),
+        })
+    }
+
+    pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Option<UpdateAttributedString> {
+        if index + len > self.len || (len == 0 && text.is_empty()) { return None }
+
+        let mut op1 = self.delete_text(index, len, replica).unwrap_or(UpdateAttributedString::default());
+        let mut op2 = self.insert_text(index, text, replica).unwrap_or(UpdateAttributedString::default());
+        op1.merge(&mut op2);
+        Some(op1)
+    }
+
+    pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<Box<LocalOp>> {
+        let elements = mem::replace(&mut self.elements, Vec::new());
+        let mut deletes = op.deletes.into_iter().peekable();
+        let mut inserts = op.inserts.into_iter().peekable();
+        let mut insert_ops: Vec<InsertText> = vec![];
+        let mut delete_ops: Vec<DeleteText> = vec![];
+
+
+        let mut char_index = 0;
+        let max_elt = Element::end_marker();
+        let max_uid = UID::max();
+
+        for elt in elements {
+            // check to make sure the element hasn't been deleted
+            let should_delete_elt = {
+                let del = deletes.peek().unwrap_or(&max_uid);
+                del < &max_uid && del == &elt.uid};
+            if should_delete_elt {
+                self.len -= elt.len();
+                deletes.next();
+                delete_ops.push(DeleteText::new(char_index, elt.len()));
+            } else {
+                // add inserts that precede the current element
+                while inserts.peek().unwrap_or(&max_elt) < &elt {
+                    let ins = inserts.next().unwrap();
+                    let text = ins.text().unwrap().to_string();
+                    let text_len = text.len();
+                    insert_ops.push(InsertText::new(char_index, text));
+                    self.elements.push(ins);
+                    self.len += text_len;
+                    char_index += text_len;
+                }
+                // add the current element to self.elements
+                char_index += elt.len();
+                self.elements.push(elt);
+            }
+        }
+
+        let mut local_ops: Vec<Box<LocalOp>> = vec![];
+        for op in delete_ops { local_ops.push(Box::new(op)); }
+        for op in insert_ops { local_ops.push(Box::new(op)); }
+        local_ops
+    }
+
+    fn insert_at_index(&mut self, index: usize, text: String, replica: &Replica) -> UpdateAttributedString {
+        let elt_new = {
+            let ref elt1 = self.elements[index-1];
+            let ref elt2 = self.elements[index];
+            Element::between(elt1, elt2, text, replica)
+        };
+
+        self.elements.insert(index, elt_new.clone());
+        UpdateAttributedString::new(vec![elt_new], vec![])
+    }
+
+    fn insert_in_index(&mut self, index: usize, offset: usize, text: String, replica: &Replica) -> UpdateAttributedString {
+        let original_elt = self.elements.remove(index);
+
+        let (elt_pre, elt_new, elt_post) = {
+            let original_text = original_elt.text().unwrap();
+            let (text_pre, text_post) = original_text.split_at(offset);
+            let ref elt_ppre = self.elements[index-1];
+            let ref elt_ppost = self.elements[index];
+            let elt_new  = Element::between(elt_ppre, elt_ppost, text, &replica);
+            let elt_pre  = Element::between(elt_ppre, &elt_new, text_pre.to_string(), replica);
+            let elt_post = Element::between(&elt_new, elt_ppost, text_post.to_string(), replica);
+            (elt_pre, elt_new, elt_post)
+        };
+
+        self.elements.insert(index, elt_post.clone());
+        self.elements.insert(index, elt_new.clone());
+        self.elements.insert(index, elt_pre.clone());
+        UpdateAttributedString::new(
+            vec![elt_pre, elt_new, elt_post],
+            vec![original_elt.uid]
+        )
+    }
+
+    fn delete_in_element(&mut self, range: &Range, replica: &Replica) -> UpdateAttributedString {
+        let ref mut element = self.elements[range.lower.index];
+        let deleted_element = element.clone();
+        element.cut_middle(range.lower.offset, range.upper.offset, replica);
+        let insert = element.clone();
+        UpdateAttributedString::new(vec![insert], vec![deleted_element.uid])
+    }
+
+    fn delete_in_range(&mut self, range: &Range, replica: &Replica) -> UpdateAttributedString {
+        let mut deletes: Vec<Element> = vec![];
+        let mut inserts: Vec<Element> = vec![];
+        let mut lower_index = range.lower.index;
+        let upper_index = range.upper.index;
+
+        // if part of the lower-bound element is deleted, update the
+        // element in-place instead of deleting and re-inserting it
+        if range.lower.offset > 0 {
+            let ref mut element = self.elements[range.lower.index];
+            deletes.push(element.clone());
+            element.cut_right(range.lower.offset, replica);
+            inserts.push(element.clone());
+            lower_index += 1;
+        }
+
+        // same for the upper-bound element
+        if range.upper.offset > 0 {
+            let ref mut element = self.elements[range.upper.index];
+            deletes.push(element.clone());
+            element.cut_left(range.upper.offset, replica);
+            inserts.push(element.clone());
+        }
+
+        for _ in lower_index..upper_index {
+            deletes.push(self.elements.remove(lower_index));
+        }
+
+        let mut deleted_uids: Vec<UID> = deletes.into_iter().map(|e| e.uid).collect();
+        deleted_uids.sort();
+        UpdateAttributedString::new(inserts, deleted_uids)
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use super::element::Element;
+    use op::remote::UpdateAttributedString;
+    use op::LocalOp;
+    use op::local::InsertText;
+    use op::local::DeleteText;
+    use Replica;
+    use std::any::Any;
+
+    const REPLICA1: Replica = Replica{site: 5, counter: 1023};
+    const REPLICA2: Replica = Replica{site: 8, counter: 16};
+
+    #[test]
+    fn test_new() {
+        let string = AttributedString::new();
+        assert!(string.len() == 0);
+        assert!(string.elements[0] == Element::start_marker());
+        assert!(string.elements[1] == Element::end_marker());
+    }
+
+    #[test]
+    fn test_insert_empty_string() {
+        let mut string = AttributedString::new();
+        let op = string.insert_text(0, "".to_string(), &REPLICA1);
+        assert!(op.is_none());
+    }
+
+    #[test]
+    fn test_insert_text_when_empty() {
+        let mut string = AttributedString::new();
+        let op = string.insert_text(0, "quick".to_string(), &REPLICA1).unwrap();
+
+        assert!(string.len() == 5);
+        assert!(text(&string, 1) == "quick");
+
+        assert!(op.inserts.len() == 1);
+        assert!(op.inserts[0].uid == string.elements[1].uid);
+        assert!(op.inserts[0].text().unwrap() == "quick");
+        assert!(op.deletes.len() == 0);
+    }
+
+    #[test]
+    fn test_insert_text_before_index() {
+        let mut string = AttributedString::new();
+        let  _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
+        let  _ = string.insert_text(4, "brown".to_string(), &REPLICA1);
+        let op = string.insert_text(4, "quick ".to_string(), &REPLICA2).unwrap();
+
+        assert!(string.len() == 15);
+        assert!(text(&string, 1) == "the ");
+        assert!(text(&string, 2) == "quick ");
+        assert!(text(&string, 3) == "brown");
+
+        assert!(op.inserts.len() == 1);
+        assert!(op.inserts[0].uid == string.elements[2].uid);
+        assert!(op.inserts[0].text().unwrap() == "quick ");
+        assert!(op.deletes.len() == 0);
+    }
+
+    #[test]
+    fn test_insert_text_in_index() {
+        let mut string = AttributedString::new();
+        let op1 = string.insert_text(0, "the  ".to_string(), &REPLICA1).unwrap();
+        let   _ = string.insert_text(5, "brown".to_string(), &REPLICA1);
+        let op2 = string.insert_text(4, "quick".to_string(), &REPLICA2).unwrap();
+
+        assert!(string.len() == 15);
+        assert!(text(&string, 1) == "the ");
+        assert!(text(&string, 2) == "quick");
+        assert!(text(&string, 3) == " ");
+        assert!(text(&string, 4) == "brown");
+
+        assert!(op2.inserts.len() == 3);
+        assert!(op2.inserts[0].uid == string.elements[1].uid);
+        assert!(op2.inserts[1].uid == string.elements[2].uid);
+        assert!(op2.inserts[2].uid == string.elements[3].uid);
+        assert!(op2.inserts[0].text().unwrap() == "the ");
+        assert!(op2.inserts[1].text().unwrap() == "quick");
+        assert!(op2.inserts[2].text().unwrap() == " ");
+
+        assert!(op2.deletes.len() == 1);
+        assert!(op2.deletes[0] == op1.inserts[0].uid);
+    }
+
+    #[test]
+    fn test_insert_text_invalid() {
+        let mut string = AttributedString::new();
+        let op = string.insert_text(1, "quick".to_string(), &REPLICA1);
+        assert!(op.is_none());
+    }
+
+    #[test]
+    fn test_delete_zero_text() {
+        let mut string = AttributedString::new();
+        let  _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
+        let op = string.delete_text(1, 0, &REPLICA2);
+        assert!(op.is_none());
+    }
+
+    #[test]
+    fn test_delete_text_whole_single_element() {
+        let mut string = AttributedString::new();
+        let   _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
+        let op1 = string.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        let   _ = string.insert_text(10, "brown".to_string(), &REPLICA1);
+        let op2 = string.delete_text(4, 6, &REPLICA2).unwrap();
+
+        assert!(string.len() == 9);
+        assert!(text(&string, 1) == "the ");
+        assert!(text(&string, 2) == "brown");
+
+        assert!(op2.inserts.len() == 0);
+        assert!(op2.deletes.len() == 1);
+        assert!(op2.deletes[0] == op1.inserts[0].uid);
+    }
+
+    #[test]
+    fn test_delete_text_whole_multiple_elements() {
+        let mut string = AttributedString::new();
+        let   _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
+        let op1 = string.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        let op2 = string.insert_text(10, "brown".to_string(), &REPLICA1).unwrap();
+        let op3 = string.delete_text(4, 11, &REPLICA2).unwrap();
+
+        assert!(string.len() == 4);
+        assert!(text(&string, 1) == "the ");
+
+        assert!(op3.inserts.len() == 0);
+        assert!(op3.deletes.len() == 2);
+        assert!(op3.deletes[0] == op1.inserts[0].uid);
+        assert!(op3.deletes[1] == op2.inserts[0].uid);
+    }
+
+    #[test]
+    fn test_delete_text_split_single_element() {
+        let mut string = AttributedString::new();
+        let   _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
+        let op1 = string.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        let   _ = string.insert_text(10, "brown".to_string(), &REPLICA1);
+        let op2 = string.delete_text(5, 3, &REPLICA2).unwrap();
+
+        assert!(string.len() == 12);
+        assert!(text(&string, 1) == "the ");
+        assert!(text(&string, 2) == "qk ");
+        assert!(text(&string, 3) == "brown");
+
+        assert!(op2.inserts.len() == 1);
+        assert!(op2.inserts[0].text().unwrap() == "qk ");
+        assert!(op2.deletes.len() == 1);
+        assert!(op2.deletes[0] == op1.inserts[0].uid);
+    }
+
+    #[test]
+    fn test_delete_text_split_multiple_elements() {
+        let mut string = AttributedString::new();
+        let op1 = string.insert_text(0, "the ".to_string(), &REPLICA1).unwrap();
+        let   _ = string.insert_text(4, "quick ".to_string(), &REPLICA1);
+        let   _ = string.insert_text(10, "brown ".to_string(), &REPLICA1);
+        let   _ = string.insert_text(16, "fox ".to_string(), &REPLICA1);
+        let op2 = string.insert_text(20, "jumps ".to_string(), &REPLICA1).unwrap();
+        let   _ = string.insert_text(26, "over".to_string(), &REPLICA1);
+        let op3 = string.delete_text(2, 19, &REPLICA2).unwrap();
+
+        assert!(string.len() == 11);
+        assert!(text(&string, 1) == "th");
+        assert!(text(&string, 2) == "umps ");
+        assert!(text(&string, 3) == "over");
+
+        assert!(op3.inserts.len() == 2);
+        assert!(op3.inserts[0].text().unwrap() == "th");
+        assert!(op3.inserts[1].text().unwrap() == "umps ");
+        assert!(op3.deletes.len() == 5);
+        assert!(op3.deletes[0] == op1.inserts[0].uid);
+        assert!(op3.deletes[4] == op2.inserts[0].uid);
+    }
+
+    #[test]
+    fn test_delete_text_invalid() {
+        let mut string = AttributedString::new();
+        let op = string.delete_text(0, 1, &REPLICA2);
+        assert!(op.is_none());
+    }
+
+    #[test]
+    fn test_replace_text_delete_only() {
+        let mut string = AttributedString::new();
+        let op1 = string.insert_text(0, "hello world".to_string(), &REPLICA1).unwrap();
+        let op2 = string.replace_text(2, 6, "".to_string(), &REPLICA2).unwrap();
+
+        assert!(string.len() == 5);
+        assert!(text(&string, 1) == "herld");
+
+        assert!(op2.inserts.len() == 1);
+        assert!(op2.inserts[0].text().unwrap() == "herld");
+        assert!(op2.deletes.len() == 1);
+        assert!(op2.deletes[0] == op1.inserts[0].uid);
+    }
+
+    #[test]
+    fn test_replace_text_insert_only() {
+        let mut string = AttributedString::new();
+        let op1 = string.insert_text(0, "the fox".to_string(), &REPLICA1).unwrap();
+        let op2 = string.replace_text(4, 0, "quick ".to_string(), &REPLICA2).unwrap();
+
+        assert!(string.len() == 13);
+        assert!(text(&string, 1) == "the ");
+        assert!(text(&string, 2) == "quick ");
+        assert!(text(&string, 3) == "fox");
+
+        assert!(op2.inserts.len() == 3);
+        assert!(op2.inserts[0].text().unwrap() == "the ");
+        assert!(op2.inserts[1].text().unwrap() == "quick ");
+        assert!(op2.inserts[2].text().unwrap() == "fox");
+        assert!(op2.deletes.len() == 1);
+        assert!(op2.deletes[0] == op1.inserts[0].uid);
+    }
+
+    #[test]
+    fn test_replace_text_delete_and_insert() {
+        let mut string = AttributedString::new();
+        let op1 = string.insert_text(0, "the brown fox".to_string(), &REPLICA1).unwrap();
+        let op2 = string.replace_text(4, 5, "qwik".to_string(), &REPLICA2).unwrap();
+
+        assert!(string.len() == 12);
+        assert!(text(&string, 1) == "the ");
+        assert!(text(&string, 2) == "qwik");
+        assert!(text(&string, 3) == " fox");
+
+        assert!(op2.deletes.len() == 1);
+        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.inserts.len() == 3);
+        assert!(op2.inserts[0].text().unwrap() == "the ");
+        assert!(op2.inserts[1].text().unwrap() == "qwik");
+        assert!(op2.inserts[2].text().unwrap() == " fox");
+    }
+
+    #[test]
+    fn test_replace_invalid() {
+        let mut string = AttributedString::new();
+        let   _ = string.insert_text(0, "the quick brown fox".to_string(), &REPLICA1);
+        let op2 = string.replace_text(4, 16, "slow green turtle".to_string(), &REPLICA2);
+        assert!(op2.is_none());
+    }
+
+    #[test]
+    fn test_execute_remote_empty() {
+        let mut string = AttributedString::new();
+        let op = UpdateAttributedString::default();
+        let local_ops = string.execute_remote(op);
+        assert!(local_ops.len() == 0);
+    }
+
+    #[test]
+    fn test_execute_remote_inserts_only() {
+        let mut string1 = AttributedString::new();
+        let op1 = string1.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
+        let op2 = string1.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        let op3 = string1.replace_text(6, 1, "a".to_string(), &REPLICA1).unwrap();
+
+        let mut string2 = AttributedString::new();
+        let lops1 = string2.execute_remote(op1);
+        let lops2 = string2.execute_remote(op2);
+        let lops3 = string2.execute_remote(op3);
+
+        assert!(string1 == string2);
+        assert!(lops1.len() == 1);
+        assert!(lops2.len() == 4);
+        assert!(lops3.len() == 4);
+
+        let lop1 = to::<InsertText>(&lops1[0]);
+        let lop2 = to::<DeleteText>(&lops2[0]);
+        let lop3 = to::<InsertText>(&lops2[1]);
+        let lop4 = to::<InsertText>(&lops2[2]);
+        let lop5 = to::<InsertText>(&lops2[3]);
+        let lop6 = to::<DeleteText>(&lops3[0]);
+        let lop7 = to::<InsertText>(&lops3[1]);
+        let lop8 = to::<InsertText>(&lops3[2]);
+        let lop9 = to::<InsertText>(&lops3[3]);
+
+        assert!(lop1.index == 0 && lop1.text == "the brown");
+        assert!(lop2.index == 0 && lop2.len == 9);
+        assert!(lop3.index == 0 && lop3.text == "the ");
+        assert!(lop4.index == 4 && lop4.text == "quick ");
+        assert!(lop5.index == 10 && lop5.text == "brown");
+        assert!(lop6.index == 4 && lop6.len == 6);
+        assert!(lop7.index == 4 && lop7.text == "qu");
+        assert!(lop8.index == 6 && lop8.text == "a");
+        assert!(lop9.index == 7 && lop9.text == "ck ");
+    }
+
+    fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {
+        string.elements[index].text().unwrap()
+    }
+
+    fn to<'a, T: Any>(op: &'a Box<LocalOp>) -> &'a T {
+        op.as_any().downcast_ref::<T>().unwrap()
+    }
+}
