@@ -77,6 +77,7 @@ impl Debug for Value {
 mod tests {
     use super::*;
     use object::Object;
+    use array::Array;
     use Replica;
 
     #[test]
@@ -110,7 +111,12 @@ mod tests {
         object.put("/", num_value.clone(), &replica);
 
         // insert a nested array
-        let array = Value::array();
+        let mut array = Array::new();
+        let array_0 = Value::Num(1.0);
+        let array_1 = Value::Num(2.0);
+        array.insert(0, array_0.clone(), &replica);
+        array.insert(1, array_1.clone(), &replica);
+        let array = Value::Arr(array);
         object.put("101", array.clone(), &replica);
 
         // insert a nested attribute string
@@ -126,7 +132,14 @@ mod tests {
         assert!(value.get_nested("/") == Some(&bool_value));
         assert!(value.get_nested("/~1") == Some(&num_value));
         assert!(value.get_nested("/101") == Some(&array));
+        assert!(value.get_nested("/101/0") == Some(&array_0));
+        assert!(value.get_nested("/101/1") == Some(&array_1));
         assert!(value.get_nested("/a") == Some(&attrstr));
         assert!(value.get_nested("/a%b") == Some(&nested_object));
+
+        assert!(value.get_nested("/asdf") == None);
+        assert!(value.get_nested("/~1/a") == None);
+        assert!(value.get_nested("/101/-1") == None);
+        assert!(value.get_nested("/101/2") == None);
     }
 }
