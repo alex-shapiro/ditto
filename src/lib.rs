@@ -3,6 +3,7 @@ extern crate rand;
 
 mod array;
 mod attributed_string;
+mod crdt;
 mod object;
 mod op;
 mod replica;

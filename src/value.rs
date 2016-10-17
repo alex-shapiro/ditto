@@ -1,6 +1,6 @@
-use Object;
-use Array;
-use AttributedString;
+use object::Object;
+use array::Array;
+use attributed_string::AttributedString;
 use std::fmt;
 use std::fmt::Debug;
 use std::str::FromStr;
@@ -27,6 +27,13 @@ impl Value {
 
     pub fn attrstr() -> Self {
         Value::AttrStr(AttributedString::new())
+    }
+
+    pub fn as_object(&self) -> Option<&Object> {
+        match *self {
+            Value::Obj(ref object) => Some(object),
+            _ => None,
+        }
     }
 
     pub fn get_nested<'a>(&'a self, pointer: &str) -> Option<&'a Value> {
