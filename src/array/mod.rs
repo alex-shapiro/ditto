@@ -47,9 +47,10 @@ impl Array {
         }
     }
 
-    pub fn get_by_index(&self, index: usize) -> Option<&Element> {
+    pub fn get_by_index(&mut self, index: usize) -> Option<&mut Element> {
         if index >= self.len() { return None }
-        Some(&self.0[index+1])
+        let ref mut element = self.0[index+1];
+        Some(element)
     }
 
     pub fn execute_remote(&mut self, op: UpdateArray) -> Vec<Box<LocalOp>> {

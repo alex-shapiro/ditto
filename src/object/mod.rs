@@ -33,13 +33,13 @@ impl Object {
         UpdateObject::new(key.to_string(), None, deleted_uids)
     }
 
-    pub fn get_by_key(&self, key: &str) -> Option<&Element> {
-        let key_elements = self.0.get(key);
+    pub fn get_by_key(&mut self, key: &str) -> Option<&mut Element> {
+        let key_elements = self.0.get_mut(key);
         match key_elements {
             None =>
                 None,
             Some(elements) =>
-                elements.iter().min_by_key(|e| e.uid.site),
+                elements.iter_mut().min_by_key(|e| e.uid.site),
         }
     }
 

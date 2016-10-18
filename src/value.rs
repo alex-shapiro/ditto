@@ -29,30 +29,34 @@ impl Value {
         Value::AttrStr(AttributedString::new())
     }
 
-    pub fn as_object(&self) -> Option<&Object> {
+    pub fn as_object<'a>(&'a mut self) -> Option<&'a mut Object> {
         match *self {
-            Value::Obj(ref object) => Some(object),
+            Value::Obj(ref mut object) => Some(object),
             _ => None,
         }
     }
 
-    pub fn get_nested<'a>(&'a self, pointer: &str) -> Option<&'a Value> {
+    pub fn get_nested<'a>(&'a mut self, pointer: &str) -> Option<&'a mut Value> {
         let mut value = Some(self);
 
         for escaped_key in pointer.split("/").skip(1) {
             let key = escaped_key.replace("~1", "/").replace("~0", "~");
-            value = match value {
-                Some(&Value::Obj(ref object)) =>
+            if value.is_none() { return None }
+            value = match *value.unwrap() {
+                Value::Obj(ref mut object) =>
                     object
                     .get_by_key(&key)
-                    .and_then(|e| Some(& e.value)),
-                Some(&Value::Arr(ref array)) =>
-                    usize::from_str(&key)
-                    .ok()
-                    .and_then(|index| array.get_by_index(index))
-                    .and_then(|e| Some(&e.value)),
+                    .and_then(|e| Some(&mut e.value)),
+                Value::Arr(ref mut array) => {
+                    let index = usize::from_str(&key).ok();
+                    if index.is_some() {
+                        array.get_by_index(index.unwrap()).and_then(|e| Some(&mut e.value))
+                    } else {
+                        None
+                    }
+                },
                 _ =>
-                    return None,
+                    None,
             }
         }
         value
@@ -89,7 +93,7 @@ mod tests {
 
     #[test]
     fn test_get_nested_trivial() {
-        let values = vec![
+        let mut values = vec![
             Value::Null,
             Value::Bool(true),
             Value::Num(3.2),
@@ -98,9 +102,8 @@ mod tests {
             Value::array(),
             Value::object()];
 
-        for v in values {
-            println!("{:?}", v.get_nested(""));
-            assert!(v.get_nested("") == Some(&v));
+        for v in &mut values {
+            assert!(v.clone().get_nested("") == Some(v));
         }
     }
 
@@ -110,39 +113,38 @@ mod tests {
         let mut object = Object::new();
 
         // insert a value whose key is empty
-        let bool_value = Value::Bool(true);
+        let mut bool_value = Value::Bool(true);
         object.put("", bool_value.clone(), &replica);
 
         // insert a value whose key contains '/'
-        let num_value = Value::Num(1.0);
+        let mut num_value = Value::Num(1.0);
         object.put("/", num_value.clone(), &replica);
 
         // insert a nested array
         let mut array = Array::new();
-        let array_0 = Value::Num(1.0);
-        let array_1 = Value::Num(2.0);
+        let mut array_0 = Value::Num(1.0);
+        let mut array_1 = Value::Num(2.0);
         array.insert(0, array_0.clone(), &replica);
         array.insert(1, array_1.clone(), &replica);
-        let array = Value::Arr(array);
+        let mut array = Value::Arr(array);
         object.put("101", array.clone(), &replica);
 
         // insert a nested attribute string
-        let attrstr = Value::attrstr();
+        let mut attrstr = Value::attrstr();
         object.put("a", attrstr.clone(), &replica);
 
         // insert a nested object
-        let nested_object = Value::object();
+        let mut nested_object = Value::object();
         object.put("a%b", nested_object.clone(), &replica);
 
-        let value = Value::Obj(object);
-        assert!(value.get_nested("") == Some(&value));
-        assert!(value.get_nested("/") == Some(&bool_value));
-        assert!(value.get_nested("/~1") == Some(&num_value));
-        assert!(value.get_nested("/101") == Some(&array));
-        assert!(value.get_nested("/101/0") == Some(&array_0));
-        assert!(value.get_nested("/101/1") == Some(&array_1));
-        assert!(value.get_nested("/a") == Some(&attrstr));
-        assert!(value.get_nested("/a%b") == Some(&nested_object));
+        let mut value = Value::Obj(object);
+        assert!(value.get_nested("/") == Some(&mut bool_value));
+        assert!(value.get_nested("/~1") == Some(&mut num_value));
+        assert!(value.get_nested("/101") == Some(&mut array));
+        assert!(value.get_nested("/101/0") == Some(&mut array_0));
+        assert!(value.get_nested("/101/1") == Some(&mut array_1));
+        assert!(value.get_nested("/a") == Some(&mut attrstr));
+        assert!(value.get_nested("/a%b") == Some(&mut nested_object));
 
         assert!(value.get_nested("/asdf") == None);
         assert!(value.get_nested("/~1/a") == None);

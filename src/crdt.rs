@@ -1,6 +1,6 @@
 use Replica;
 use Value;
-use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString};
+use op::remote::{UpdateObject};
 
 pub struct CRDT {
     root_value: Value,
@@ -25,22 +25,24 @@ impl CRDT {
     }
 
     pub fn put(&mut self, pointer: &str, key: &str, value: Value) -> Option<UpdateObject> {
-        self
-        .root_value
+        let root_value = &mut self.root_value;
+        let replica = &self.replica;
+        root_value
         .get_nested(pointer)
         .and_then(|value| value.as_object())
-        .and_then(|object| Some(object.put(key, value, &self.replica)))
+        .and_then(|object| Some(object.put(key, value, replica)))
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+    use Value;
 
     #[test]
     fn test_put() {
-        let crdt = CRDT::new_object(1);
-        crdt.put("", "foo".to_string(), Value::Num(1.0));
+        let mut crdt = CRDT::new_object(1);
+        crdt.put("", "foo", Value::Num(1.0));
     }
 
 }

@@ -15,3 +15,4 @@ pub use attributed_string::AttributedString;
 pub use object::Object;
 pub use replica::Replica;
 pub use value::Value;
+pub use crdt::CRDT;
