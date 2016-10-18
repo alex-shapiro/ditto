@@ -1,6 +1,6 @@
 use Replica;
 use Value;
-use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString};
+use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
 
 pub struct CRDT {
     root_value: Value,
@@ -81,6 +81,12 @@ impl CRDT {
             .get_nested(pointer)
             .and_then(|value| value.as_attributed_string())
             .and_then(|string| string.replace_text(index, len, text, replica))
+    }
+
+    pub fn increment(&mut self, pointer: &str, amount: f64) -> Option<IncrementNumber> {
+        self.root_value
+            .get_nested(pointer)
+            .and_then(|value| value.increment(amount))
     }
 }
 

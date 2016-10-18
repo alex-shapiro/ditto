@@ -4,6 +4,7 @@ use attributed_string::AttributedString;
 use std::fmt;
 use std::fmt::Debug;
 use std::str::FromStr;
+use op::remote::IncrementNumber;
 
 #[derive(PartialEq,Clone)]
 pub enum Value {
@@ -46,6 +47,15 @@ impl Value {
     pub fn as_attributed_string<'a>(&'a mut self) -> Option<&'a mut AttributedString> {
         match *self {
             Value::AttrStr(ref mut string) => Some(string),
+            _ => None,
+        }
+    }
+
+    pub fn increment<'a>(&'a mut self, amount: f64) -> Option<IncrementNumber> {
+        match *self {
+            Value::Num(ref mut n) => {
+                *n += amount;
+                Some(IncrementNumber::new(amount)) },
             _ => None,
         }
     }
