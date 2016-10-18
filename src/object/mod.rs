@@ -26,11 +26,15 @@ impl Object {
         UpdateObject::new(key.to_string(), Some(new_element), deleted_uids)
     }
 
-    pub fn delete(&mut self, key: &str) -> UpdateObject {
+    pub fn delete(&mut self, key: &str) -> Option<UpdateObject> {
         let mut elements = &mut self.0;
         let deleted_elts = elements.remove(key);
         let deleted_uids = uids(deleted_elts);
-        UpdateObject::new(key.to_string(), None, deleted_uids)
+        if deleted_uids.is_empty() {
+            None
+        } else {
+            Some(UpdateObject::new(key.to_string(), None, deleted_uids))
+        }
     }
 
     pub fn get_by_key(&mut self, key: &str) -> Option<&mut Element> {
@@ -137,13 +141,19 @@ mod tests {
         let mut object = Object::new();
         let replica = Replica::new(2,4);
         let _  = object.put("bar", Value::Bool(true), &replica);
-        let op = object.delete("bar");
+        let op = object.delete("bar").unwrap();
 
         assert!(op.path == vec![]);
         assert!(op.key == "bar".to_string());
         assert!(op.new_element == None);
         assert!(op.deleted_uids.len() == 1);
         assert!(object.get_by_key("bar") == None);
+    }
+
+    #[test]
+    fn test_delete_no_values_for_key() {
+        let mut object = Object::new();
+        assert!(None == object.delete("foo"));
     }
 
     #[test]

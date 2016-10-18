@@ -37,7 +37,7 @@ impl CRDT {
         self.root_value
             .get_nested(pointer)
             .and_then(|value| value.as_object())
-            .and_then(|object| Some(object.delete(key)))
+            .and_then(|object| object.delete(key))
     }
 
     pub fn insert_item(&mut self, pointer: &str, index: usize, item: Value) -> Option<UpdateArray> {
@@ -96,9 +96,39 @@ mod tests {
     use Value;
 
     #[test]
-    fn test_put() {
+    fn test_operations() {
         let mut crdt = CRDT::new_object(1);
-        crdt.put("", "foo", Value::Num(1.0));
-    }
+        crdt.put("", "foo", Value::object()).unwrap();
+        crdt.put("", "bar", Value::array()).unwrap();
+        crdt.put("", "baz", Value::attrstr()).unwrap();
 
+        // nested object operations
+        crdt.put("/foo", "a", Value::Num(1.0)).unwrap();
+        crdt.put("/foo", "b", Value::Bool(true)).unwrap();
+        crdt.put("/foo", "c", Value::Str("hm?".to_string())).unwrap();
+        crdt.delete("/foo", "b").unwrap();
+
+        // nested array operations
+        crdt.insert_item("/bar", 0, Value::Bool(true)).unwrap();
+        crdt.insert_item("/bar", 1, Value::Bool(false)).unwrap();
+        crdt.insert_item("/bar", 2, Value::Bool(true)).unwrap();
+        crdt.delete_item("/bar", 1).unwrap();
+
+        // nested attributed string operations
+        crdt.insert_text("/baz", 0, "the ".to_string()).unwrap();
+        crdt.insert_text("/baz", 4, "slow ".to_string()).unwrap();
+        crdt.delete_text("/baz", 0, 1).unwrap();
+        crdt.replace_text("/baz", 4, 4, "quick".to_string()).unwrap();
+
+        // invalid operations
+        assert!(None == crdt.put("/bar", "a", Value::Bool(true)));
+        assert!(None == crdt.delete("/bar", "a"));
+        assert!(None == crdt.delete("/foo", "z"));
+        assert!(None == crdt.insert_item("/foo", 0, Value::Num(1.0)));
+        assert!(None == crdt.delete_item("/foo", 0));
+        assert!(None == crdt.insert_text("/bar", 0, "Hey!".to_string()));
+        assert!(None == crdt.delete_text("/bar", 0, 1));
+        assert!(None == crdt.replace_text("/bar", 0, 2, "this isn't right".to_string()));
+        assert!(None == crdt.increment("/bar", 1.5));
+    }
 }
