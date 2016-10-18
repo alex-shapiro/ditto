@@ -1,3 +1,4 @@
+use serde::ser::{Serialize,Serializer};
 use object::Object;
 use array::Array;
 use attributed_string::AttributedString;
@@ -104,6 +105,30 @@ impl Debug for Value {
                 write!(f, "{}", b),
             &Value::Null =>
                 write!(f, "null"),
+        }
+    }
+}
+
+impl Serialize for Value {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+
+
+    where S: Serializer {
+        match *self {
+            Value::Obj(_) =>
+                serializer.serialize_some("obj"),
+            Value::Arr(ref arr) =>
+                serializer.serialize_some(arr),
+            Value::AttrStr(ref string) =>
+                serializer.serialize_some(string),
+            Value::Str(ref string) =>
+                serializer.serialize_some(string),
+            Value::Num(number) =>
+                serializer.serialize_some(number),
+            Value::Bool(boolvalue) =>
+                serializer.serialize_some(boolvalue),
+            Value::Null =>
+                serializer.serialize_none(),
         }
     }
 }
