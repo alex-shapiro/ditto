@@ -36,6 +36,13 @@ impl Value {
         }
     }
 
+    pub fn as_array<'a>(&'a mut self) -> Option<&'a mut Array> {
+        match *self {
+            Value::Arr(ref mut array) => Some(array),
+            _ => None,
+        }
+    }
+
     pub fn get_nested<'a>(&'a mut self, pointer: &str) -> Option<&'a mut Value> {
         let mut value = Some(self);
 
