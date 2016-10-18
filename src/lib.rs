@@ -1,5 +1,7 @@
 extern crate num;
 extern crate rand;
+extern crate serde;
+extern crate serde_json;
 
 mod array;
 mod attributed_string;

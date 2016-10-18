@@ -1,6 +1,7 @@
 pub mod element;
 mod range;
 
+use serde::ser::{Serialize,Serializer};
 use std::mem;
 use self::element::Element;
 use self::range::Range;
@@ -178,6 +179,27 @@ impl AttributedString {
         deleted_uids.sort();
         UpdateAttributedString::new(inserts, deleted_uids)
     }
+
+    pub fn raw_string(&self) -> String {
+        let mut raw = String::with_capacity(self.len());
+        for elt in &self.elements {
+            match elt.text() {
+                None => (),
+                Some(text) => raw.push_str(text),
+            }
+        }
+        raw
+    }
+}
+
+impl Serialize for AttributedString {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+    where S: Serializer {
+        let mut state = try!(serializer.serialize_struct("attrstr", 1));
+        try!(serializer.serialize_struct_elt(&mut state, "__type__", "attrstr"));
+        try!(serializer.serialize_struct_elt(&mut state, "text", self.raw_string()));
+        serializer.serialize_struct_end(state)
+    }
 }
 
 #[cfg(test)]
@@ -190,6 +212,7 @@ mod tests {
     use op::local::DeleteText;
     use Replica;
     use std::any::Any;
+    use serde_json;
 
     const REPLICA1: Replica = Replica{site: 5, counter: 1023};
     const REPLICA2: Replica = Replica{site: 8, counter: 16};
@@ -470,6 +493,22 @@ mod tests {
         assert!(lop7.index == 4 && lop7.text == "qu");
         assert!(lop8.index == 6 && lop8.text == "a");
         assert!(lop9.index == 7 && lop9.text == "ck ");
+    }
+
+    #[test]
+    fn test_raw_string() {
+        let mut string = AttributedString::new();
+        string.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
+        string.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        assert!(string.raw_string() == "the quick brown");
+    }
+
+    #[test]
+    fn test_serialize() {
+        let mut string = AttributedString::new();
+        string.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
+        string.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        assert!(serde_json::to_string(&string).unwrap() == r#"{"__type__":"attrstr","text":"the quick brown"}"#);
     }
 
     fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {
