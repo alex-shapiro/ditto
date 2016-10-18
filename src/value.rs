@@ -111,12 +111,10 @@ impl Debug for Value {
 
 impl Serialize for Value {
     fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
-
-
     where S: Serializer {
         match *self {
-            Value::Obj(_) =>
-                serializer.serialize_some("obj"),
+            Value::Obj(ref obj) =>
+                serializer.serialize_some(obj),
             Value::Arr(ref arr) =>
                 serializer.serialize_some(arr),
             Value::AttrStr(ref string) =>

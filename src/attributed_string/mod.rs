@@ -195,7 +195,7 @@ impl AttributedString {
 impl Serialize for AttributedString {
     fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
     where S: Serializer {
-        let mut state = try!(serializer.serialize_struct("attrstr", 1));
+        let mut state = try!(serializer.serialize_struct("attrstr", 2));
         try!(serializer.serialize_struct_elt(&mut state, "__type__", "attrstr"));
         try!(serializer.serialize_struct_elt(&mut state, "text", self.raw_string()));
         serializer.serialize_struct_end(state)

@@ -1,6 +1,7 @@
 mod element;
 mod uid;
 
+use serde::ser::{Serialize,Serializer};
 pub use self::element::Element;
 pub use self::uid::UID;
 use std::collections::HashMap;
@@ -94,6 +95,20 @@ impl Object {
     }
 }
 
+impl Serialize for Object {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+    where S: Serializer {
+        let mut state = try!(serializer.serialize_map(None));
+        for (key, elements) in &self.0 {
+            let elt = elements.iter().min_by_key(|e| e.uid.site).unwrap();
+            let key = key.replace("~","~0").replace("__TYPE__","~1");
+            try!(serializer.serialize_map_key(&mut state, key));
+            try!(serializer.serialize_map_value(&mut state, &elt.value));
+        }
+        serializer.serialize_map_end(state)
+    }
+}
+
 fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {
     match elements {
         None =>
@@ -110,6 +125,7 @@ mod tests {
     use op::local::Put;
     use Replica;
     use Value;
+    use serde_json;
 
     const REPLICA: Replica = Replica{site: 1, counter: 2};
 
@@ -204,5 +220,19 @@ mod tests {
         let uid = op1.new_element.unwrap().uid;
         assert!(object.replace_by_uid(&uid, Value::Bool(true)));
         assert!(object.get_by_uid(&uid).unwrap().value == Value::Bool(true));
+    }
+
+    #[test]
+    fn test_serialize() {
+        let mut object = Object::new();
+        let replica = Replica::new(1,1);
+        object.put("foo", Value::object(), &replica);
+        object.put("bar", Value::array(), &replica);
+        object.put("baz", Value::attrstr(), &replica);
+        object.put("__TYPE__", Value::Str("kitty".to_string()), &replica);
+        object.put("~ooh~", Value::Bool(false), &replica);
+        println!("{}", serde_json::to_string(&object).unwrap());
+        // can't check exact output because HashMap::iter
+        // takes elements in arbitrary order
     }
 }
