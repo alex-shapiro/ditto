@@ -43,6 +43,13 @@ impl Value {
         }
     }
 
+    pub fn as_attributed_string<'a>(&'a mut self) -> Option<&'a mut AttributedString> {
+        match *self {
+            Value::AttrStr(ref mut string) => Some(string),
+            _ => None,
+        }
+    }
+
     pub fn get_nested<'a>(&'a mut self, pointer: &str) -> Option<&'a mut Value> {
         let mut value = Some(self);
 

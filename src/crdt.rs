@@ -1,6 +1,6 @@
 use Replica;
 use Value;
-use op::remote::{UpdateObject,UpdateArray};
+use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString};
 
 pub struct CRDT {
     root_value: Value,
@@ -54,6 +54,33 @@ impl CRDT {
             .get_nested(pointer)
             .and_then(|value| value.as_array())
             .and_then(|array| array.delete(index))
+    }
+
+    pub fn insert_text(&mut self, pointer: &str, index: usize, text: String) -> Option<UpdateAttributedString> {
+        let root_value = &mut self.root_value;
+        let replica = &self.replica;
+        root_value
+            .get_nested(pointer)
+            .and_then(|value| value.as_attributed_string())
+            .and_then(|string| string.insert_text(index, text, replica))
+    }
+
+    pub fn delete_text(&mut self, pointer: &str, index: usize, len: usize) -> Option<UpdateAttributedString> {
+        let root_value = &mut self.root_value;
+        let replica = &self.replica;
+        root_value
+            .get_nested(pointer)
+            .and_then(|value| value.as_attributed_string())
+            .and_then(|string| string.delete_text(index, len, replica))
+    }
+
+    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: String) -> Option<UpdateAttributedString> {
+        let root_value = &mut self.root_value;
+        let replica = &self.replica;
+        root_value
+            .get_nested(pointer)
+            .and_then(|value| value.as_attributed_string())
+            .and_then(|string| string.replace_text(index, len, text, replica))
     }
 }
 
