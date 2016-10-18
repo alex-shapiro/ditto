@@ -47,6 +47,12 @@ impl Array {
         }
     }
 
+    pub fn get_by_index(&mut self, index: usize) -> Option<&mut Element> {
+        if index >= self.len() { return None }
+        let ref mut element = self.0[index+1];
+        Some(element)
+    }
+
     pub fn execute_remote(&mut self, op: UpdateArray) -> Vec<Box<LocalOp>> {
         let delete_ops: Vec<DeleteItem> =
             op.deletes.into_iter()

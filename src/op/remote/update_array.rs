@@ -3,7 +3,7 @@ use sequence::uid::UID;
 use op::RemoteOp;
 
 
-#[derive(Debug)]
+#[derive(Debug,PartialEq)]
 pub struct UpdateArray {
     pub path: Vec<i64>,
     pub inserts: Vec<Element>,

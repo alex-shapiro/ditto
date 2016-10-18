@@ -2,6 +2,7 @@ use object::Element;
 use object::UID;
 use op::RemoteOp;
 
+#[derive(PartialEq)]
 pub struct UpdateObject {
     pub path: Vec<i64>,
     pub key: String,
