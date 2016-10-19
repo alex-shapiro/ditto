@@ -6,12 +6,12 @@ use attributed_string::AttributedString;
 use object::Object;
 use array::Array;
 
-pub fn deserialize_str(str: &str, replica: &Replica) -> Value {
+pub fn decode_str(str: &str, replica: &Replica) -> Value {
     let json: serde_json::value::Value = serde_json::de::from_str(str).expect("invalid JSON!");
-    deserialize(&json, replica)
+    decode(&json, replica)
 }
 
-pub fn deserialize(json: &serde_json::value::Value, replica: &Replica) -> Value {
+pub fn decode(json: &serde_json::value::Value, replica: &Replica) -> Value {
     if json.is_object() {
         let map = json.as_object().unwrap();
         match map.get("__TYPE__").and_then(|value| value.as_str()) {
@@ -52,7 +52,7 @@ fn de_object(map: &Map<String, serde_json::value::Value>, replica: &Replica) -> 
     let mut object = Object::new();
     for (key, value) in map {
         let key = key.replace("~1", "__TYPE__").replace("~0","~");
-        object.put(&key, deserialize(value, replica), replica);
+        object.put(&key, decode(value, replica), replica);
     }
     object
 }
@@ -60,7 +60,7 @@ fn de_object(map: &Map<String, serde_json::value::Value>, replica: &Replica) -> 
 fn de_array(vec: &Vec<serde_json::value::Value>, replica: &Replica) -> Array {
     let mut array = Array::new();
     for (i, value) in vec.iter().enumerate() {
-        array.insert(i, deserialize(value, replica), replica);
+        array.insert(i, decode(value, replica), replica);
     }
     array
 }
@@ -75,32 +75,32 @@ mod tests {
 
     #[test]
     fn test_deserialize_null() {
-        assert!(deserialize_str("null", &REPLICA) == Value::Null);
+        assert!(decode_str("null", &REPLICA) == Value::Null);
     }
 
     #[test]
     fn test_deserialize_bool() {
-        assert!(deserialize_str("true", &REPLICA) == Value::Bool(true));
-        assert!(deserialize_str("false", &REPLICA) == Value::Bool(false));
+        assert!(decode_str("true", &REPLICA) == Value::Bool(true));
+        assert!(decode_str("false", &REPLICA) == Value::Bool(false));
     }
 
     #[test]
     fn test_deserialize_number() {
-        assert!(deserialize_str("243", &REPLICA) == Value::Num(243.0));
-        assert!(deserialize_str("243.4", &REPLICA) == Value::Num(243.4));
-        assert!(deserialize_str("-243.4", &REPLICA) == Value::Num(-243.4));
+        assert!(decode_str("243", &REPLICA) == Value::Num(243.0));
+        assert!(decode_str("243.4", &REPLICA) == Value::Num(243.4));
+        assert!(decode_str("-243.4", &REPLICA) == Value::Num(-243.4));
     }
 
     #[test]
     fn test_deserialize_string() {
-        assert!(deserialize_str("\"\"", &REPLICA) == Value::Str("".to_string()));
-        assert!(deserialize_str("\"Hello world!\"", &REPLICA) == Value::Str("Hello world!".to_string()));
+        assert!(decode_str("\"\"", &REPLICA) == Value::Str("".to_string()));
+        assert!(decode_str("\"Hello world!\"", &REPLICA) == Value::Str("Hello world!".to_string()));
     }
 
     #[test]
     fn test_deserialize_attributed_string() {
         let string = r#"{"__TYPE__":"attrstr","text":"Hello world!"}"#;
-        let mut value = deserialize_str(&string, &REPLICA);
+        let mut value = decode_str(&string, &REPLICA);
 
         let attrstr = value.as_attributed_string().unwrap();
         assert!(attrstr.len() == 12);
@@ -109,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_deserialize_array() {
-        let mut value = deserialize_str(r#"[null, 1, "Hey!"]"#, &REPLICA);
+        let mut value = decode_str(r#"[null, 1, "Hey!"]"#, &REPLICA);
         let mut array = value.as_array().unwrap();
 
         assert!(array.len() == 3);
@@ -121,7 +121,7 @@ mod tests {
     #[test]
     fn test_deserialize_object() {
         let string = r#"{"a":true, "~1":-3, "~0": false}"#;
-        let mut value = deserialize_str(&string, &REPLICA);
+        let mut value = decode_str(&string, &REPLICA);
         let mut object = value.as_object().unwrap();
 
         assert!(object.get_by_key("a").unwrap().value == Value::Bool(true));
@@ -132,7 +132,7 @@ mod tests {
     #[test]
     fn test_deserialize_nested() {
         let string = r#"{"foo":[1,true,null,"hm"], "bar":{"a":true}, "baz": {"__TYPE__":"attrstr","text":"Hello world!"}}"#;
-        let mut value = deserialize_str(&string, &REPLICA);
+        let mut value = decode_str(&string, &REPLICA);
         let mut object1 = value.as_object().unwrap();
         {
             let ref mut array = object1.get_by_key("foo").unwrap().value;
