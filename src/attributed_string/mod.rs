@@ -196,7 +196,7 @@ impl Serialize for AttributedString {
     fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
     where S: Serializer {
         let mut state = try!(serializer.serialize_struct("attrstr", 2));
-        try!(serializer.serialize_struct_elt(&mut state, "__type__", "attrstr"));
+        try!(serializer.serialize_struct_elt(&mut state, "__TYPE__", "attrstr"));
         try!(serializer.serialize_struct_elt(&mut state, "text", self.raw_string()));
         serializer.serialize_struct_end(state)
     }
@@ -508,7 +508,7 @@ mod tests {
         let mut string = AttributedString::new();
         string.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
         string.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
-        assert!(serde_json::to_string(&string).unwrap() == r#"{"__type__":"attrstr","text":"the quick brown"}"#);
+        assert!(serde_json::to_string(&string).unwrap() == r#"{"__TYPE__":"attrstr","text":"the quick brown"}"#);
     }
 
     fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {
