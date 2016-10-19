@@ -6,6 +6,7 @@ extern crate serde_json;
 mod array;
 mod attributed_string;
 mod crdt;
+mod deserializer;
 mod object;
 mod op;
 mod replica;
