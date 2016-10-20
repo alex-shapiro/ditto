@@ -13,6 +13,6 @@ mod replica;
 mod sequence;
 mod value;
 
+pub use crdt::CRDT;
 pub use replica::Replica;
 pub use value::Value;
-pub use crdt::CRDT;

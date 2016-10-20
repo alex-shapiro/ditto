@@ -1,10 +1,10 @@
-use serde_json;
-use serde_json::value::Map;
 use Replica;
 use Value;
+use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
-use array::Array;
+use serde_json;
+use serde_json::value::Map;
 
 pub fn decode_str(str: &str, replica: &Replica) -> Value {
     let json: serde_json::value::Value = serde_json::de::from_str(str).expect("invalid JSON!");
@@ -15,10 +15,8 @@ pub fn decode(json: &serde_json::value::Value, replica: &Replica) -> Value {
     if json.is_object() {
         let map = json.as_object().unwrap();
         match map.get("__TYPE__").and_then(|value| value.as_str()) {
-            Some("attrstr") =>
-                Value::AttrStr(de_attributed_string(map, replica)),
-            _ =>
-                Value::Obj(de_object(map, replica)),
+            Some("attrstr") => Value::AttrStr(de_attributed_string(map, replica)),
+            _ => Value::Obj(de_object(map, replica)),
         }
     } else if json.is_array() {
         let vec = json.as_array().unwrap();
@@ -51,7 +49,7 @@ fn de_attributed_string(map: &Map<String, serde_json::value::Value>, replica: &R
 fn de_object(map: &Map<String, serde_json::value::Value>, replica: &Replica) -> Object {
     let mut object = Object::new();
     for (key, value) in map {
-        let key = key.replace("~1", "__TYPE__").replace("~0","~");
+        let key = key.replace("~1", "__TYPE__").replace("~0", "~");
         object.put(&key, decode(value, replica), replica);
     }
     object
@@ -67,11 +65,14 @@ fn de_array(vec: &Vec<serde_json::value::Value>, replica: &Replica) -> Array {
 
 #[cfg(test)]
 mod tests {
-    use super::*;
-    use Value;
     use Replica;
+    use Value;
+    use super::*;
 
-    const REPLICA: Replica = Replica{site: 2, counter: 3};
+    const REPLICA: Replica = Replica {
+        site: 2,
+        counter: 3,
+    };
 
     #[test]
     fn test_deserialize_null() {
