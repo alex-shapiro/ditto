@@ -1,6 +1,5 @@
 pub mod element;
 
-use serde::ser::{Serialize,Serializer};
 use Value;
 use sequence::uid::UID;
 use self::element::Element;
@@ -105,17 +104,6 @@ impl Array {
     }
 }
 
-impl Serialize for Array {
-    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
-    where S: Serializer {
-        let mut state = try!(serializer.serialize_seq(Some(self.len())));
-        for elt in &self.0[1..(self.len() + 1)] {
-            try!(serializer.serialize_seq_elt(&mut state, &elt.value));
-        }
-        serializer.serialize_seq_end(state)
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -126,7 +114,6 @@ mod tests {
     use std::any::Any;
     use Replica;
     use Value;
-    use serde_json;
 
     const REPLICA: Replica = Replica{site: 1, counter: 1};
 
@@ -207,16 +194,6 @@ mod tests {
 
         let lop3 = to::<DeleteItem>(&lops3);
         assert!(lop3.index == 0);
-    }
-
-    #[test]
-    fn test_serialize() {
-        let mut array = Array::new();
-        array.insert(0, Value::Num(1.0), &REPLICA);
-        array.insert(1, Value::Bool(true), &REPLICA);
-        array.insert(2, Value::Str("wow!".to_string()), &REPLICA);
-        array.insert(3, Value::Null, &REPLICA);
-        assert!(serde_json::to_string(&array).unwrap() == r#"[1.0,true,"wow!",null]"#);
     }
 
     fn to<'a, T: Any>(ops: &'a [Box<LocalOp>]) -> &'a T {
