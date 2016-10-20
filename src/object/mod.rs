@@ -92,6 +92,10 @@ impl Object {
                 Box::new(Delete::new(key))},
         }
     }
+
+    pub fn elements(&self) -> &HashMap<String,Vec<Element>> {
+        &self.0
+    }
 }
 
 fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {

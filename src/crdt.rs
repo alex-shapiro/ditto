@@ -1,6 +1,9 @@
 use Replica;
 use Value;
 use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
+use raw;
+use serde_json;
+use serde_json::Value as Json;
 
 pub struct CRDT {
     root_value: Value,
@@ -8,29 +11,41 @@ pub struct CRDT {
 }
 
 impl CRDT {
-    pub fn new(value: Value, site: u32) -> Self {
-        CRDT{root_value: value, replica: Replica::new(site, 0)}
+    pub fn new(json: &Json, site: u32) -> Self {
+        let replica = Replica::new(site, 0);
+        let value = raw::decode(json, &replica);
+        CRDT{root_value: value, replica: replica}
     }
 
-    pub fn new_object(site: u32) -> Self {
-        CRDT::new(Value::object(), site)
+    pub fn new_str(string: &str, site: u32) -> Self {
+        let json: Json = serde_json::de::from_str(string).expect("invalid JSON!");
+        CRDT::new(&json, site)
     }
 
-    pub fn new_array(site: u32) -> Self {
-        CRDT::new(Value::array(), site)
+    pub fn get(&mut self, pointer: &str) -> Option<Json> {
+        self.root_value
+            .get_nested(pointer)
+            .and_then(|value| Some(raw::encode(value)))
     }
 
-    pub fn new_attrstr(site: u32) -> Self {
-        CRDT::new(Value::attrstr(), site)
+    pub fn get_str(&mut self, pointer: &str) -> Option<String> {
+        self.get(pointer).and_then(|json| {
+            Some(serde_json::ser::to_string(&json).ok().unwrap())
+        })
     }
 
-    pub fn put(&mut self, pointer: &str, key: &str, value: Value) -> Option<UpdateObject> {
+    pub fn put(&mut self, pointer: &str, key: &str, value: &Json) -> Option<UpdateObject> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
         root_value
             .get_nested(pointer)
             .and_then(|value| value.as_object())
-            .and_then(|object| Some(object.put(key, value, replica)))
+            .and_then(|object| Some(object.put(key, raw::decode(value, replica), replica)))
+    }
+
+    pub fn put_str(&mut self, pointer: &str, key: &str, value: &str) -> Option<UpdateObject> {
+        let json: Json = serde_json::de::from_str(value).expect("invalid JSON!");
+        self.put(pointer, key, &json)
     }
 
     pub fn delete(&mut self, pointer: &str, key: &str) -> Option<UpdateObject> {
@@ -40,13 +55,18 @@ impl CRDT {
             .and_then(|object| object.delete(key))
     }
 
-    pub fn insert_item(&mut self, pointer: &str, index: usize, item: Value) -> Option<UpdateArray> {
+    pub fn insert_item(&mut self, pointer: &str, index: usize, item: &Json) -> Option<UpdateArray> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
         root_value
             .get_nested(pointer)
             .and_then(|value| value.as_array())
-            .and_then(|array| array.insert(index, item, replica))
+            .and_then(|array| array.insert(index, raw::decode(item, replica), replica))
+    }
+
+    pub fn insert_item_str(&mut self, pointer: &str, index: usize, item: &str) -> Option<UpdateArray> {
+        let json: Json = serde_json::de::from_str(item).expect("invalid JSON!");
+        self.insert_item(pointer, index, &json)
     }
 
     pub fn delete_item(&mut self, pointer: &str, index: usize) -> Option<UpdateArray> {
@@ -87,48 +107,5 @@ impl CRDT {
         self.root_value
             .get_nested(pointer)
             .and_then(|value| value.increment(amount))
-    }
-}
-
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use Value;
-
-    #[test]
-    fn test_operations() {
-        let mut crdt = CRDT::new_object(1);
-        crdt.put("", "foo", Value::object()).unwrap();
-        crdt.put("", "bar", Value::array()).unwrap();
-        crdt.put("", "baz", Value::attrstr()).unwrap();
-
-        // nested object operations
-        crdt.put("/foo", "a", Value::Num(1.0)).unwrap();
-        crdt.put("/foo", "b", Value::Bool(true)).unwrap();
-        crdt.put("/foo", "c", Value::Str("hm?".to_string())).unwrap();
-        crdt.delete("/foo", "b").unwrap();
-
-        // nested array operations
-        crdt.insert_item("/bar", 0, Value::Bool(true)).unwrap();
-        crdt.insert_item("/bar", 1, Value::Bool(false)).unwrap();
-        crdt.insert_item("/bar", 2, Value::Bool(true)).unwrap();
-        crdt.delete_item("/bar", 1).unwrap();
-
-        // nested attributed string operations
-        crdt.insert_text("/baz", 0, "the ".to_string()).unwrap();
-        crdt.insert_text("/baz", 4, "slow ".to_string()).unwrap();
-        crdt.delete_text("/baz", 0, 1).unwrap();
-        crdt.replace_text("/baz", 4, 4, "quick".to_string()).unwrap();
-
-        // invalid operations
-        assert!(None == crdt.put("/bar", "a", Value::Bool(true)));
-        assert!(None == crdt.delete("/bar", "a"));
-        assert!(None == crdt.delete("/foo", "z"));
-        assert!(None == crdt.insert_item("/foo", 0, Value::Num(1.0)));
-        assert!(None == crdt.delete_item("/foo", 0));
-        assert!(None == crdt.insert_text("/bar", 0, "Hey!".to_string()));
-        assert!(None == crdt.delete_text("/bar", 0, 1));
-        assert!(None == crdt.replace_text("/bar", 0, 2, "this isn't right".to_string()));
-        assert!(None == crdt.increment("/bar", 1.5));
     }
 }

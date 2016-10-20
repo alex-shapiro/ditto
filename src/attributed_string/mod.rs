@@ -178,6 +178,17 @@ impl AttributedString {
         deleted_uids.sort();
         UpdateAttributedString::new(inserts, deleted_uids)
     }
+
+    pub fn raw_string(&self) -> String {
+        let mut raw = String::with_capacity(self.len());
+        for elt in &self.elements {
+            match elt.text() {
+                None => (),
+                Some(text) => raw.push_str(text),
+            }
+        }
+        raw
+    }
 }
 
 #[cfg(test)]
@@ -470,6 +481,14 @@ mod tests {
         assert!(lop7.index == 4 && lop7.text == "qu");
         assert!(lop8.index == 6 && lop8.text == "a");
         assert!(lop9.index == 7 && lop9.text == "ck ");
+    }
+
+    #[test]
+    fn test_raw_string() {
+        let mut string = AttributedString::new();
+        string.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
+        string.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        assert!(string.raw_string() == "the quick brown");
     }
 
     fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {

@@ -96,6 +96,12 @@ impl Array {
                 None,
         }
     }
+
+    pub fn elements(&self) -> &[Element] {
+        let lower = 1;
+        let upper = self.len() + 1;
+        &self.0[lower..upper]
+    }
 }
 
 #[cfg(test)]
