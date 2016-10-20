@@ -3,14 +3,8 @@ use Value;
 use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
-use serde_json;
 use serde_json::Value as Json;
 use serde_json::value::Map;
-
-pub fn decode_str(str: &str, replica: &Replica) -> Value {
-    let json: Json = serde_json::de::from_str(str).expect("invalid JSON!");
-    decode(&json, replica)
-}
 
 pub fn decode(json: &Json, replica: &Replica) -> Value {
     match *json {
@@ -72,6 +66,7 @@ mod tests {
     use Replica;
     use Value;
     use super::*;
+    use serde_json;
 
     const REPLICA: Replica = Replica {
         site: 2,
@@ -151,5 +146,10 @@ mod tests {
             let ref mut attrstr = object1.get_by_key("baz").unwrap().value;
             assert!(attrstr.as_attributed_string().is_some());
         }
+    }
+
+    fn decode_str(string: &str, replica: &Replica) -> Value {
+        let json: serde_json::Value = serde_json::de::from_str(string).expect("invalid JSON!");
+        decode(&json, replica)
     }
 }

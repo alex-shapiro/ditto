@@ -2,14 +2,8 @@ use Value;
 use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
-use serde_json;
 use serde_json::Value as Json;
 use serde_json::value::Map as SerdeMap;
-
-pub fn encode_str(value: &Value) -> String {
-    let json = encode(value);
-    serde_json::ser::to_string(&json).expect("invalid Value!")
-}
 
 pub fn encode(value: &Value) -> Json {
     match *value {
@@ -66,6 +60,7 @@ mod tests {
     use array::Array;
     use attributed_string::AttributedString;
     use object::Object;
+    use serde_json;
 
     const REPLICA: Replica = Replica{site: 4, counter: 103};
 
@@ -137,5 +132,10 @@ mod tests {
         let value = Value::Arr(array);
         let json = encode_str(&value);
         assert!(json == r#"[{},{"__TYPE__":"attrstr","text":""},[],"hi!",-3234.1,true,null]"#);
+    }
+
+    fn encode_str(value: &Value) -> String {
+        let json = encode(value);
+        serde_json::ser::to_string(&json).ok().unwrap()
     }
 }
