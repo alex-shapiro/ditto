@@ -3,7 +3,7 @@ use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
 use serde_json;
-use serde_json::Value as JsonValue;
+use serde_json::Value as Json;
 use serde_json::value::Map as SerdeMap;
 
 pub fn encode_str(value: &Value) -> String {
@@ -11,7 +11,7 @@ pub fn encode_str(value: &Value) -> String {
     serde_json::ser::to_string(&json).expect("invalid Value!")
 }
 
-pub fn encode(value: &Value) -> JsonValue {
+pub fn encode(value: &Value) -> Json {
     match *value {
         Value::Obj(ref object) =>
             encode_object(object),
@@ -20,42 +20,42 @@ pub fn encode(value: &Value) -> JsonValue {
         Value::AttrStr(ref string) =>
             encode_attributed_string(string),
         Value::Str(ref string) =>
-            JsonValue::String(string.to_string()),
+            Json::String(string.to_string()),
         Value::Num(number) =>
-            JsonValue::F64(number),
+            Json::F64(number),
         Value::Bool(bool_value) =>
-            JsonValue::Bool(bool_value),
+            Json::Bool(bool_value),
         Value::Null =>
-            JsonValue::Null,
+            Json::Null,
     }
 }
 
-fn encode_object(object: &Object) -> JsonValue {
-    let mut map: SerdeMap<String, JsonValue> = SerdeMap::new();
+fn encode_object(object: &Object) -> Json {
+    let mut map: SerdeMap<String, Json> = SerdeMap::new();
     for (key, elements) in object.elements() {
         let encoded_key = key.replace("~","~0").replace("__TYPE__","~1");
         let ref value = elements.iter().min_by_key(|e| e.uid.site).unwrap().value;
         map.insert(encoded_key, encode(value));
     }
-    JsonValue::Object(map)
+    Json::Object(map)
 }
 
-fn encode_array(array: &Array) -> JsonValue {
-    let vec: Vec<JsonValue> =
+fn encode_array(array: &Array) -> Json {
+    let vec: Vec<Json> =
         array
             .elements()
             .iter()
             .map(|e| &e.value)
             .map(|value| encode(value))
             .collect();
-    JsonValue::Array(vec)
+    Json::Array(vec)
 }
 
-fn encode_attributed_string(string: &AttributedString) -> JsonValue {
-    let mut map: SerdeMap<String, JsonValue> = SerdeMap::new();
-    map.insert("__TYPE__".to_string(), JsonValue::String("attrstr".to_string()));
-    map.insert("text".to_string(), JsonValue::String(string.raw_string()));
-    JsonValue::Object(map)
+fn encode_attributed_string(string: &AttributedString) -> Json {
+    let mut map: SerdeMap<String, Json> = SerdeMap::new();
+    map.insert("__TYPE__".to_string(), Json::String("attrstr".to_string()));
+    map.insert("text".to_string(), Json::String(string.raw_string()));
+    Json::Object(map)
 }
 
 #[cfg(test)]
