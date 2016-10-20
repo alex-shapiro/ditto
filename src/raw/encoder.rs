@@ -58,6 +58,7 @@ fn encode_attributed_string(string: &AttributedString) -> JsonValue {
     JsonValue::Object(map)
 }
 
+#[cfg(test)]
 mod tests {
     use super::*;
     use Value;

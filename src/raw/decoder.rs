@@ -4,49 +4,46 @@ use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
 use serde_json;
+use serde_json::Value as Json;
 use serde_json::value::Map;
 
 pub fn decode_str(str: &str, replica: &Replica) -> Value {
-    let json: serde_json::value::Value = serde_json::de::from_str(str).expect("invalid JSON!");
+    let json: Json = serde_json::de::from_str(str).expect("invalid JSON!");
     decode(&json, replica)
 }
 
-pub fn decode(json: &serde_json::value::Value, replica: &Replica) -> Value {
-    if json.is_object() {
-        let map = json.as_object().unwrap();
-        match map.get("__TYPE__").and_then(|value| value.as_str()) {
-            Some("attrstr") => Value::AttrStr(de_attributed_string(map, replica)),
-            _ => Value::Obj(de_object(map, replica)),
-        }
-    } else if json.is_array() {
-        let vec = json.as_array().unwrap();
-        Value::Arr(de_array(vec, replica))
-
-    } else if json.is_string() {
-        let string = json.as_str().unwrap();
-        Value::Str(string.to_string())
-
-    } else if json.is_number() {
-        let number = json.as_f64().unwrap();
-        Value::Num(number)
-
-    } else if json.is_boolean() {
-        let bool_value = json.as_bool().unwrap();
-        Value::Bool(bool_value)
-
-    } else {
-        Value::Null
+pub fn decode(json: &Json, replica: &Replica) -> Value {
+    match *json {
+        Json::Object(ref map) =>
+            decode_map(map, replica),
+        Json::Array(ref vec) =>
+            Value::Arr(decode_array(vec, replica)),
+        Json::String(ref string) =>
+            Value::Str(string.to_string()),
+        Json::F64(number) =>
+            Value::Num(number),
+        Json::U64(number) =>
+            Value::Num(number as f64),
+        Json::I64(number) =>
+            Value::Num(number as f64),
+        Json::Bool(bool_value) =>
+            Value::Bool(bool_value),
+        Json::Null =>
+            Value::Null,
     }
 }
 
-fn de_attributed_string(map: &Map<String, serde_json::value::Value>, replica: &Replica) -> AttributedString {
-    let mut string = AttributedString::new();
-    let text = map.get("text").and_then(|value| value.as_str()).unwrap_or("");
-    string.insert_text(0, text.to_string(), replica);
-    string
+fn decode_map(map: &Map<String,Json>, replica: &Replica) -> Value {
+    let special_type = map.get("__TYPE__").and_then(|json| json.as_str());
+    match special_type {
+        Some("attrstr") =>
+            Value::AttrStr(decode_attributed_string(map, replica)),
+        _ =>
+            Value::Obj(decode_object(map, replica)),
+    }
 }
 
-fn de_object(map: &Map<String, serde_json::value::Value>, replica: &Replica) -> Object {
+fn decode_object(map: &Map<String, Json>, replica: &Replica) -> Object {
     let mut object = Object::new();
     for (key, value) in map {
         let key = key.replace("~1", "__TYPE__").replace("~0", "~");
@@ -55,12 +52,19 @@ fn de_object(map: &Map<String, serde_json::value::Value>, replica: &Replica) -> 
     object
 }
 
-fn de_array(vec: &Vec<serde_json::value::Value>, replica: &Replica) -> Array {
+fn decode_array(vec: &Vec<Json>, replica: &Replica) -> Array {
     let mut array = Array::new();
     for (i, value) in vec.iter().enumerate() {
         array.insert(i, decode(value, replica), replica);
     }
     array
+}
+
+fn decode_attributed_string(map: &Map<String, Json>, replica: &Replica) -> AttributedString {
+    let mut string = AttributedString::new();
+    let text = map.get("text").and_then(|json| json.as_str()).unwrap();
+    string.insert_text(0, text.to_string(), replica);
+    string
 }
 
 #[cfg(test)]
@@ -75,31 +79,31 @@ mod tests {
     };
 
     #[test]
-    fn test_deserialize_null() {
+    fn test_decode_null() {
         assert!(decode_str("null", &REPLICA) == Value::Null);
     }
 
     #[test]
-    fn test_deserialize_bool() {
+    fn test_decode_bool() {
         assert!(decode_str("true", &REPLICA) == Value::Bool(true));
         assert!(decode_str("false", &REPLICA) == Value::Bool(false));
     }
 
     #[test]
-    fn test_deserialize_number() {
+    fn test_decode_number() {
         assert!(decode_str("243", &REPLICA) == Value::Num(243.0));
         assert!(decode_str("243.4", &REPLICA) == Value::Num(243.4));
         assert!(decode_str("-243.4", &REPLICA) == Value::Num(-243.4));
     }
 
     #[test]
-    fn test_deserialize_string() {
+    fn test_decode_string() {
         assert!(decode_str("\"\"", &REPLICA) == Value::Str("".to_string()));
         assert!(decode_str("\"Hello world!\"", &REPLICA) == Value::Str("Hello world!".to_string()));
     }
 
     #[test]
-    fn test_deserialize_attributed_string() {
+    fn test_decode_attributed_string() {
         let string = r#"{"__TYPE__":"attrstr","text":"Hello world!"}"#;
         let mut value = decode_str(&string, &REPLICA);
 
@@ -109,7 +113,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_array() {
+    fn test_decode_array() {
         let mut value = decode_str(r#"[null, 1, "Hey!"]"#, &REPLICA);
         let mut array = value.as_array().unwrap();
 
@@ -120,7 +124,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_object() {
+    fn test_decode_object() {
         let string = r#"{"a":true, "~1":-3, "~0": false}"#;
         let mut value = decode_str(&string, &REPLICA);
         let mut object = value.as_object().unwrap();
@@ -131,7 +135,7 @@ mod tests {
     }
 
     #[test]
-    fn test_deserialize_nested() {
+    fn test_decode_nested() {
         let string = r#"{"foo":[1,true,null,"hm"], "bar":{"a":true}, "baz": {"__TYPE__":"attrstr","text":"Hello world!"}}"#;
         let mut value = decode_str(&string, &REPLICA);
         let mut object1 = value.as_object().unwrap();
