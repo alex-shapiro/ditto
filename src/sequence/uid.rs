@@ -25,6 +25,9 @@ use num::cast::ToPrimitive;
 use std::fmt;
 use std::fmt::Debug;
 use Replica;
+use serde;
+use serde::Error;
+use vlq;
 
 const BASE_LEVEL: usize = 3;
 const MAX_LEVEL:  usize = 32;
@@ -185,11 +188,42 @@ impl Debug for UID {
     }
 }
 
+impl serde::Serialize for UID {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+    where S: serde::Serializer {
+        let mut vlq = vlq::encode_biguint(&self.position);
+        vlq.append(&mut vlq::encode_u32(self.site));
+        vlq.append(&mut vlq::encode_u32(self.counter));
+        serializer.serialize_bytes(&vlq)
+    }
+}
+
+impl serde::Deserialize for UID {
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
+    where D: serde::Deserializer {
+        fn decode_uid(vlq: &[u8]) -> Result<UID,&'static str> {
+            let (position, vlq_rest1) = try!(vlq::decode_biguint(vlq));
+            let (site, vlq_rest2)     = try!(vlq::decode_u32(vlq_rest1));
+            let (counter, _)          = try!(vlq::decode_u32(vlq_rest2));
+            Ok(UID{position: position, site: site, counter: counter})
+        }
+
+        let vlq = try!(Vec::deserialize(deserializer));
+        match decode_uid(&vlq) {
+            Err(_) =>
+                Err(D::Error::invalid_value("bad UID")),
+            Ok(uid) =>
+                Ok(uid),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use num::bigint::{BigUint, ToBigUint};
     use Replica;
+    use serde_json;
 
     const REPLICA: Replica = Replica{site: 3, counter: 2};
 
@@ -319,6 +353,15 @@ mod tests {
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(big(0b1_001_0100) < uid.position);
         assert!(big(0b1_001_1111) > uid.position);
+    }
+
+    #[test]
+    fn test_serialize_deserialize() {
+        let uid = UID{position: big(0b1_010_1010), site: 4, counter: 83};
+        let serialized = serde_json::ser::to_string(&uid).expect("A");
+        let deserialized: UID = serde_json::de::from_str(&serialized).expect("B");
+        assert!(serialized == "[129,42,4,83]");
+        assert!(deserialized == uid);
     }
 
     fn big(num: usize) -> BigUint {

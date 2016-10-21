@@ -12,6 +12,7 @@ mod raw;
 mod replica;
 mod sequence;
 mod value;
+mod vlq;
 
 pub use crdt::CRDT;
 pub use replica::Replica;
