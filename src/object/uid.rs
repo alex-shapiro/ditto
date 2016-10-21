@@ -1,5 +1,8 @@
 use std::cmp::Ordering;
 use Replica;
+use serde;
+use serde::Error;
+use vlq;
 
 #[derive(Clone,Eq)]
 pub struct UID {
@@ -36,6 +39,36 @@ impl Ord for UID {
             Ordering::Equal
         } else {
             Ordering::Greater
+        }
+    }
+}
+
+// TODO: implement this for real and add tests.
+impl serde::Serialize for UID {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+    where S: serde::Serializer {
+        let mut vlq = vlq::encode_u32(self.site);
+        vlq.append(&mut vlq::encode_u32(self.counter));
+        serializer.serialize_bytes(&vlq)
+    }
+}
+
+// TODO: implement this for real and add tests.
+impl serde::Deserialize for UID {
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
+    where D: serde::Deserializer {
+        fn decode_uid(vlq: &[u8]) -> Result<UID,&'static str> {
+            let (site, vlq_rest) = try!(vlq::decode_u32(vlq));
+            let (counter, _)     = try!(vlq::decode_u32(vlq_rest));
+            Ok(UID{key: "".to_string(), site: site, counter: counter})
+        }
+
+        let vlq = try!(Vec::deserialize(deserializer));
+        match decode_uid(&vlq) {
+            Err(_) =>
+                Err(D::Error::invalid_value("bad object UID")),
+            Ok(uid) =>
+                Ok(uid),
         }
     }
 }

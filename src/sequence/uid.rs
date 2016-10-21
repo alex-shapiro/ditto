@@ -188,6 +188,7 @@ impl Debug for UID {
     }
 }
 
+// TODO: implement this for real and add tests.
 impl serde::Serialize for UID {
     fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
     where S: serde::Serializer {
@@ -198,6 +199,7 @@ impl serde::Serialize for UID {
     }
 }
 
+// TODO: implement this for real and add tests.
 impl serde::Deserialize for UID {
     fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
     where D: serde::Deserializer {
@@ -211,7 +213,7 @@ impl serde::Deserialize for UID {
         let vlq = try!(Vec::deserialize(deserializer));
         match decode_uid(&vlq) {
             Err(_) =>
-                Err(D::Error::invalid_value("bad UID")),
+                Err(D::Error::invalid_value("bad sequence UID")),
             Ok(uid) =>
                 Ok(uid),
         }
