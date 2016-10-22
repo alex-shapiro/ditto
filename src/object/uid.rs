@@ -68,8 +68,6 @@ impl ToString for UID {
     }
 }
 
-// pub struct InvalidUID;
-
 impl FromStr for UID {
     type Err = &'static str;
 
