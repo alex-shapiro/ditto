@@ -179,6 +179,12 @@ impl AttributedString {
         UpdateAttributedString::new(inserts, deleted_uids)
     }
 
+    pub fn elements(&self) -> &[Element] {
+        let lower = 1;
+        let upper = self.elements.len() - 1;
+        &self.elements[lower..upper]
+    }
+
     pub fn raw_string(&self) -> String {
         let mut raw = String::with_capacity(self.len());
         for elt in &self.elements {

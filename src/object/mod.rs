@@ -1,4 +1,4 @@
-mod element;
+pub mod element;
 mod uid;
 
 pub use self::element::Element;
