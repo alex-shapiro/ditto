@@ -8,14 +8,13 @@ use object::uid::UID as ObjectUID;
 use object::Object;
 use object::element::Element as ObjectElement;
 use serde_json::Value as Json;
-use serde_json::value::Map;
 use std::str::FromStr;
 use std::collections::HashMap;
 
 pub struct Error;
 
 impl From<&'static str> for Error {
-    fn from(err: &'static str) -> Error {
+    fn from(_: &'static str) -> Error {
         Error{}
     }
 }

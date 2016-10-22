@@ -4,6 +4,7 @@ use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber
 use raw;
 use serde_json;
 use serde_json::Value as Json;
+use compact;
 
 pub struct CRDT {
     root_value: Value,
@@ -15,6 +16,16 @@ impl CRDT {
         let replica = Replica::new(site, 0);
         let value = raw::decode(json, &replica);
         CRDT{root_value: value, replica: replica}
+    }
+
+    pub fn decode(json: &Json) -> Result<Self, compact::decoder::Error> {
+        let replica = Replica::new(1, 0);
+        let value = try!(compact::decode(json));
+        Ok(CRDT{root_value: value, replica: replica})
+    }
+
+    pub fn encode(&self) -> Json {
+        compact::encode(&self.root_value)
     }
 
     pub fn new_str(string: &str, site: u32) -> Self {
