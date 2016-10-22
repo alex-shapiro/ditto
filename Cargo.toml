@@ -6,5 +6,7 @@ authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
 [dependencies]
 num = "0.1.36"
 rand = "0.3"
+rustc-serialize = "0.3"
 serde = "0.8.13"
+serde_derive = "0.8"
 serde_json = "0.8.3"

@@ -3,6 +3,9 @@ use Replica;
 use serde;
 use serde::Error;
 use vlq;
+use std::str::FromStr;
+use rustc_serialize::base64;
+use rustc_serialize::base64::{ToBase64, FromBase64};
 
 #[derive(Clone,Eq)]
 pub struct UID {
@@ -43,32 +46,70 @@ impl Ord for UID {
     }
 }
 
-// TODO: implement this for real and add tests.
-impl serde::Serialize for UID {
-    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
-    where S: serde::Serializer {
+impl ToString for UID {
+    fn to_string(&self) -> String {
+        // VLQ-encode site and counter
         let mut vlq = vlq::encode_u32(self.site);
         vlq.append(&mut vlq::encode_u32(self.counter));
-        serializer.serialize_bytes(&vlq)
+
+        // Base64-encode VLQ
+        let mut encoded_uid =
+            vlq.to_base64(base64::Config{
+                char_set: base64::CharacterSet::Standard,
+                newline: base64::Newline::LF,
+                pad: false,
+                line_length: None,
+            });
+
+        // push the key onto the encoded value
+        encoded_uid.push(',');
+        encoded_uid.push_str(&self.key);
+        encoded_uid
     }
 }
 
-// TODO: implement this for real and add tests.
-impl serde::Deserialize for UID {
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
-    where D: serde::Deserializer {
-        fn decode_uid(vlq: &[u8]) -> Result<UID,&'static str> {
-            let (site, vlq_rest) = try!(vlq::decode_u32(vlq));
-            let (counter, _)     = try!(vlq::decode_u32(vlq_rest));
-            Ok(UID{key: "".to_string(), site: site, counter: counter})
+// pub struct InvalidUID;
+
+impl FromStr for UID {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // split the string into Base64-encoded VLQ and key
+        let mut parts = s.split(",");
+        let encoded_vlq = parts.next();
+        let key = parts.next();
+        if encoded_vlq.is_none() || key.is_none() {
+            return Err("invalid object UID!")
         }
 
-        let vlq = try!(Vec::deserialize(deserializer));
-        match decode_uid(&vlq) {
-            Err(_) =>
-                Err(D::Error::invalid_value("bad object UID")),
-            Ok(uid) =>
-                Ok(uid),
+        // Base64-decode VLQ
+        let vlq =
+            match encoded_vlq.unwrap().from_base64() {
+                Ok(value) => value,
+                Err(_) => return Err("Invalid object UID!"),
+            };
+
+        // Decode VLQ into site and counter
+        let (site, vlq_rest) = try!(vlq::decode_u32(&vlq));
+        let (counter, _)     = try!(vlq::decode_u32(&vlq_rest));
+        Ok(UID{key: String::from(key.unwrap()), site: site, counter: counter})
+    }
+}
+
+impl serde::Serialize for UID {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+    where S: serde::Serializer {
+        serializer.serialize_str(&self.to_string())
+    }
+}
+
+impl serde::Deserialize for UID {
+    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
+        where D: serde::Deserializer {
+        let uid_string = try!(String::deserialize(deserializer));
+        match UID::from_str(&uid_string) {
+            Err(_)  => Err(D::Error::invalid_value("Invalid object UID!")),
+            Ok(uid) => Ok(uid),
         }
     }
 }
@@ -77,6 +118,7 @@ impl serde::Deserialize for UID {
 mod tests {
     use super::*;
     use Replica;
+    use serde_json;
 
     #[test]
     fn test_new() {
@@ -97,5 +139,21 @@ mod tests {
         let uid3 = UID::new("foo", &replica2);
         assert!(uid1 == uid2);
         assert!(uid1 != uid3);
+    }
+
+    #[test]
+    fn serialize_deserialize() {
+        let uid = UID::new("foo", &Replica{site: 43, counter: 1032});
+        let serialized = serde_json::to_string(&uid).unwrap();
+        let deserialized: UID = serde_json::from_str(&serialized).unwrap();
+        assert!(serialized == r#""K4gI,foo""#);
+        assert!(deserialized == uid);
+    }
+
+    #[test]
+    fn serialize_deserialize_invalid() {
+        let serialized = "K400,foo";
+        let deserialized: Result<UID,_> = serde_json::from_str(serialized);
+        assert!(deserialized.is_err());
     }
 }
