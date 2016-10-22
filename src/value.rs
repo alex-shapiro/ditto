@@ -5,7 +5,6 @@ use std::fmt;
 use std::fmt::Debug;
 use std::str::FromStr;
 use op::remote::IncrementNumber;
-use serde;
 
 #[derive(PartialEq,Clone)]
 pub enum Value {
@@ -106,74 +105,6 @@ impl Debug for Value {
             &Value::Null =>
                 write!(f, "null"),
         }
-    }
-}
-
-impl serde::Serialize for Value {
-    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
-    where S: serde::Serializer {
-        match *self {
-            Value::Obj(_) =>
-                serializer.serialize_none(),
-            Value::Arr(_) =>
-                serializer.serialize_none(),
-            Value::AttrStr(_) =>
-                serializer.serialize_none(),
-            Value::Str(ref string) =>
-                serializer.serialize_str(string),
-            Value::Num(number) =>
-                serializer.serialize_f64(number),
-            Value::Bool(boolean) =>
-                serializer.serialize_bool(boolean),
-            Value::Null =>
-                serializer.serialize_none(),
-        }
-    }
-}
-
-impl serde::Deserialize for Value {
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
-        where D: serde::Deserializer {
-
-        struct ValueVisitor;
-        impl serde::de::Visitor for ValueVisitor {
-            type Value = Value;
-            fn visit_none<E>(&mut self) -> Result<Value, E> {
-                Ok(Value::Null)
-            }
-            fn visit_bool<E>(&mut self, value: bool) -> Result<Value, E> {
-                Ok(Value::Bool(value))
-            }
-            fn visit_f64<E>(&mut self, value: f64) -> Result<Value, E> {
-                Ok(Value::Num(value))
-            }
-            fn visit_str<E>(&mut self, value: &str) -> Result<Value, E>
-                where E: serde::de::Error {
-                self.visit_string(String::from(value))
-            }
-            fn visit_string<E>(&mut self, value: String) -> Result<Value, E> {
-                Ok(Value::Str(value))
-            }
-
-            fn visit_map<V>(&mut self, visitor: V) -> Result<Value, V::Error>
-                where V: serde::de::MapVisitor {
-                Ok(Value::object())
-                // let maptype: Option<String> = None;
-                // let elements:
-                // let map = try!(visitor.visit());
-                // let maptype = map.get("t");
-                // let elements = map.get("e").unwrap_or
-                // match map.get("t") {
-                //     "attrstr" =>
-                //         try!(AttributedStringVisitor::new().visit_map(visitor)),
-                //     _ =>
-                // }
-                // let values = try!(MapVisitor::new().visit_map(visitor));
-                // Ok(Value::Obj(values))
-            }
-        }
-
-        deserializer.deserialize(ValueVisitor)
     }
 }
 

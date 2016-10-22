@@ -1,7 +1,5 @@
 use std::cmp::Ordering;
 use Replica;
-use serde;
-use serde::Error;
 use vlq;
 use std::str::FromStr;
 use rustc_serialize::base64;
@@ -94,29 +92,10 @@ impl FromStr for UID {
     }
 }
 
-impl serde::Serialize for UID {
-    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
-    where S: serde::Serializer {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-impl serde::Deserialize for UID {
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
-        where D: serde::Deserializer {
-        let uid_string = try!(String::deserialize(deserializer));
-        match UID::from_str(&uid_string) {
-            Err(_)  => Err(D::Error::invalid_value("Invalid object UID!")),
-            Ok(uid) => Ok(uid),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use Replica;
-    use serde_json;
 
     #[test]
     fn test_new() {
@@ -137,21 +116,5 @@ mod tests {
         let uid3 = UID::new("foo", &replica2);
         assert!(uid1 == uid2);
         assert!(uid1 != uid3);
-    }
-
-    #[test]
-    fn serialize_deserialize() {
-        let uid = UID::new("foo", &Replica{site: 43, counter: 1032});
-        let serialized = serde_json::to_string(&uid).unwrap();
-        let deserialized: UID = serde_json::from_str(&serialized).unwrap();
-        assert!(serialized == r#""K4gI,foo""#);
-        assert!(deserialized == uid);
-    }
-
-    #[test]
-    fn serialize_deserialize_invalid() {
-        let serialized = "K400,foo";
-        let deserialized: Result<UID,_> = serde_json::from_str(serialized);
-        assert!(deserialized.is_err());
     }
 }

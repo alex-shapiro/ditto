@@ -25,8 +25,6 @@ use num::cast::ToPrimitive;
 use std::fmt;
 use std::fmt::Debug;
 use Replica;
-use serde;
-use serde::Error;
 use vlq;
 use std::str::FromStr;
 use rustc_serialize::base64;
@@ -223,32 +221,12 @@ impl FromStr for UID {
     }
 }
 
-
-impl serde::Serialize for UID {
-    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
-    where S: serde::Serializer {
-        serializer.serialize_str(&self.to_string())
-    }
-}
-
-// TODO: implement this for real and add tests.
-impl serde::Deserialize for UID {
-    fn deserialize<D>(deserializer: &mut D) -> Result<Self, D::Error>
-    where D: serde::Deserializer {
-        let uid_string = try!(String::deserialize(deserializer));
-        match UID::from_str(&uid_string) {
-            Err(_)  => Err(D::Error::invalid_value("Invalid object UID!")),
-            Ok(uid) => Ok(uid),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use num::bigint::{BigUint, ToBigUint};
     use Replica;
-    use serde_json;
+    use std::str::FromStr;
 
     const REPLICA: Replica = Replica{site: 3, counter: 2};
 
@@ -381,18 +359,18 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_deserialize() {
+    fn test_to_from_string() {
         let uid = UID{position: big(0b1_010_1010), site: 4, counter: 83};
-        let serialized = serde_json::to_string(&uid).unwrap();
-        let deserialized: UID = serde_json::from_str(&serialized).unwrap();
-        assert!(serialized == r#""gSoEUw""#);
+        let serialized = uid.to_string();
+        let deserialized = UID::from_str(&serialized).unwrap();
+        assert!(serialized == "gSoEUw");
         assert!(deserialized == uid);
     }
 
     #[test]
     fn test_serialize_deserialize_invalid() {
-        let serialized = "102nv1agf2";
-        let deserialized: Result<UID,_> = serde_json::from_str(&serialized);
+        let serialized = "bjad%%";
+        let deserialized = UID::from_str(&serialized);
         assert!(deserialized.is_err());
     }
 
