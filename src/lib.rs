@@ -1,4 +1,5 @@
 #![feature(proc_macro)]
+#![feature(slice_patterns)]
 
 extern crate num;
 extern crate rand;

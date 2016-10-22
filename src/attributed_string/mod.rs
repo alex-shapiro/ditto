@@ -26,6 +26,10 @@ impl AttributedString {
         }
     }
 
+    pub fn assemble(elements: Vec<Element>, len: usize) -> Self {
+        AttributedString{elements: elements, len: len}
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }

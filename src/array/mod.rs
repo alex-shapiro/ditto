@@ -17,6 +17,10 @@ impl Array {
         Array(vec![Element::start_marker(), Element::end_marker()])
     }
 
+    pub fn assemble(elements: Vec<Element>) -> Array {
+        Array(elements)
+    }
+
     pub fn len(&self) -> usize {
         self.0.len() - 2
     }
