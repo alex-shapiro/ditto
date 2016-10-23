@@ -18,13 +18,13 @@ impl CRDT {
         CRDT{root_value: value, replica: replica}
     }
 
-    pub fn decode(json: &Json) -> Result<Self, compact::decoder::Error> {
+    pub fn deserialize(json: &Json) -> Result<Self, compact::decoder::Error> {
         let replica = Replica::new(1, 0);
         let value = try!(compact::decode(json));
         Ok(CRDT{root_value: value, replica: replica})
     }
 
-    pub fn encode(&self) -> Json {
+    pub fn serialize(&self) -> Json {
         compact::encode(&self.root_value)
     }
 
