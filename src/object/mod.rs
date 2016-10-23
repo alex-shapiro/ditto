@@ -175,7 +175,7 @@ mod tests {
         let op3 = object.execute_remote(op2);
         let op3_unwrapped = op3.as_any().downcast_ref::<Put>().unwrap();
 
-        assert!(op3_unwrapped.path == vec![]);
+        assert!(op3_unwrapped.path == "");
         assert!(op3_unwrapped.key == "baz".to_string());
         assert!(op3_unwrapped.value == Value::Num(1.0));
         assert!(object.0.get("baz").unwrap().len() == 2);
@@ -199,7 +199,7 @@ mod tests {
         let op4 = object.execute_remote(op3);
         let op4_unwrapped = op4.as_any().downcast_ref::<Put>().unwrap();
 
-        assert!(op4_unwrapped.path == vec![]);
+        assert!(op4_unwrapped.path == "");
         assert!(op4_unwrapped.key == "foo".to_string());
         assert!(op4_unwrapped.value == Value::Bool(true));
     }

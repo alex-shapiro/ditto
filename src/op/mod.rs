@@ -7,6 +7,5 @@ pub trait RemoteOp { }
 
 
 pub trait LocalOp {
-    fn path(&self) -> &Vec<i64>;
     fn as_any(&self) -> &Any;
 }

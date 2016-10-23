@@ -11,3 +11,12 @@ pub use self::delete_item::DeleteItem;
 pub use self::insert_item::InsertItem;
 pub use self::delete_text::DeleteText;
 pub use self::insert_text::InsertText;
+
+pub enum LocalOp {
+    Put(Put),
+    Delete(Delete),
+    InsertItem(InsertItem),
+    DeleteItem(DeleteItem),
+    InsertText(InsertText),
+    DeleteText(DeleteText),
+}
