@@ -39,6 +39,10 @@ impl Element {
         Element{uid: uid, value: value}
     }
 
+    pub fn new_text(text: String, uid: UID) -> Self {
+        Element{uid: uid, value: EltValue::Text(text)}
+    }
+
     pub fn start_marker() -> Self {
         Self::new(EltValue::None, UID::min())
     }

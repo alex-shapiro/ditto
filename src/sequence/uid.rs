@@ -25,6 +25,10 @@ use num::cast::ToPrimitive;
 use std::fmt;
 use std::fmt::Debug;
 use Replica;
+use vlq;
+use std::str::FromStr;
+use rustc_serialize::base64;
+use rustc_serialize::base64::{ToBase64, FromBase64};
 
 const BASE_LEVEL: usize = 3;
 const MAX_LEVEL:  usize = 32;
@@ -185,11 +189,44 @@ impl Debug for UID {
     }
 }
 
+impl ToString for UID {
+    fn to_string(&self) -> String {
+        let mut vlq = vlq::encode_biguint(&self.position);
+        vlq.append(&mut vlq::encode_u32(self.site));
+        vlq.append(&mut vlq::encode_u32(self.counter));
+
+        vlq.to_base64(base64::Config{
+            char_set: base64::CharacterSet::Standard,
+            newline: base64::Newline::LF,
+            pad: false,
+            line_length: None,
+        })
+    }
+}
+
+impl FromStr for UID {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s.from_base64() {
+            Ok(vlq) => {
+                let (position, vlq_rest1) = try!(vlq::decode_biguint(&vlq));
+                let (site, vlq_rest2)     = try!(vlq::decode_u32(&vlq_rest1));
+                let (counter, _)          = try!(vlq::decode_u32(&vlq_rest2));
+                Ok(UID{position: position, site: site, counter: counter})
+            },
+            Err(_) =>
+                Err("Invalid object UID!"),
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
     use num::bigint::{BigUint, ToBigUint};
     use Replica;
+    use std::str::FromStr;
 
     const REPLICA: Replica = Replica{site: 3, counter: 2};
 
@@ -319,6 +356,22 @@ mod tests {
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(big(0b1_001_0100) < uid.position);
         assert!(big(0b1_001_1111) > uid.position);
+    }
+
+    #[test]
+    fn test_to_from_string() {
+        let uid = UID{position: big(0b1_010_1010), site: 4, counter: 83};
+        let serialized = uid.to_string();
+        let deserialized = UID::from_str(&serialized).unwrap();
+        assert!(serialized == "gSoEUw");
+        assert!(deserialized == uid);
+    }
+
+    #[test]
+    fn test_serialize_deserialize_invalid() {
+        let serialized = "bjad%%";
+        let deserialized = UID::from_str(&serialized);
+        assert!(deserialized.is_err());
     }
 
     fn big(num: usize) -> BigUint {

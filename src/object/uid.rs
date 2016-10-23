@@ -1,5 +1,9 @@
 use std::cmp::Ordering;
 use Replica;
+use vlq;
+use std::str::FromStr;
+use rustc_serialize::base64;
+use rustc_serialize::base64::{ToBase64, FromBase64};
 
 #[derive(Clone,Eq)]
 pub struct UID {
@@ -37,6 +41,54 @@ impl Ord for UID {
         } else {
             Ordering::Greater
         }
+    }
+}
+
+impl ToString for UID {
+    fn to_string(&self) -> String {
+        // VLQ-encode site and counter
+        let mut vlq = vlq::encode_u32(self.site);
+        vlq.append(&mut vlq::encode_u32(self.counter));
+
+        // Base64-encode VLQ
+        let mut encoded_uid =
+            vlq.to_base64(base64::Config{
+                char_set: base64::CharacterSet::Standard,
+                newline: base64::Newline::LF,
+                pad: false,
+                line_length: None,
+            });
+
+        // push the key onto the encoded value
+        encoded_uid.push(',');
+        encoded_uid.push_str(&self.key);
+        encoded_uid
+    }
+}
+
+impl FromStr for UID {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        // split the string into Base64-encoded VLQ and key
+        let mut parts = s.split(",");
+        let encoded_vlq = parts.next();
+        let key = parts.next();
+        if encoded_vlq.is_none() || key.is_none() {
+            return Err("invalid object UID!")
+        }
+
+        // Base64-decode VLQ
+        let vlq =
+            match encoded_vlq.unwrap().from_base64() {
+                Ok(value) => value,
+                Err(_) => return Err("Invalid object UID!"),
+            };
+
+        // Decode VLQ into site and counter
+        let (site, vlq_rest) = try!(vlq::decode_u32(&vlq));
+        let (counter, _)     = try!(vlq::decode_u32(&vlq_rest));
+        Ok(UID{key: String::from(key.unwrap()), site: site, counter: counter})
     }
 }
 

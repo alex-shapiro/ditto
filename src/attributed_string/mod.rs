@@ -26,6 +26,10 @@ impl AttributedString {
         }
     }
 
+    pub fn assemble(elements: Vec<Element>, len: usize) -> Self {
+        AttributedString{elements: elements, len: len}
+    }
+
     pub fn len(&self) -> usize {
         self.len
     }
@@ -177,6 +181,12 @@ impl AttributedString {
         let mut deleted_uids: Vec<UID> = deletes.into_iter().map(|e| e.uid).collect();
         deleted_uids.sort();
         UpdateAttributedString::new(inserts, deleted_uids)
+    }
+
+    pub fn elements(&self) -> &[Element] {
+        let lower = 1;
+        let upper = self.elements.len() - 1;
+        &self.elements[lower..upper]
     }
 
     pub fn raw_string(&self) -> String {

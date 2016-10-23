@@ -1,5 +1,5 @@
-mod element;
-mod uid;
+pub mod element;
+pub mod uid;
 
 pub use self::element::Element;
 pub use self::uid::UID;
@@ -16,6 +16,10 @@ pub struct Object(HashMap<String, Vec<Element>>);
 impl Object {
     pub fn new() -> Object {
         Object(HashMap::new())
+    }
+
+    pub fn assemble(map: HashMap<String,Vec<Element>>) -> Self {
+        Object(map)
     }
 
     pub fn put(&mut self, key: &str, value: Value, replica: &Replica) -> UpdateObject {
