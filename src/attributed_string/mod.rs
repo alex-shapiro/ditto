@@ -203,11 +203,7 @@ mod tests {
     use super::*;
     use super::element::Element;
     use op::remote::UpdateAttributedString;
-    use op::local::LocalOp;
-    use op::local::InsertText;
-    use op::local::DeleteText;
     use Replica;
-    use std::any::Any;
 
     const REPLICA1: Replica = Replica{site: 5, counter: 1023};
     const REPLICA2: Replica = Replica{site: 8, counter: 16};

@@ -112,10 +112,6 @@ impl Array {
 mod tests {
     use super::*;
     use super::element::Element;
-    use op::local::LocalOp;
-    use op::local::InsertItem;
-    use op::local::DeleteItem;
-    use std::any::Any;
     use Replica;
     use Value;
 

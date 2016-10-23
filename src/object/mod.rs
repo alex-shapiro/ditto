@@ -115,7 +115,6 @@ fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {
 mod tests {
     use super::*;
     use op::remote::UpdateObject;
-    use op::local::Put;
     use Replica;
     use Value;
 
