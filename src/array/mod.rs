@@ -3,8 +3,8 @@ pub mod element;
 use Value;
 use sequence::uid::UID;
 use self::element::Element;
-use op::LocalOp;
 use op::remote::UpdateArray;
+use op::local::LocalOp;
 use op::local::InsertItem;
 use op::local::DeleteItem;
 use Replica;
@@ -57,7 +57,7 @@ impl Array {
         Some(element)
     }
 
-    pub fn execute_remote(&mut self, op: UpdateArray) -> Vec<Box<LocalOp>> {
+    pub fn execute_remote(&mut self, op: UpdateArray) -> Vec<LocalOp> {
         let delete_ops: Vec<DeleteItem> =
             op.deletes.into_iter()
             .map(|uid| self.delete_remote(uid))
@@ -72,9 +72,9 @@ impl Array {
             .map(|op| op.unwrap())
             .collect();
 
-        let mut local_ops: Vec<Box<LocalOp>> = vec![];
-        for op in delete_ops { local_ops.push(Box::new(op)); }
-        for op in insert_ops { local_ops.push(Box::new(op)); }
+        let mut local_ops: Vec<LocalOp> = Vec::with_capacity(delete_ops.len() + insert_ops.len());
+        for op in delete_ops { local_ops.push(LocalOp::DeleteItem(op)); }
+        for op in insert_ops { local_ops.push(LocalOp::InsertItem(op)); }
         local_ops
     }
 
@@ -112,10 +112,6 @@ impl Array {
 mod tests {
     use super::*;
     use super::element::Element;
-    use op::LocalOp;
-    use op::local::InsertItem;
-    use op::local::DeleteItem;
-    use std::any::Any;
     use Replica;
     use Value;
 
@@ -188,20 +184,15 @@ mod tests {
         assert!(lops2.len() == 1);
         assert!(lops3.len() == 1);
 
-        let lop1 = to::<InsertItem>(&lops1);
+        let lop1 = lops1[0].insert_item().unwrap();
         assert!(lop1.index == 0);
         assert!(lop1.value == Value::Num(1.0));
 
-        let lop2 = to::<InsertItem>(&lops2);
+        let lop2 = lops2[0].insert_item().unwrap();
         assert!(lop2.index == 1);
         assert!(lop2.value == Value::Num(2.0));
 
-        let lop3 = to::<DeleteItem>(&lops3);
+        let lop3 = lops3[0].delete_item().unwrap();
         assert!(lop3.index == 0);
-    }
-
-    fn to<'a, T: Any>(ops: &'a [Box<LocalOp>]) -> &'a T {
-        let op = &ops[0];
-        op.as_any().downcast_ref::<T>().unwrap()
     }
 }
