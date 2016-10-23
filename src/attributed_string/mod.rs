@@ -6,8 +6,8 @@ use self::element::Element;
 use self::range::Range;
 use self::range::Bound;
 use sequence::uid::UID;
-use op::LocalOp;
 use op::remote::UpdateAttributedString;
+use op::local::LocalOp;
 use op::local::InsertText;
 use op::local::DeleteText;
 use Replica;
@@ -64,13 +64,11 @@ impl AttributedString {
         Some(op1)
     }
 
-    pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<Box<LocalOp>> {
+    pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<LocalOp> {
         let elements = mem::replace(&mut self.elements, Vec::new());
         let mut deletes = op.deletes.into_iter().peekable();
         let mut inserts = op.inserts.into_iter().peekable();
-        let mut insert_ops: Vec<InsertText> = vec![];
-        let mut delete_ops: Vec<DeleteText> = vec![];
-
+        let mut local_ops: Vec<LocalOp> = Vec::new();
 
         let mut char_index = 0;
         let max_elt = Element::end_marker();
@@ -84,14 +82,16 @@ impl AttributedString {
             if should_delete_elt {
                 self.len -= elt.len();
                 deletes.next();
-                delete_ops.push(DeleteText::new(char_index, elt.len()));
+                let op = DeleteText::new(char_index, elt.len());
+                local_ops.push(LocalOp::DeleteText(op));
             } else {
                 // add inserts that precede the current element
                 while inserts.peek().unwrap_or(&max_elt) < &elt {
                     let ins = inserts.next().unwrap();
                     let text = ins.text().unwrap().to_string();
                     let text_len = text.len();
-                    insert_ops.push(InsertText::new(char_index, text));
+                    let op = InsertText::new(char_index, text);
+                    local_ops.push(LocalOp::InsertText(op));
                     self.elements.push(ins);
                     self.len += text_len;
                     char_index += text_len;
@@ -102,9 +102,6 @@ impl AttributedString {
             }
         }
 
-        let mut local_ops: Vec<Box<LocalOp>> = vec![];
-        for op in delete_ops { local_ops.push(Box::new(op)); }
-        for op in insert_ops { local_ops.push(Box::new(op)); }
         local_ops
     }
 
@@ -206,7 +203,7 @@ mod tests {
     use super::*;
     use super::element::Element;
     use op::remote::UpdateAttributedString;
-    use op::LocalOp;
+    use op::local::LocalOp;
     use op::local::InsertText;
     use op::local::DeleteText;
     use Replica;
@@ -472,15 +469,15 @@ mod tests {
         assert!(lops2.len() == 4);
         assert!(lops3.len() == 4);
 
-        let lop1 = to::<InsertText>(&lops1[0]);
-        let lop2 = to::<DeleteText>(&lops2[0]);
-        let lop3 = to::<InsertText>(&lops2[1]);
-        let lop4 = to::<InsertText>(&lops2[2]);
-        let lop5 = to::<InsertText>(&lops2[3]);
-        let lop6 = to::<DeleteText>(&lops3[0]);
-        let lop7 = to::<InsertText>(&lops3[1]);
-        let lop8 = to::<InsertText>(&lops3[2]);
-        let lop9 = to::<InsertText>(&lops3[3]);
+        let lop1 = lops1[0].insert_text().unwrap();
+        let lop2 = lops2[0].delete_text().unwrap();
+        let lop3 = lops2[1].insert_text().unwrap();
+        let lop4 = lops2[2].insert_text().unwrap();
+        let lop5 = lops2[3].insert_text().unwrap();
+        let lop6 = lops3[0].delete_text().unwrap();
+        let lop7 = lops3[1].insert_text().unwrap();
+        let lop8 = lops3[2].insert_text().unwrap();
+        let lop9 = lops3[3].insert_text().unwrap();
 
         assert!(lop1.index == 0 && lop1.text == "the brown");
         assert!(lop2.index == 0 && lop2.len == 9);
@@ -503,9 +500,5 @@ mod tests {
 
     fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {
         string.elements[index].text().unwrap()
-    }
-
-    fn to<'a, T: Any>(op: &'a Box<LocalOp>) -> &'a T {
-        op.as_any().downcast_ref::<T>().unwrap()
     }
 }

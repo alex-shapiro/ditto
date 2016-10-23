@@ -4,7 +4,7 @@ pub mod uid;
 pub use self::element::Element;
 pub use self::uid::UID;
 use std::collections::HashMap;
-use op::LocalOp;
+use op::local::LocalOp;
 use op::local::{Put,Delete};
 use op::remote::UpdateObject;
 use Replica;
@@ -71,7 +71,7 @@ impl Object {
         }
     }
 
-    pub fn execute_remote(&mut self, op: UpdateObject) -> Box<LocalOp> {
+    pub fn execute_remote(&mut self, op: UpdateObject) -> LocalOp {
         let mut key_elements: Vec<Element> = {
             let deleted_uids = op.deleted_uids;
             let default: Vec<Element> = vec![];
@@ -90,10 +90,10 @@ impl Object {
             true => {
                 self.0.insert(key.clone(), key_elements);
                 let elt = self.get_by_key(&key).unwrap();
-                Box::new(Put::new(key, elt.value.clone()))},
+                LocalOp::Put(Put::new(key, elt.value.clone()))},
             false => {
                 self.0.remove(&key);
-                Box::new(Delete::new(key))},
+                LocalOp::Delete(Delete::new(key))},
         }
     }
 
@@ -173,7 +173,7 @@ mod tests {
         let _   = object.put("baz", Value::Num(0.0), &replica2);
         let op2 = UpdateObject::new("baz".to_string(), Some(elt), vec![]);
         let op3 = object.execute_remote(op2);
-        let op3_unwrapped = op3.as_any().downcast_ref::<Put>().unwrap();
+        let op3_unwrapped = op3.put().unwrap();
 
         assert!(op3_unwrapped.path == "");
         assert!(op3_unwrapped.key == "baz".to_string());
@@ -197,7 +197,7 @@ mod tests {
         { assert!(object.get_by_key("foo").unwrap().value == Value::Bool(false)) }
 
         let op4 = object.execute_remote(op3);
-        let op4_unwrapped = op4.as_any().downcast_ref::<Put>().unwrap();
+        let op4_unwrapped = op4.put().unwrap();
 
         assert!(op4_unwrapped.path == "");
         assert!(op4_unwrapped.key == "foo".to_string());

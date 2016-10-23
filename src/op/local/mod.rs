@@ -20,3 +20,46 @@ pub enum LocalOp {
     InsertText(InsertText),
     DeleteText(DeleteText),
 }
+
+impl LocalOp {
+    pub fn put(&self) -> Option<&Put> {
+        match *self {
+            LocalOp::Put(ref op) => Some(op),
+            _ => None,
+        }
+    }
+
+    pub fn delete(&self) -> Option<&Delete> {
+        match *self {
+            LocalOp::Delete(ref op) => Some(op),
+            _ => None,
+        }
+    }
+
+    pub fn insert_item(&self) -> Option<&InsertItem> {
+        match *self {
+            LocalOp::InsertItem(ref op) => Some(op),
+            _ => None,
+        }
+    }
+
+    pub fn delete_item(&self) -> Option<&DeleteItem> {
+        match * self {
+            LocalOp::DeleteItem(ref op) => Some(op),
+            _ => None,
+        }
+    }
+    pub fn insert_text(&self) -> Option<&InsertText> {
+        match *self {
+            LocalOp::InsertText(ref op) => Some(op),
+            _ => None,
+        }
+    }
+
+    pub fn delete_text(&self) -> Option<&DeleteText> {
+        match * self {
+            LocalOp::DeleteText(ref op) => Some(op),
+            _ => None,
+        }
+    }
+}
