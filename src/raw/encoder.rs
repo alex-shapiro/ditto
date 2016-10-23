@@ -2,7 +2,7 @@ use Value;
 use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
-use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText};
+use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, IncrementNumber};
 use serde_json::builder::ObjectBuilder;
 use serde_json::Value as Json;
 use serde_json::value::Map as SerdeMap;
@@ -40,6 +40,8 @@ pub fn encode_op(op: &LocalOp) -> Json {
             encode_op_insert_text(op),
         LocalOp::DeleteText(ref op) =>
             encode_op_delete_text(op),
+        LocalOp::IncrementNumber(ref op) =>
+            encode_op_increment_number(op),
     }
 }
 
@@ -123,6 +125,14 @@ fn encode_op_delete_text(op: &DeleteText) -> Json {
         .build()
 }
 
+fn encode_op_increment_number(op: &IncrementNumber) -> Json {
+    ObjectBuilder::new()
+        .insert("op", Json::String("increment_number".to_string()))
+        .insert("path", Json::String(op.path.clone()))
+        .insert("amount", Json::F64(op.amount))
+        .build()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -130,7 +140,7 @@ mod tests {
     use Replica;
     use array::Array;
     use attributed_string::AttributedString;
-    use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText};
+    use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, IncrementNumber};
     use object::Object;
     use serde_json;
 
@@ -285,6 +295,18 @@ mod tests {
         assert!(json.contains(r#""path":"/1/203/xx""#));
         assert!(json.contains(r#""index":112"#));
         assert!(json.contains(r#""len":84"#));
+    }
+
+    #[test]
+    fn test_encode_op_increment_number() {
+        let op = LocalOp::IncrementNumber(IncrementNumber{
+            path: "/1/203/xx".to_string(),
+            amount: 232.013,
+        });
+        let json = encode_op_str(&op);
+        assert!(json.contains(r#""op":"increment_number""#));
+        assert!(json.contains(r#""path":"/1/203/xx""#));
+        assert!(json.contains(r#""amount":232.013"#));
     }
 
     fn encode_str(value: &Value) -> String {
