@@ -42,15 +42,16 @@ pub fn decode(json: &Json) -> Result<Value, Error> {
 
 #[inline]
 fn decode_json_array(vec: &[Json]) -> Result<Value, Error> {
-    if let &[Json::U64(index), Json::Array(ref elements)] = vec {
-        match index {
-            0 => decode_attributed_string(elements),
-            1 => decode_array(elements),
-            2 => decode_object(elements),
-            _ => Err(Error{})
-        }
-    } else {
-        Err(Error{})
+    if vec.len() != 2 { return Err(Error{}) }
+
+    let data_type = try!(vec[0].as_u64().ok_or(Error{}));
+    let ref data_elements = try!(vec[1].as_array().ok_or(Error{}));
+
+    match data_type {
+        0 => decode_attributed_string(data_elements),
+        1 => decode_array(data_elements),
+        2 => decode_object(data_elements),
+        _ => Err(Error{})
     }
 }
 
