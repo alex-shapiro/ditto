@@ -47,7 +47,7 @@ impl LocalOp {
     }
 
     pub fn delete_item(&self) -> Option<&DeleteItem> {
-        match * self {
+        match *self {
             LocalOp::DeleteItem(ref op) => Some(op),
             _ => None,
         }

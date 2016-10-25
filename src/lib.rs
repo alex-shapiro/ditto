@@ -8,6 +8,7 @@ mod array;
 mod attributed_string;
 mod compact;
 mod crdt;
+mod error;
 mod object;
 mod op;
 mod raw;

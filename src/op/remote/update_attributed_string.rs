@@ -1,11 +1,9 @@
 use std::mem;
 use attributed_string::element::Element;
 use sequence::uid::UID;
-use op::RemoteOp;
 
-#[derive(Debug,Default,PartialEq)]
+#[derive(Clone,Debug,PartialEq,Default)]
 pub struct UpdateAttributedString {
-    pub path: Vec<i64>,
     pub inserts: Vec<Element>,
     pub deletes: Vec<UID>,
 }
@@ -13,7 +11,6 @@ pub struct UpdateAttributedString {
 impl UpdateAttributedString {
     pub fn new(inserts: Vec<Element>, deletes: Vec<UID>) -> Self {
         UpdateAttributedString{
-            path: vec![],
             inserts: inserts,
             deletes: deletes,
         }
@@ -48,5 +45,3 @@ impl UpdateAttributedString {
         self.deletes.sort();
     }
 }
-
-impl RemoteOp for UpdateAttributedString { }
