@@ -1,9 +1,11 @@
 use object::Object;
 use array::Array;
 use attributed_string::AttributedString;
+use error::Error;
 use std::fmt;
 use std::fmt::Debug;
 use std::str::FromStr;
+use op::{self, RemoteOp, LocalOp};
 use op::remote::IncrementNumber;
 
 #[derive(PartialEq,Clone)]
@@ -55,8 +57,21 @@ impl Value {
         match *self {
             Value::Num(ref mut n) => {
                 *n += amount;
-                Some(IncrementNumber::new(amount)) },
+                Some(IncrementNumber::new(amount))
+            },
             _ => None,
+        }
+    }
+
+    pub fn increment_remote<'a>(&'a mut self, amount: f64) -> Result<Vec<LocalOp>, Error> {
+        match *self {
+            Value::Num(ref mut n) => {
+                *n += amount;
+                let op = op::local::IncrementNumber::new(amount);
+                let op_wrapper = LocalOp::IncrementNumber(op);
+                Ok(vec![op_wrapper])
+            },
+            _ => Err(Error::InvalidRemoteOp),
         }
     }
 
@@ -84,6 +99,21 @@ impl Value {
             }
         }
         value
+    }
+
+    pub fn execute_remote(&mut self, op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
+        match (self, op) {
+            (&mut Value::Obj(ref mut object), &RemoteOp::UpdateObject(ref op)) =>
+                Ok(vec![object.execute_remote(op)]),
+            (&mut Value::Arr(ref mut array), &RemoteOp::UpdateArray(ref op)) =>
+                Ok(array.execute_remote(op)),
+            (&mut Value::AttrStr(ref mut attrstr), &RemoteOp::UpdateAttributedString(ref op)) =>
+                Ok(attrstr.execute_remote(op)),
+            (ref mut value @ &mut Value::Num(_), &RemoteOp::IncrementNumber(ref op)) =>
+                value.increment_remote(op.amount),
+            _ =>
+                Err(Error::InvalidRemoteOp),
+        }
     }
 }
 

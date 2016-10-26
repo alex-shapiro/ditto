@@ -1,10 +1,13 @@
 use Replica;
 use Value;
+use op::{NestedRemoteOp, NestedLocalOp};
 use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
+use op::local::LocalOp;
 use raw;
 use serde_json;
 use serde_json::Value as Json;
 use compact;
+use error::Error;
 
 pub struct CRDT {
     root_value: Value,
@@ -18,19 +21,19 @@ impl CRDT {
         CRDT{root_value: value, replica: replica}
     }
 
-    pub fn deserialize(json: &Json) -> Result<Self, compact::decoder::Error> {
-        let replica = Replica::new(1, 0);
-        let value = try!(compact::decode(json));
-        Ok(CRDT{root_value: value, replica: replica})
+    pub fn new_str(string: &str, site: u32) -> Self {
+        let json: Json = serde_json::de::from_str(string).expect("invalid JSON!");
+        CRDT::new(&json, site)
     }
 
     pub fn serialize(&self) -> Json {
         compact::encode(&self.root_value)
     }
 
-    pub fn new_str(string: &str, site: u32) -> Self {
-        let json: Json = serde_json::de::from_str(string).expect("invalid JSON!");
-        CRDT::new(&json, site)
+    pub fn deserialize(json: &Json) -> Result<Self, compact::decoder::Error> {
+        let replica = Replica::new(1, 0);
+        let value = try!(compact::decode(json));
+        Ok(CRDT{root_value: value, replica: replica})
     }
 
     pub fn get(&mut self, pointer: &str) -> Option<Json> {
@@ -118,5 +121,11 @@ impl CRDT {
         self.root_value
             .get_nested(pointer)
             .and_then(|value| value.increment(amount))
+    }
+
+    pub fn execute_remote(&mut self, nested_op: &NestedRemoteOp) -> Result<Vec<LocalOp>, Error> {
+        let ref pointer = nested_op.pointer;
+        let mut value = try!(self.root_value.get_nested(pointer).ok_or(Error::InvalidRemoteOp));
+        value.execute_remote(&nested_op.op)
     }
 }

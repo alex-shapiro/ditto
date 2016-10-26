@@ -64,10 +64,10 @@ impl AttributedString {
         Some(op1)
     }
 
-    pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<LocalOp> {
+    pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
         let elements = mem::replace(&mut self.elements, Vec::new());
-        let mut deletes = op.deletes.into_iter().peekable();
-        let mut inserts = op.inserts.into_iter().peekable();
+        let mut deletes = op.deletes.iter().peekable();
+        let mut inserts = op.inserts.iter().peekable();
         let mut local_ops: Vec<LocalOp> = Vec::new();
 
         let mut char_index = 0;
@@ -77,7 +77,9 @@ impl AttributedString {
         for elt in elements {
             // check to make sure the element hasn't been deleted
             let should_delete_elt = {
-                let del = deletes.peek().unwrap_or(&max_uid);
+                // let delx: Option<&UID> = deletes.peek();
+
+                let del = *deletes.peek().unwrap_or(&&max_uid);
                 del < &max_uid && del == &elt.uid};
             if should_delete_elt {
                 self.len -= elt.len();
@@ -86,8 +88,8 @@ impl AttributedString {
                 local_ops.push(LocalOp::DeleteText(op));
             } else {
                 // add inserts that precede the current element
-                while inserts.peek().unwrap_or(&max_elt) < &elt {
-                    let ins = inserts.next().unwrap();
+                while *inserts.peek().unwrap_or(&&max_elt) < &elt {
+                    let ins = inserts.next().unwrap().clone();
                     let text = ins.text().unwrap().to_string();
                     let text_len = text.len();
                     let op = InsertText::new(char_index, text);
@@ -444,7 +446,7 @@ mod tests {
     fn test_execute_remote_empty() {
         let mut string = AttributedString::new();
         let op = UpdateAttributedString::default();
-        let local_ops = string.execute_remote(op);
+        let local_ops = string.execute_remote(&op);
         assert!(local_ops.len() == 0);
     }
 
@@ -456,9 +458,9 @@ mod tests {
         let op3 = string1.replace_text(6, 1, "a".to_string(), &REPLICA1).unwrap();
 
         let mut string2 = AttributedString::new();
-        let lops1 = string2.execute_remote(op1);
-        let lops2 = string2.execute_remote(op2);
-        let lops3 = string2.execute_remote(op3);
+        let lops1 = string2.execute_remote(&op1);
+        let lops2 = string2.execute_remote(&op2);
+        let lops3 = string2.execute_remote(&op3);
 
         assert!(string1 == string2);
         assert!(lops1.len() == 1);

@@ -5,7 +5,7 @@ use std::str::FromStr;
 use rustc_serialize::base64;
 use rustc_serialize::base64::{ToBase64, FromBase64};
 
-#[derive(Clone,Eq)]
+#[derive(Clone,Eq,Debug)]
 pub struct UID {
     pub key: String,
     pub site: u32,

@@ -57,17 +57,17 @@ impl Array {
         Some(element)
     }
 
-    pub fn execute_remote(&mut self, op: UpdateArray) -> Vec<LocalOp> {
+    pub fn execute_remote(&mut self, op: &UpdateArray) -> Vec<LocalOp> {
         let delete_ops: Vec<DeleteItem> =
-            op.deletes.into_iter()
-            .map(|uid| self.delete_remote(uid))
+            op.deletes.iter()
+            .map(|uid| self.delete_remote(&uid))
             .filter(|op| op.is_some())
             .map(|op| op.unwrap())
             .collect();
 
         let insert_ops: Vec<InsertItem> =
-            op.inserts.into_iter()
-            .map(|elt| self.insert_remote(elt))
+            op.inserts.iter()
+            .map(|elt| self.insert_remote(elt.clone()))
             .filter(|op| op.is_some())
             .map(|op| op.unwrap())
             .collect();
@@ -90,9 +90,9 @@ impl Array {
         }
     }
 
-    fn delete_remote(&mut self, uid: UID) -> Option<DeleteItem> {
+    fn delete_remote(&mut self, uid: &UID) -> Option<DeleteItem> {
         let ref mut elements = self.0;
-        match elements.iter().position(|e| uid == e.uid) {
+        match elements.iter().position(|e| *uid == e.uid) {
             Some(index) => {
                 elements.remove(index);
                 Some(DeleteItem::new(index-1))},
@@ -175,9 +175,9 @@ mod tests {
         let op2 = array1.insert(1, Value::Num(2.0), &REPLICA).unwrap();
         let op3 = array1.delete(0).unwrap();
 
-        let lops1 = array2.execute_remote(op1);
-        let lops2 = array2.execute_remote(op2);
-        let lops3 = array2.execute_remote(op3);
+        let lops1 = array2.execute_remote(&op1);
+        let lops2 = array2.execute_remote(&op2);
+        let lops3 = array2.execute_remote(&op3);
 
         assert!(array1 == array2);
         assert!(lops1.len() == 1);
