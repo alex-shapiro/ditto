@@ -1,23 +1,16 @@
-use Value;
 use array::Array;
 use array::element::Element as ArrayElement;
 use attributed_string::AttributedString;
 use attributed_string::element::Element as StringElement;
-use sequence::uid::UID as SequenceUID;
-use object::uid::UID as ObjectUID;
-use object::Object;
+use Error;
 use object::element::Element as ObjectElement;
+use object::Object;
+use object::uid::UID as ObjectUID;
+use sequence::uid::UID as SequenceUID;
 use serde_json::Value as Json;
-use std::str::FromStr;
 use std::collections::HashMap;
-
-pub struct Error;
-
-impl From<&'static str> for Error {
-    fn from(_: &'static str) -> Error {
-        Error{}
-    }
-}
+use std::str::FromStr;
+use Value;
 
 pub fn decode(json: &Json) -> Result<Value, Error> {
     match *json {
@@ -36,22 +29,22 @@ pub fn decode(json: &Json) -> Result<Value, Error> {
         Json::Null =>
             Ok(Value::Null),
         Json::Object(_) =>
-            Err(Error{}),
+            Err(Error::DecodeCompact),
     }
 }
 
 #[inline]
 fn decode_json_array(vec: &[Json]) -> Result<Value, Error> {
-    if vec.len() != 2 { return Err(Error{}) }
+    if vec.len() != 2 { return Err(Error::DecodeCompact) }
 
-    let data_type = try!(vec[0].as_u64().ok_or(Error{}));
-    let ref data_elements = try!(vec[1].as_array().ok_or(Error{}));
+    let data_type = try!(vec[0].as_u64().ok_or(Error::DecodeCompact));
+    let ref data_elements = try!(vec[1].as_array().ok_or(Error::DecodeCompact));
 
     match data_type {
         0 => decode_attributed_string(data_elements),
         1 => decode_array(data_elements),
         2 => decode_object(data_elements),
-        _ => Err(Error{})
+        _ => Err(Error::DecodeCompact)
     }
 }
 
@@ -101,21 +94,21 @@ fn decode_object(encoded_elements: &[Json]) -> Result<Value, Error> {
 
 #[inline]
 fn decode_attributed_string_element(element: &Json) -> Result<StringElement, Error> {
-    let element_vec = try!(element.as_array().ok_or(Error{}));
-    if element_vec.len() != 2 { return Err(Error{}) }
+    let element_vec = try!(element.as_array().ok_or(Error::DecodeCompact));
+    if element_vec.len() != 2 { return Err(Error::DecodeCompact) }
 
-    let encoded_uid = try!(element_vec[0].as_str().ok_or(Error{}));
-    let text        = try!(element_vec[1].as_str().ok_or(Error{}));
+    let encoded_uid = try!(element_vec[0].as_str().ok_or(Error::DecodeCompact));
+    let text        = try!(element_vec[1].as_str().ok_or(Error::DecodeCompact));
     let uid         = try!(SequenceUID::from_str(encoded_uid));
     Ok(StringElement::new_text(text.to_string(), uid))
 }
 
 #[inline]
 fn decode_array_element(element: &Json) -> Result<ArrayElement, Error> {
-    let element_vec = try!(element.as_array().ok_or(Error{}));
-    if element_vec.len() != 2 { return Err(Error{}) }
+    let element_vec = try!(element.as_array().ok_or(Error::DecodeCompact));
+    if element_vec.len() != 2 { return Err(Error::DecodeCompact) }
 
-    let encoded_uid = try!(element_vec[0].as_str().ok_or(Error{}));
+    let encoded_uid = try!(element_vec[0].as_str().ok_or(Error::DecodeCompact));
     let item        = try!(decode(&element_vec[1]));
     let uid         = try!(SequenceUID::from_str(encoded_uid));
     Ok(ArrayElement::new(item, uid))
@@ -123,10 +116,10 @@ fn decode_array_element(element: &Json) -> Result<ArrayElement, Error> {
 
 #[inline]
 fn decode_object_element(element: &Json) -> Result<ObjectElement, Error> {
-    let element_vec = try!(element.as_array().ok_or(Error{}));
-    if element_vec.len() != 2 { return Err(Error{}) }
+    let element_vec = try!(element.as_array().ok_or(Error::DecodeCompact));
+    if element_vec.len() != 2 { return Err(Error::DecodeCompact) }
 
-    let encoded_uid = try!(element_vec[0].as_str().ok_or(Error{}));
+    let encoded_uid = try!(element_vec[0].as_str().ok_or(Error::DecodeCompact));
     let value       = try!(decode(&element_vec[1]));
     let uid         = try!(ObjectUID::from_str(encoded_uid));
     Ok(ObjectElement{uid: uid, value: value})

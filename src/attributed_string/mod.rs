@@ -1,16 +1,14 @@
 pub mod element;
 mod range;
 
-use std::mem;
 use self::element::Element;
-use self::range::Range;
-use self::range::Bound;
-use sequence::uid::UID;
+use self::range::{Bound, Range};
+use Error;
+use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
-use op::local::LocalOp;
-use op::local::InsertText;
-use op::local::DeleteText;
 use Replica;
+use sequence::uid::UID;
+use std::mem;
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct AttributedString{
@@ -34,40 +32,44 @@ impl AttributedString {
         self.len
     }
 
-    pub fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Option<UpdateAttributedString> {
-        if index > self.len || text.is_empty() { return None }
+    pub fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
+        if index > self.len { return Err(Error::OutOfBounds) }
+        if text.is_empty() { return Err(Error::Noop) }
+
         self.len += text.len();
         let bound = Bound::new(&self.elements, index);
-        Some(match bound.offset {
+        Ok(match bound.offset {
             0 => self.insert_at_index(bound.index, text, replica),
             _ => self.insert_in_index(bound.index, bound.offset, text, replica),
         })
     }
 
-    pub fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Option<UpdateAttributedString> {
-        if index + len > self.len || len == 0 { return None }
+    pub fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Result<UpdateAttributedString, Error> {
+        if index + len > self.len { return Err(Error::OutOfBounds) }
+        if len == 0 { return Err(Error::Noop) }
 
         self.len -= len;
         let range = Range::new(&self.elements, index, len);
-        Some(match range.lower.index == range.upper.index {
+        Ok(match range.lower.index == range.upper.index {
             true  => self.delete_in_element(&range, replica),
             false => self.delete_in_range(&range, replica),
         })
     }
 
-    pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Option<UpdateAttributedString> {
-        if index + len > self.len || (len == 0 && text.is_empty()) { return None }
+    pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
+        if index + len > self.len { return Err(Error::OutOfBounds) }
+        if len == 0 && text.is_empty() { return Err(Error::Noop) }
 
         let mut op1 = self.delete_text(index, len, replica).unwrap_or(UpdateAttributedString::default());
         let mut op2 = self.insert_text(index, text, replica).unwrap_or(UpdateAttributedString::default());
         op1.merge(&mut op2);
-        Some(op1)
+        Ok(op1)
     }
 
-    pub fn execute_remote(&mut self, op: UpdateAttributedString) -> Vec<LocalOp> {
+    pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
         let elements = mem::replace(&mut self.elements, Vec::new());
-        let mut deletes = op.deletes.into_iter().peekable();
-        let mut inserts = op.inserts.into_iter().peekable();
+        let mut deletes = op.deletes.iter().peekable();
+        let mut inserts = op.inserts.iter().peekable();
         let mut local_ops: Vec<LocalOp> = Vec::new();
 
         let mut char_index = 0;
@@ -77,7 +79,7 @@ impl AttributedString {
         for elt in elements {
             // check to make sure the element hasn't been deleted
             let should_delete_elt = {
-                let del = deletes.peek().unwrap_or(&max_uid);
+                let del = *deletes.peek().unwrap_or(&&max_uid);
                 del < &max_uid && del == &elt.uid};
             if should_delete_elt {
                 self.len -= elt.len();
@@ -86,8 +88,8 @@ impl AttributedString {
                 local_ops.push(LocalOp::DeleteText(op));
             } else {
                 // add inserts that precede the current element
-                while inserts.peek().unwrap_or(&max_elt) < &elt {
-                    let ins = inserts.next().unwrap();
+                while *inserts.peek().unwrap_or(&&max_elt) < &elt {
+                    let ins = inserts.next().unwrap().clone();
                     let text = ins.text().unwrap().to_string();
                     let text_len = text.len();
                     let op = InsertText::new(char_index, text);
@@ -202,6 +204,7 @@ impl AttributedString {
 mod tests {
     use super::*;
     use super::element::Element;
+    use Error;
     use op::remote::UpdateAttributedString;
     use Replica;
 
@@ -220,7 +223,7 @@ mod tests {
     fn test_insert_empty_string() {
         let mut string = AttributedString::new();
         let op = string.insert_text(0, "".to_string(), &REPLICA1);
-        assert!(op.is_none());
+        assert!(op == Err(Error::Noop));
     }
 
     #[test]
@@ -284,7 +287,7 @@ mod tests {
     fn test_insert_text_invalid() {
         let mut string = AttributedString::new();
         let op = string.insert_text(1, "quick".to_string(), &REPLICA1);
-        assert!(op.is_none());
+        assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
@@ -292,7 +295,7 @@ mod tests {
         let mut string = AttributedString::new();
         let  _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
         let op = string.delete_text(1, 0, &REPLICA2);
-        assert!(op.is_none());
+        assert!(op == Err(Error::Noop));
     }
 
     #[test]
@@ -376,7 +379,7 @@ mod tests {
     fn test_delete_text_invalid() {
         let mut string = AttributedString::new();
         let op = string.delete_text(0, 1, &REPLICA2);
-        assert!(op.is_none());
+        assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
@@ -437,14 +440,14 @@ mod tests {
         let mut string = AttributedString::new();
         let   _ = string.insert_text(0, "the quick brown fox".to_string(), &REPLICA1);
         let op2 = string.replace_text(4, 16, "slow green turtle".to_string(), &REPLICA2);
-        assert!(op2.is_none());
+        assert!(op2 == Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_execute_remote_empty() {
         let mut string = AttributedString::new();
         let op = UpdateAttributedString::default();
-        let local_ops = string.execute_remote(op);
+        let local_ops = string.execute_remote(&op);
         assert!(local_ops.len() == 0);
     }
 
@@ -456,9 +459,9 @@ mod tests {
         let op3 = string1.replace_text(6, 1, "a".to_string(), &REPLICA1).unwrap();
 
         let mut string2 = AttributedString::new();
-        let lops1 = string2.execute_remote(op1);
-        let lops2 = string2.execute_remote(op2);
-        let lops3 = string2.execute_remote(op3);
+        let lops1 = string2.execute_remote(&op1);
+        let lops2 = string2.execute_remote(&op2);
+        let lops3 = string2.execute_remote(&op3);
 
         assert!(string1 == string2);
         assert!(lops1.len() == 1);

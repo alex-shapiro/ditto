@@ -1,11 +1,9 @@
 use array::element::Element;
 use sequence::uid::UID;
-use op::RemoteOp;
 
 
-#[derive(Debug,PartialEq)]
+#[derive(Clone,Debug,PartialEq)]
 pub struct UpdateArray {
-    pub path: Vec<i64>,
     pub inserts: Vec<Element>,
     pub deletes: Vec<UID>,
 }
@@ -13,7 +11,6 @@ pub struct UpdateArray {
 impl UpdateArray {
     fn new(inserts: Vec<Element>, deletes: Vec<UID>) -> UpdateArray {
         UpdateArray{
-            path: vec![],
             inserts: inserts,
             deletes: deletes,
         }
@@ -27,5 +24,3 @@ impl UpdateArray {
         UpdateArray::new(vec![], vec![uid])
     }
 }
-
-impl RemoteOp for UpdateArray { }

@@ -16,19 +16,17 @@
 //! ahead of time is inherently coordinated, and UID bit
 //! size increases more slowly with the number of elements.
 
-use std::cmp;
-use std::cmp::Ordering;
-use rand;
-use rand::distributions::{IndependentSample, Range};
+use Error;
 use num::bigint::{BigUint, ToBigUint};
 use num::cast::ToPrimitive;
-use std::fmt;
-use std::fmt::Debug;
+use rand::distributions::{IndependentSample, Range};
+use rand;
 use Replica;
-use vlq;
+use rustc_serialize::base64::{self, ToBase64, FromBase64};
+use std::cmp::{self, Ordering};
+use std::fmt::{self, Debug};
 use std::str::FromStr;
-use rustc_serialize::base64;
-use rustc_serialize::base64::{ToBase64, FromBase64};
+use vlq;
 
 const BASE_LEVEL: usize = 3;
 const MAX_LEVEL:  usize = 32;
@@ -205,7 +203,7 @@ impl ToString for UID {
 }
 
 impl FromStr for UID {
-    type Err = &'static str;
+    type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
         match s.from_base64() {
@@ -216,7 +214,7 @@ impl FromStr for UID {
                 Ok(UID{position: position, site: site, counter: counter})
             },
             Err(_) =>
-                Err("Invalid object UID!"),
+                Err(Error::DeserializeSequenceUID),
         }
     }
 }

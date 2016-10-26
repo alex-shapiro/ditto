@@ -8,6 +8,7 @@ mod array;
 mod attributed_string;
 mod compact;
 mod crdt;
+mod error;
 mod object;
 mod op;
 mod raw;
@@ -17,5 +18,6 @@ mod value;
 mod vlq;
 
 pub use crdt::CRDT;
+pub use error::Error;
 pub use replica::Replica;
 pub use value::Value;

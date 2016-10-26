@@ -2,7 +2,7 @@ use object::uid::UID;
 use Replica;
 use Value;
 
-#[derive(Clone,PartialEq)]
+#[derive(Clone,PartialEq,Debug)]
 pub struct Element {
     pub uid: UID,
     pub value: Value,

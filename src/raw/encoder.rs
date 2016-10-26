@@ -2,7 +2,8 @@ use Value;
 use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
-use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, IncrementNumber};
+use op::{NestedLocalOp, LocalOp};
+use op::local::{Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, IncrementNumber};
 use serde_json::builder::ObjectBuilder;
 use serde_json::Value as Json;
 use serde_json::value::Map as SerdeMap;
@@ -26,22 +27,24 @@ pub fn encode(value: &Value) -> Json {
     }
 }
 
-pub fn encode_op(op: &LocalOp) -> Json {
-    match *op {
+pub fn encode_op(nested_op: &NestedLocalOp) -> Json {
+    let pointer = &nested_op.pointer;
+    let operation = &nested_op.op;
+    match *operation {
         LocalOp::Put(ref op) =>
-            encode_op_put(op),
+            encode_op_put(op, pointer),
         LocalOp::Delete(ref op) =>
-            encode_op_delete(op),
+            encode_op_delete(op, pointer),
         LocalOp::InsertItem(ref op) =>
-            encode_op_insert_item(op),
+            encode_op_insert_item(op, pointer),
         LocalOp::DeleteItem(ref op) =>
-            encode_op_delete_item(op),
+            encode_op_delete_item(op, pointer),
         LocalOp::InsertText(ref op) =>
-            encode_op_insert_text(op),
+            encode_op_insert_text(op, pointer),
         LocalOp::DeleteText(ref op) =>
-            encode_op_delete_text(op),
+            encode_op_delete_text(op, pointer),
         LocalOp::IncrementNumber(ref op) =>
-            encode_op_increment_number(op),
+            encode_op_increment_number(op, pointer),
     }
 }
 
@@ -73,62 +76,62 @@ fn encode_attributed_string(string: &AttributedString) -> Json {
         .build()
 }
 
-fn encode_op_put(op: &Put) -> Json {
+fn encode_op_put(op: &Put, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("put".to_string()))
-        .insert("path", Json::String(op.path.clone()))
+        .insert("pointer", Json::String(pointer.to_string()))
         .insert("key", Json::String(op.key.clone()))
         .insert("value", encode(&op.value))
         .build()
 }
 
-fn encode_op_delete(op: &Delete) -> Json {
+fn encode_op_delete(op: &Delete, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("delete".to_string()))
-        .insert("path", Json::String(op.path.clone()))
+        .insert("pointer", Json::String(pointer.to_string()))
         .insert("key", Json::String(op.key.clone()))
         .build()
 }
 
-fn encode_op_insert_item(op: &InsertItem) -> Json {
+fn encode_op_insert_item(op: &InsertItem, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("insert_item".to_string()))
-        .insert("path", Json::String(op.path.clone()))
+        .insert("pointer", Json::String(pointer.to_string()))
         .insert("index", Json::U64(op.index as u64))
         .insert("value", encode(&op.value))
         .build()
 }
 
-fn encode_op_delete_item(op: &DeleteItem) -> Json {
+fn encode_op_delete_item(op: &DeleteItem, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("delete_item".to_string()))
-        .insert("path", Json::String(op.path.clone()))
+        .insert("pointer", Json::String(pointer.to_string()))
         .insert("index", Json::U64(op.index as u64))
         .build()
 }
 
-fn encode_op_insert_text(op: &InsertText) -> Json {
+fn encode_op_insert_text(op: &InsertText, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("insert_text".to_string()))
-        .insert("path", Json::String(op.path.clone()))
+        .insert("pointer", Json::String(pointer.to_string()))
         .insert("index", Json::U64(op.index as u64))
         .insert("text", Json::String(op.text.clone()))
         .build()
 }
 
-fn encode_op_delete_text(op: &DeleteText) -> Json {
+fn encode_op_delete_text(op: &DeleteText, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("delete_text".to_string()))
-        .insert("path", Json::String(op.path.clone()))
+        .insert("pointer", Json::String(pointer.to_string()))
         .insert("index", Json::U64(op.index as u64))
         .insert("len", Json::U64(op.len as u64))
         .build()
 }
 
-fn encode_op_increment_number(op: &IncrementNumber) -> Json {
+fn encode_op_increment_number(op: &IncrementNumber, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("increment_number".to_string()))
-        .insert("path", Json::String(op.path.clone()))
+        .insert("pointer", Json::String(pointer.to_string()))
         .insert("amount", Json::F64(op.amount))
         .build()
 }
@@ -140,6 +143,7 @@ mod tests {
     use Replica;
     use array::Array;
     use attributed_string::AttributedString;
+    use op::NestedLocalOp;
     use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, IncrementNumber};
     use object::Object;
     use serde_json;
@@ -218,94 +222,96 @@ mod tests {
 
     #[test]
     fn test_encode_op_put() {
-        let op = LocalOp::Put(Put{
-            path: "/a/sdf/x".to_string(),
-            key: "foo".to_string(),
-            value: Value::Bool(true),
-        });
+        let nested_op = NestedLocalOp{
+            pointer: "/a/sdf/x".to_string(),
+            op: LocalOp::Put(Put{key: "foo".to_string(), value: Value::Bool(true)}),
+        };
 
-        let json = encode_op_str(&op);
+        let json = encode_op_str(&nested_op);
         assert!(json.contains(r#""op":"put""#));
-        assert!(json.contains(r#""path":"/a/sdf/x""#));
+        assert!(json.contains(r#""pointer":"/a/sdf/x""#));
         assert!(json.contains(r#""key":"foo""#));
         assert!(json.contains(r#""value":true"#));
     }
 
     #[test]
     fn test_encode_op_delete() {
-        let op = LocalOp::Delete(Delete{
-            path: "/a/sdf/x".to_string(),
-            key: "foo".to_string(),
-        });
-        let json = encode_op_str(&op);
+        let nested_op = NestedLocalOp{
+            pointer: "/a/sdf/x".to_string(),
+            op: LocalOp::Delete(Delete{key: "foo".to_string()}),
+        };
+
+        let json = encode_op_str(&nested_op);
         assert!(json.contains(r#""op":"delete""#));
-        assert!(json.contains(r#""path":"/a/sdf/x""#));
+        assert!(json.contains(r#""pointer":"/a/sdf/x""#));
         assert!(json.contains(r#""key":"foo""#));
     }
 
     #[test]
     fn test_encode_op_insert_item() {
-        let op = LocalOp::InsertItem(InsertItem{
-            path: "/1/203/xx".to_string(),
-            index: 43,
-            value: Value::array(),
-        });
-        let json = encode_op_str(&op);
+        let nested_op = NestedLocalOp{
+            pointer: "/1/203/xx".to_string(),
+            op: LocalOp::InsertItem(InsertItem{index: 43, value: Value::array()}),
+        };
+
+        let json = encode_op_str(&nested_op);
         assert!(json.contains(r#""op":"insert_item""#));
-        assert!(json.contains(r#""path":"/1/203/xx""#));
+        assert!(json.contains(r#""pointer":"/1/203/xx""#));
         assert!(json.contains(r#""index":43"#));
         assert!(json.contains(r#""value":[]"#));
     }
 
     #[test]
     fn test_encode_op_delete_item() {
-        let op = LocalOp::DeleteItem(DeleteItem{
-            path: "/1/203/xx".to_string(),
-            index: 43,
-        });
-        let json = encode_op_str(&op);
+        let nested_op = NestedLocalOp{
+            pointer: "/1/203/xx".to_string(),
+            op: LocalOp::DeleteItem(DeleteItem{index: 43}),
+        };
+
+        let json = encode_op_str(&nested_op);
         assert!(json.contains(r#""op":"delete_item""#));
-        assert!(json.contains(r#""path":"/1/203/xx""#));
+        assert!(json.contains(r#""pointer":"/1/203/xx""#));
         assert!(json.contains(r#""index":43"#));
     }
 
     #[test]
     fn test_encode_op_insert_text() {
-        let op = LocalOp::InsertText(InsertText{
-            path: "/1/203/xx".to_string(),
-            index: 112,
-            text: "Hiya".to_string()
-        });
-        let json = encode_op_str(&op);
+        let nested_op = NestedLocalOp{
+            pointer: "/1/203/xx".to_string(),
+            op: LocalOp::InsertText(InsertText{index: 112, text: "Hiya".to_string()}),
+        };
+
+        let json = encode_op_str(&nested_op);
         assert!(json.contains(r#""op":"insert_text""#));
-        assert!(json.contains(r#""path":"/1/203/xx""#));
+        assert!(json.contains(r#""pointer":"/1/203/xx""#));
         assert!(json.contains(r#""index":112"#));
         assert!(json.contains(r#""text":"Hiya""#));
     }
 
     #[test]
     fn test_encode_op_delete_text() {
-        let op = LocalOp::DeleteText(DeleteText{
-            path: "/1/203/xx".to_string(),
-            index: 112,
-            len: 84,
-        });
-        let json = encode_op_str(&op);
+        let nested_op = NestedLocalOp{
+            pointer: "/1/203/xx".to_string(),
+            op: LocalOp::DeleteText(DeleteText{index: 112,len: 84}),
+        };
+
+        let json = encode_op_str(&nested_op);
         assert!(json.contains(r#""op":"delete_text""#));
-        assert!(json.contains(r#""path":"/1/203/xx""#));
+        assert!(json.contains(r#""pointer":"/1/203/xx""#));
         assert!(json.contains(r#""index":112"#));
         assert!(json.contains(r#""len":84"#));
     }
 
     #[test]
     fn test_encode_op_increment_number() {
-        let op = LocalOp::IncrementNumber(IncrementNumber{
-            path: "/1/203/xx".to_string(),
-            amount: 232.013,
-        });
-        let json = encode_op_str(&op);
+        let nested_op = NestedLocalOp{
+            pointer: "/1/203/xx".to_string(),
+            op: LocalOp::IncrementNumber(IncrementNumber{amount: 232.013,}),
+        };
+
+        let json = encode_op_str(&nested_op);
         assert!(json.contains(r#""op":"increment_number""#));
-        assert!(json.contains(r#""path":"/1/203/xx""#));
+        assert!(json.contains(r#""pointer":"/1/203/xx""#));
         assert!(json.contains(r#""amount":232.013"#));
     }
 
@@ -314,7 +320,7 @@ mod tests {
         serde_json::to_string(&json).ok().unwrap()
     }
 
-    fn encode_op_str(op: &LocalOp) -> String {
+    fn encode_op_str(op: &NestedLocalOp) -> String {
         let json = encode_op(op);
         serde_json::to_string(&json).ok().unwrap()
     }

@@ -63,10 +63,11 @@ fn decode_attributed_string(map: &Map<String, Json>, replica: &Replica) -> Attri
 
 #[cfg(test)]
 mod tests {
-    use Replica;
-    use Value;
     use super::*;
+    use Error;
+    use Replica;
     use serde_json;
+    use Value;
 
     const REPLICA: Replica = Replica {
         site: 2,
@@ -136,15 +137,15 @@ mod tests {
         let mut object1 = value.as_object().unwrap();
         {
             let ref mut array = object1.get_by_key("foo").unwrap().value;
-            assert!(array.as_array().is_some());
+            assert!(array.as_array().is_ok());
         }
         {
             let ref mut object2 = object1.get_by_key("bar").unwrap().value;
-            assert!(object2.as_object().is_some());
+            assert!(object2.as_object().is_ok());
         }
         {
             let ref mut attrstr = object1.get_by_key("baz").unwrap().value;
-            assert!(attrstr.as_attributed_string().is_some());
+            assert!(attrstr.as_attributed_string().is_ok());
         }
     }
 

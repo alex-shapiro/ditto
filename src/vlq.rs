@@ -1,3 +1,4 @@
+use Error;
 use num::bigint::{BigUint,ToBigUint};
 use num::traits::{Zero,ToPrimitive};
 
@@ -45,7 +46,7 @@ pub fn encode_biguint(value: &BigUint) -> Vec<u8> {
     vec
 }
 
-pub fn decode_u32(bytes: &[u8]) -> Result<(u32, &[u8]), &'static str> {
+pub fn decode_u32(bytes: &[u8]) -> Result<(u32, &[u8]), Error> {
     let mut value = 0;
     for (i, byte) in bytes.iter().enumerate() {
         let decoded_byte = byte & 0x7F;
@@ -57,10 +58,10 @@ pub fn decode_u32(bytes: &[u8]) -> Result<(u32, &[u8]), &'static str> {
             return Ok((value, &bytes[lower..upper]));
         }
     }
-    Err("VLQ has no terminating byte!")
+    Err(Error::VLQNoTerminatingByte)
 }
 
-pub fn decode_biguint(bytes: &[u8]) -> Result<(BigUint, &[u8]), &'static str> {
+pub fn decode_biguint(bytes: &[u8]) -> Result<(BigUint, &[u8]), Error> {
     let mut value = big(0);
     for (i, byte) in bytes.iter().enumerate() {
         let decoded_byte = byte & 0x7F;
@@ -72,7 +73,7 @@ pub fn decode_biguint(bytes: &[u8]) -> Result<(BigUint, &[u8]), &'static str> {
             return Ok((value, &bytes[lower..upper]));
         }
     }
-    Err("VLQ has no terminating byte!")
+    Err(Error::VLQNoTerminatingByte)
 }
 
 fn big(value: u8) -> BigUint {

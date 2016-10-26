@@ -1,13 +1,12 @@
 pub mod element;
 
-use Value;
-use sequence::uid::UID;
 use self::element::Element;
+use Error;
+use op::local::{DeleteItem, InsertItem, LocalOp};
 use op::remote::UpdateArray;
-use op::local::LocalOp;
-use op::local::InsertItem;
-use op::local::DeleteItem;
 use Replica;
+use sequence::uid::UID;
+use Value;
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct Array(Vec<Element>);
@@ -25,7 +24,7 @@ impl Array {
         self.0.len() - 2
     }
 
-    pub fn insert(&mut self, index: usize, value: Value, replica: &Replica) -> Option<UpdateArray> {
+    pub fn insert(&mut self, index: usize, value: Value, replica: &Replica) -> Result<UpdateArray, Error> {
         if index <= self.len() {
             let ref mut elements = self.0;
             let uid = {
@@ -36,18 +35,18 @@ impl Array {
 
             let element = Element::new(value, uid);
             elements.insert(index+1, element.clone());
-            Some(UpdateArray::insert(element))
+            Ok(UpdateArray::insert(element))
         } else {
-            None
+            Err(Error::OutOfBounds)
         }
     }
 
-    pub fn delete(&mut self, index: usize) -> Option<UpdateArray> {
+    pub fn delete(&mut self, index: usize) -> Result<UpdateArray, Error> {
         if index < self.len() {
             let element = self.0.remove(index+1);
-            Some(UpdateArray::delete(element.uid))
+            Ok(UpdateArray::delete(element.uid))
         } else {
-            None
+            Err(Error::OutOfBounds)
         }
     }
 
@@ -57,17 +56,17 @@ impl Array {
         Some(element)
     }
 
-    pub fn execute_remote(&mut self, op: UpdateArray) -> Vec<LocalOp> {
+    pub fn execute_remote(&mut self, op: &UpdateArray) -> Vec<LocalOp> {
         let delete_ops: Vec<DeleteItem> =
-            op.deletes.into_iter()
-            .map(|uid| self.delete_remote(uid))
+            op.deletes.iter()
+            .map(|uid| self.delete_remote(&uid))
             .filter(|op| op.is_some())
             .map(|op| op.unwrap())
             .collect();
 
         let insert_ops: Vec<InsertItem> =
-            op.inserts.into_iter()
-            .map(|elt| self.insert_remote(elt))
+            op.inserts.iter()
+            .map(|elt| self.insert_remote(elt.clone()))
             .filter(|op| op.is_some())
             .map(|op| op.unwrap())
             .collect();
@@ -90,9 +89,9 @@ impl Array {
         }
     }
 
-    fn delete_remote(&mut self, uid: UID) -> Option<DeleteItem> {
+    fn delete_remote(&mut self, uid: &UID) -> Option<DeleteItem> {
         let ref mut elements = self.0;
-        match elements.iter().position(|e| uid == e.uid) {
+        match elements.iter().position(|e| *uid == e.uid) {
             Some(index) => {
                 elements.remove(index);
                 Some(DeleteItem::new(index-1))},
@@ -112,6 +111,7 @@ impl Array {
 mod tests {
     use super::*;
     use super::element::Element;
+    use Error;
     use Replica;
     use Value;
 
@@ -145,7 +145,7 @@ mod tests {
     #[test]
     fn test_insert_invalid_index() {
         let mut array = Array::new();
-        assert!(array.insert(1, Value::Bool(true), &REPLICA).is_none());
+        assert!(array.insert(1, Value::Bool(true), &REPLICA) == Err(Error::OutOfBounds));
     }
 
     #[test]
@@ -163,7 +163,7 @@ mod tests {
     fn test_delete_invalid_index() {
         let mut array = Array::new();
         array.insert(0, Value::Num(1.0), &REPLICA);
-        assert!(array.delete(1).is_none());
+        assert!(array.delete(1) == Err(Error::OutOfBounds));
     }
 
     #[test]
@@ -175,9 +175,9 @@ mod tests {
         let op2 = array1.insert(1, Value::Num(2.0), &REPLICA).unwrap();
         let op3 = array1.delete(0).unwrap();
 
-        let lops1 = array2.execute_remote(op1);
-        let lops2 = array2.execute_remote(op2);
-        let lops3 = array2.execute_remote(op3);
+        let lops1 = array2.execute_remote(&op1);
+        let lops2 = array2.execute_remote(&op2);
+        let lops3 = array2.execute_remote(&op3);
 
         assert!(array1 == array2);
         assert!(lops1.len() == 1);

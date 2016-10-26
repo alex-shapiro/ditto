@@ -3,11 +3,11 @@ pub mod uid;
 
 pub use self::element::Element;
 pub use self::uid::UID;
-use std::collections::HashMap;
-use op::local::LocalOp;
-use op::local::{Put,Delete};
+use Error;
+use op::local::{LocalOp, Put, Delete};
 use op::remote::UpdateObject;
 use Replica;
+use std::collections::HashMap;
 use Value;
 
 #[derive(Clone,PartialEq)]
@@ -30,14 +30,14 @@ impl Object {
         UpdateObject::new(key.to_string(), Some(new_element), deleted_uids)
     }
 
-    pub fn delete(&mut self, key: &str) -> Option<UpdateObject> {
+    pub fn delete(&mut self, key: &str) -> Result<UpdateObject, Error> {
         let mut elements = &mut self.0;
         let deleted_elts = elements.remove(key);
         let deleted_uids = uids(deleted_elts);
         if deleted_uids.is_empty() {
-            None
+            Err(Error::Noop)
         } else {
-            Some(UpdateObject::new(key.to_string(), None, deleted_uids))
+            Ok(UpdateObject::new(key.to_string(), None, deleted_uids))
         }
     }
 
@@ -71,9 +71,9 @@ impl Object {
         }
     }
 
-    pub fn execute_remote(&mut self, op: UpdateObject) -> LocalOp {
+    pub fn execute_remote(&mut self, op: &UpdateObject) -> LocalOp {
         let mut key_elements: Vec<Element> = {
-            let deleted_uids = op.deleted_uids;
+            let ref deleted_uids = op.deleted_uids;
             let default: Vec<Element> = vec![];
             self.0
                 .get(&op.key)
@@ -84,16 +84,19 @@ impl Object {
                 .collect()
         };
 
-        op.new_element.map(|e| key_elements.push(e));
-        let key = op.key;
+        if let Some(ref e) = op.new_element {
+            key_elements.push(e.clone())
+        }
+
+        let ref key = op.key;
         match key_elements.len() > 0 {
             true => {
                 self.0.insert(key.clone(), key_elements);
-                let elt = self.get_by_key(&key).unwrap();
-                LocalOp::Put(Put::new(key, elt.value.clone()))},
+                let elt = self.get_by_key(key).unwrap();
+                LocalOp::Put(Put::new(key.to_string(), elt.value.clone()))},
             false => {
-                self.0.remove(&key);
-                LocalOp::Delete(Delete::new(key))},
+                self.0.remove(key);
+                LocalOp::Delete(Delete::new(key.to_string()))},
         }
     }
 
@@ -115,6 +118,7 @@ fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {
 mod tests {
     use super::*;
     use op::remote::UpdateObject;
+    use Error;
     use Replica;
     use Value;
 
@@ -131,7 +135,6 @@ mod tests {
         let mut object = Object::new();
         let op = object.put("foo", Value::Num(23.0), &REPLICA);
 
-        assert!(op.path == vec![]);
         assert!(op.key == "foo".to_string());
         assert!(op.new_element.unwrap().uid == UID::new("foo", &REPLICA));
         assert!(op.deleted_uids == vec![]);
@@ -150,7 +153,6 @@ mod tests {
         let _  = object.put("bar", Value::Bool(true), &replica);
         let op = object.delete("bar").unwrap();
 
-        assert!(op.path == vec![]);
         assert!(op.key == "bar".to_string());
         assert!(op.new_element == None);
         assert!(op.deleted_uids.len() == 1);
@@ -160,7 +162,7 @@ mod tests {
     #[test]
     fn test_delete_no_values_for_key() {
         let mut object = Object::new();
-        assert!(None == object.delete("foo"));
+        assert!(object.delete("foo") == Err(Error::Noop));
     }
 
     #[test]
@@ -171,10 +173,9 @@ mod tests {
         let elt = Element::new("baz", Value::Num(1.0), &replica1);
         let _   = object.put("baz", Value::Num(0.0), &replica2);
         let op2 = UpdateObject::new("baz".to_string(), Some(elt), vec![]);
-        let op3 = object.execute_remote(op2);
+        let op3 = object.execute_remote(&op2);
         let op3_unwrapped = op3.put().unwrap();
 
-        assert!(op3_unwrapped.path == "");
         assert!(op3_unwrapped.key == "baz".to_string());
         assert!(op3_unwrapped.value == Value::Num(1.0));
         assert!(object.0.get("baz").unwrap().len() == 2);
@@ -191,15 +192,12 @@ mod tests {
         let op2 = UpdateObject::new("foo".to_string(), Some(elt2.clone()), vec![]);
         let op3 = UpdateObject::new("foo".to_string(), None, vec![elt1.uid]);
 
-        object.execute_remote(op1);
-        object.execute_remote(op2);
+        object.execute_remote(&op1);
+        object.execute_remote(&op2);
         { assert!(object.get_by_key("foo").unwrap().value == Value::Bool(false)) }
 
-        let op4 = object.execute_remote(op3);
+        let op4 = object.execute_remote(&op3);
         let op4_unwrapped = op4.put().unwrap();
-
-        assert!(op4_unwrapped.path == "");
-        assert!(op4_unwrapped.key == "foo".to_string());
         assert!(op4_unwrapped.value == Value::Bool(true));
     }
 
