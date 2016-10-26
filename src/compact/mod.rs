@@ -7,12 +7,13 @@ pub use self::encoder::encode;
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Value;
-    use Replica;
     use array::Array;
     use attributed_string::AttributedString;
+    use error::Error;
     use object::Object;
+    use Replica;
     use serde_json;
+    use Value;
 
     #[test]
     fn test_null() {
@@ -122,7 +123,7 @@ mod tests {
         serde_json::to_string(&json).ok().unwrap()
     }
 
-    fn decode_str(value: &str) -> Result<Value,decoder::Error> {
+    fn decode_str(value: &str) -> Result<Value, Error> {
         let json: serde_json::Value = serde_json::from_str(value).ok().unwrap();
         decode(&json)
     }

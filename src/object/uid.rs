@@ -1,9 +1,9 @@
-use std::cmp::Ordering;
+use error::Error;
 use Replica;
-use vlq;
+use rustc_serialize::base64::{self, ToBase64, FromBase64};
+use std::cmp::Ordering;
 use std::str::FromStr;
-use rustc_serialize::base64;
-use rustc_serialize::base64::{ToBase64, FromBase64};
+use vlq;
 
 #[derive(Clone,Eq,Debug)]
 pub struct UID {
@@ -67,22 +67,22 @@ impl ToString for UID {
 }
 
 impl FromStr for UID {
-    type Err = &'static str;
+    type Err = Error;
 
-    fn from_str(s: &str) -> Result<Self, Self::Err> {
+    fn from_str(s: &str) -> Result<Self, Error> {
         // split the string into Base64-encoded VLQ and key
         let mut parts = s.split(",");
         let encoded_vlq = parts.next();
         let key = parts.next();
         if encoded_vlq.is_none() || key.is_none() {
-            return Err("invalid object UID!")
+            return Err(Error::DeserializeObjectUID)
         }
 
         // Base64-decode VLQ
         let vlq =
             match encoded_vlq.unwrap().from_base64() {
                 Ok(value) => value,
-                Err(_) => return Err("Invalid object UID!"),
+                Err(_) => return Err(Error::DeserializeObjectUID),
             };
 
         // Decode VLQ into site and counter

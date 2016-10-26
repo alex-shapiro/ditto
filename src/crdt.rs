@@ -1,6 +1,6 @@
 use Replica;
 use Value;
-use op::{NestedRemoteOp, NestedLocalOp};
+use op::NestedRemoteOp;
 use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
 use op::local::LocalOp;
 use raw;
@@ -30,7 +30,7 @@ impl CRDT {
         compact::encode(&self.root_value)
     }
 
-    pub fn deserialize(json: &Json) -> Result<Self, compact::decoder::Error> {
+    pub fn deserialize(json: &Json) -> Result<Self, Error> {
         let replica = Replica::new(1, 0);
         let value = try!(compact::decode(json));
         Ok(CRDT{root_value: value, replica: replica})
