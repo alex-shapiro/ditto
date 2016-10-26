@@ -93,10 +93,11 @@ impl CRDT {
     pub fn insert_text(&mut self, pointer: &str, index: usize, text: String) -> Option<UpdateAttributedString> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
+
         root_value
             .get_nested(pointer)
             .and_then(|value| value.as_attributed_string())
-            .and_then(|string| string.insert_text(index, text, replica))
+            .and_then(|string| string.insert_text(index, text, replica).ok())
     }
 
     pub fn delete_text(&mut self, pointer: &str, index: usize, len: usize) -> Option<UpdateAttributedString> {
@@ -105,7 +106,7 @@ impl CRDT {
         root_value
             .get_nested(pointer)
             .and_then(|value| value.as_attributed_string())
-            .and_then(|string| string.delete_text(index, len, replica))
+            .and_then(|string| string.delete_text(index, len, replica).ok())
     }
 
     pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: String) -> Option<UpdateAttributedString> {
@@ -114,7 +115,7 @@ impl CRDT {
         root_value
             .get_nested(pointer)
             .and_then(|value| value.as_attributed_string())
-            .and_then(|string| string.replace_text(index, len, text, replica))
+            .and_then(|string| string.replace_text(index, len, text, replica).ok())
     }
 
     pub fn increment(&mut self, pointer: &str, amount: f64) -> Option<IncrementNumber> {

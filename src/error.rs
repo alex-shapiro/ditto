@@ -4,5 +4,7 @@ pub enum Error {
     DeserializeObjectUID,
     DeserializeSequenceUID,
     InvalidRemoteOp,
+    Noop,
+    OutOfIndex,
     VLQNoTerminatingByte,
 }
