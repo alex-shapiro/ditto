@@ -16,7 +16,7 @@
 //! ahead of time is inherently coordinated, and UID bit
 //! size increases more slowly with the number of elements.
 
-use error::Error;
+use Error;
 use num::bigint::{BigUint, ToBigUint};
 use num::cast::ToPrimitive;
 use rand::distributions::{IndependentSample, Range};

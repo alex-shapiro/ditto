@@ -1,4 +1,4 @@
-use error::Error;
+use Error;
 use num::bigint::{BigUint,ToBigUint};
 use num::traits::{Zero,ToPrimitive};
 

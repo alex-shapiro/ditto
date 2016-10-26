@@ -1,13 +1,13 @@
-use Replica;
-use Value;
+use compact;
+use Error;
+use op::local::LocalOp;
 use op::NestedRemoteOp;
 use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
-use op::local::LocalOp;
 use raw;
-use serde_json;
+use Replica;
 use serde_json::Value as Json;
-use compact;
-use error::Error;
+use serde_json;
+use Value;
 
 pub struct CRDT {
     root_value: Value,
@@ -37,9 +37,8 @@ impl CRDT {
     }
 
     pub fn get(&mut self, pointer: &str) -> Option<Json> {
-        self.root_value
-            .get_nested(pointer)
-            .and_then(|value| Some(raw::encode(value)))
+        let value = self.root_value.get_nested(pointer).ok();
+        value.and_then(|value| Some(raw::encode(value)))
     }
 
     pub fn get_str(&mut self, pointer: &str) -> Option<String> {
@@ -48,85 +47,81 @@ impl CRDT {
         })
     }
 
-    pub fn put(&mut self, pointer: &str, key: &str, value: &Json) -> Option<UpdateObject> {
+    pub fn put(&mut self, pointer: &str, key: &str, value: &Json) -> Result<UpdateObject, Error> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
-        root_value
-            .get_nested(pointer)
-            .and_then(|value| value.as_object())
-            .and_then(|object| Some(object.put(key, raw::decode(value, replica), replica)))
+
+        let mut object_value = try!(root_value.get_nested(pointer));
+        let mut object = try!(object_value.as_object());
+        Ok(object.put(key, raw::decode(value, replica), replica))
     }
 
-    pub fn put_str(&mut self, pointer: &str, key: &str, value: &str) -> Option<UpdateObject> {
-        let json: Json = serde_json::de::from_str(value).expect("invalid JSON!");
+    pub fn put_str(&mut self, pointer: &str, key: &str, item: &str) -> Result<UpdateObject, Error> {
+        let json: Json = serde_json::de::from_str(item).expect("invalid JSON!");
         self.put(pointer, key, &json)
     }
 
-    pub fn delete(&mut self, pointer: &str, key: &str) -> Option<UpdateObject> {
-        self.root_value
-            .get_nested(pointer)
-            .and_then(|value| value.as_object())
-            .and_then(|object| object.delete(key))
+    pub fn delete(&mut self, pointer: &str, key: &str) -> Result<UpdateObject, Error> {
+        let mut object_value = try!(self.root_value.get_nested(pointer));
+        let mut object = try!(object_value.as_object());
+        object.delete(key)
     }
 
-    pub fn insert_item(&mut self, pointer: &str, index: usize, item: &Json) -> Option<UpdateArray> {
+    pub fn insert_item(&mut self, pointer: &str, index: usize, item: &Json) -> Result<UpdateArray, Error> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
-        root_value
-            .get_nested(pointer)
-            .and_then(|value| value.as_array())
-            .and_then(|array| array.insert(index, raw::decode(item, replica), replica))
+
+        let mut array_value = try!(root_value.get_nested(pointer));
+        let mut array = try!(array_value.as_array());
+        array.insert(index, raw::decode(item, replica), replica)
     }
 
-    pub fn insert_item_str(&mut self, pointer: &str, index: usize, item: &str) -> Option<UpdateArray> {
+    pub fn insert_item_str(&mut self, pointer: &str, index: usize, item: &str) -> Result<UpdateArray, Error> {
         let json: Json = serde_json::de::from_str(item).expect("invalid JSON!");
         self.insert_item(pointer, index, &json)
     }
 
-    pub fn delete_item(&mut self, pointer: &str, index: usize) -> Option<UpdateArray> {
-        self.root_value
-            .get_nested(pointer)
-            .and_then(|value| value.as_array())
-            .and_then(|array| array.delete(index))
+    pub fn delete_item(&mut self, pointer: &str, index: usize) -> Result<UpdateArray, Error> {
+        let mut array_value = try!(self.root_value.get_nested(pointer));
+        let mut array = try!(array_value.as_array());
+        array.delete(index)
     }
 
-    pub fn insert_text(&mut self, pointer: &str, index: usize, text: String) -> Option<UpdateAttributedString> {
+    pub fn insert_text(&mut self, pointer: &str, index: usize, text: String) -> Result<UpdateAttributedString, Error> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
 
-        root_value
-            .get_nested(pointer)
-            .and_then(|value| value.as_attributed_string())
-            .and_then(|string| string.insert_text(index, text, replica).ok())
+        let mut attrstr_value = try!(root_value.get_nested(pointer));
+        let mut attrstr = try!(attrstr_value.as_attributed_string());
+        attrstr.insert_text(index, text, replica)
     }
 
-    pub fn delete_text(&mut self, pointer: &str, index: usize, len: usize) -> Option<UpdateAttributedString> {
+    pub fn delete_text(&mut self, pointer: &str, index: usize, len: usize) -> Result<UpdateAttributedString, Error> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
-        root_value
-            .get_nested(pointer)
-            .and_then(|value| value.as_attributed_string())
-            .and_then(|string| string.delete_text(index, len, replica).ok())
+
+        let mut attrstr_value = try!(root_value.get_nested(pointer));
+        let mut attrstr = try!(attrstr_value.as_attributed_string());
+        attrstr.delete_text(index, len, replica)
     }
 
-    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: String) -> Option<UpdateAttributedString> {
+    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: String) -> Result<UpdateAttributedString, Error> {
         let root_value = &mut self.root_value;
         let replica = &self.replica;
-        root_value
-            .get_nested(pointer)
-            .and_then(|value| value.as_attributed_string())
-            .and_then(|string| string.replace_text(index, len, text, replica).ok())
+
+        let mut attrstr_value = try!(root_value.get_nested(pointer));
+        let mut attrstr = try!(attrstr_value.as_attributed_string());
+        attrstr.replace_text(index, len, text, replica)
     }
 
-    pub fn increment(&mut self, pointer: &str, amount: f64) -> Option<IncrementNumber> {
-        self.root_value
-            .get_nested(pointer)
-            .and_then(|value| value.increment(amount))
+    pub fn increment(&mut self, pointer: &str, amount: f64) -> Result<IncrementNumber, Error> {
+        let mut number_value = try!(self.root_value.get_nested(pointer));
+        number_value.increment(amount)
     }
 
     pub fn execute_remote(&mut self, nested_op: &NestedRemoteOp) -> Result<Vec<LocalOp>, Error> {
         let ref pointer = nested_op.pointer;
-        let mut value = try!(self.root_value.get_nested(pointer).ok_or(Error::InvalidRemoteOp));
+        let mut value = try!(self.root_value.get_nested(pointer));
         value.execute_remote(&nested_op.op)
     }
 }

@@ -3,11 +3,11 @@ pub mod uid;
 
 pub use self::element::Element;
 pub use self::uid::UID;
-use std::collections::HashMap;
-use op::local::LocalOp;
-use op::local::{Put,Delete};
+use Error;
+use op::local::{LocalOp, Put, Delete};
 use op::remote::UpdateObject;
 use Replica;
+use std::collections::HashMap;
 use Value;
 
 #[derive(Clone,PartialEq)]
@@ -30,14 +30,14 @@ impl Object {
         UpdateObject::new(key.to_string(), Some(new_element), deleted_uids)
     }
 
-    pub fn delete(&mut self, key: &str) -> Option<UpdateObject> {
+    pub fn delete(&mut self, key: &str) -> Result<UpdateObject, Error> {
         let mut elements = &mut self.0;
         let deleted_elts = elements.remove(key);
         let deleted_uids = uids(deleted_elts);
         if deleted_uids.is_empty() {
-            None
+            Err(Error::Noop)
         } else {
-            Some(UpdateObject::new(key.to_string(), None, deleted_uids))
+            Ok(UpdateObject::new(key.to_string(), None, deleted_uids))
         }
     }
 
@@ -118,6 +118,7 @@ fn uids(elements: Option<Vec<Element>>) -> Vec<UID> {
 mod tests {
     use super::*;
     use op::remote::UpdateObject;
+    use Error;
     use Replica;
     use Value;
 
@@ -161,7 +162,7 @@ mod tests {
     #[test]
     fn test_delete_no_values_for_key() {
         let mut object = Object::new();
-        assert!(None == object.delete("foo"));
+        assert!(object.delete("foo") == Err(Error::Noop));
     }
 
     #[test]

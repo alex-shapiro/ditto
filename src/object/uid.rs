@@ -1,4 +1,4 @@
-use error::Error;
+use Error;
 use Replica;
 use rustc_serialize::base64::{self, ToBase64, FromBase64};
 use std::cmp::Ordering;

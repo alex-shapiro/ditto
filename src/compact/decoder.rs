@@ -2,7 +2,7 @@ use array::Array;
 use array::element::Element as ArrayElement;
 use attributed_string::AttributedString;
 use attributed_string::element::Element as StringElement;
-use error::Error;
+use Error;
 use object::element::Element as ObjectElement;
 use object::Object;
 use object::uid::UID as ObjectUID;

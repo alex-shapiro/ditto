@@ -9,7 +9,7 @@ mod tests {
     use super::*;
     use array::Array;
     use attributed_string::AttributedString;
-    use error::Error;
+    use Error;
     use object::Object;
     use Replica;
     use serde_json;

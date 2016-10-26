@@ -1,12 +1,11 @@
-use object::Object;
 use array::Array;
 use attributed_string::AttributedString;
-use error::Error;
-use std::fmt;
-use std::fmt::Debug;
-use std::str::FromStr;
-use op::{self, RemoteOp, LocalOp};
+use Error;
+use object::Object;
 use op::remote::IncrementNumber;
+use op::{self, RemoteOp, LocalOp};
+use std::fmt::{self, Debug};
+use std::str::FromStr;
 
 #[derive(PartialEq,Clone)]
 pub enum Value {
@@ -32,34 +31,34 @@ impl Value {
         Value::AttrStr(AttributedString::new())
     }
 
-    pub fn as_object<'a>(&'a mut self) -> Option<&'a mut Object> {
+    pub fn as_object<'a>(&'a mut self) -> Result<&'a mut Object, Error> {
         match *self {
-            Value::Obj(ref mut object) => Some(object),
-            _ => None,
+            Value::Obj(ref mut object) => Ok(object),
+            _ => Err(Error::ValueMismatch("object")),
         }
     }
 
-    pub fn as_array<'a>(&'a mut self) -> Option<&'a mut Array> {
+    pub fn as_array<'a>(&'a mut self) -> Result<&'a mut Array, Error> {
         match *self {
-            Value::Arr(ref mut array) => Some(array),
-            _ => None,
+            Value::Arr(ref mut array) => Ok(array),
+            _ => Err(Error::ValueMismatch("array")),
         }
     }
 
-    pub fn as_attributed_string<'a>(&'a mut self) -> Option<&'a mut AttributedString> {
+    pub fn as_attributed_string<'a>(&'a mut self) -> Result<&'a mut AttributedString, Error> {
         match *self {
-            Value::AttrStr(ref mut string) => Some(string),
-            _ => None,
+            Value::AttrStr(ref mut string) => Ok(string),
+            _ => Err(Error::ValueMismatch("attrstr")),
         }
     }
 
-    pub fn increment<'a>(&'a mut self, amount: f64) -> Option<IncrementNumber> {
+    pub fn increment<'a>(&'a mut self, amount: f64) -> Result<IncrementNumber, Error> {
         match *self {
             Value::Num(ref mut n) => {
                 *n += amount;
-                Some(IncrementNumber::new(amount))
+                Ok(IncrementNumber::new(amount))
             },
-            _ => None,
+            _ => Err(Error::ValueMismatch("number")),
         }
     }
 
@@ -75,17 +74,18 @@ impl Value {
         }
     }
 
-    pub fn get_nested<'a>(&'a mut self, pointer: &str) -> Option<&'a mut Value> {
+    pub fn get_nested<'a>(&'a mut self, pointer: &str) -> Result<&'a mut Value, Error> {
         let mut value = Some(self);
 
         for escaped_key in pointer.split("/").skip(1) {
             let key = escaped_key.replace("~1", "/").replace("~0", "~");
-            if value.is_none() { return None }
+            if value.is_none() { return Err(Error::ValueMismatch("pointer")) }
             value = match *value.unwrap() {
                 Value::Obj(ref mut object) =>
                     object
                     .get_by_key(&key)
                     .and_then(|e| Some(&mut e.value)),
+
                 Value::Arr(ref mut array) => {
                     let index = usize::from_str(&key).ok();
                     if index.is_some() {
@@ -98,7 +98,11 @@ impl Value {
                     None,
             }
         }
-        value
+        match value {
+            Some(v) => Ok(v),
+            None => Err(Error::ValueMismatch("pointer"))
+        }
+
     }
 
     pub fn execute_remote(&mut self, op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
@@ -141,8 +145,9 @@ impl Debug for Value {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use object::Object;
     use array::Array;
+    use Error;
+    use object::Object;
     use Replica;
 
     #[test]
@@ -157,7 +162,7 @@ mod tests {
             Value::object()];
 
         for v in &mut values {
-            assert!(v.clone().get_nested("") == Some(v));
+            assert!(v.clone().get_nested("") == Ok(v));
         }
     }
 
@@ -192,17 +197,17 @@ mod tests {
         object.put("a%b", nested_object.clone(), &replica);
 
         let mut value = Value::Obj(object);
-        assert!(value.get_nested("/") == Some(&mut bool_value));
-        assert!(value.get_nested("/~1") == Some(&mut num_value));
-        assert!(value.get_nested("/101") == Some(&mut array));
-        assert!(value.get_nested("/101/0") == Some(&mut array_0));
-        assert!(value.get_nested("/101/1") == Some(&mut array_1));
-        assert!(value.get_nested("/a") == Some(&mut attrstr));
-        assert!(value.get_nested("/a%b") == Some(&mut nested_object));
+        assert!(value.get_nested("/") == Ok(&mut bool_value));
+        assert!(value.get_nested("/~1") == Ok(&mut num_value));
+        assert!(value.get_nested("/101") == Ok(&mut array));
+        assert!(value.get_nested("/101/0") == Ok(&mut array_0));
+        assert!(value.get_nested("/101/1") == Ok(&mut array_1));
+        assert!(value.get_nested("/a") == Ok(&mut attrstr));
+        assert!(value.get_nested("/a%b") == Ok(&mut nested_object));
 
-        assert!(value.get_nested("/asdf") == None);
-        assert!(value.get_nested("/~1/a") == None);
-        assert!(value.get_nested("/101/-1") == None);
-        assert!(value.get_nested("/101/2") == None);
+        assert!(value.get_nested("/asdf") == Err(Error::ValueMismatch("pointer")));
+        assert!(value.get_nested("/~1/a") == Err(Error::ValueMismatch("pointer")));
+        assert!(value.get_nested("/101/-1") == Err(Error::ValueMismatch("pointer")));
+        assert!(value.get_nested("/101/2") == Err(Error::ValueMismatch("pointer")));
     }
 }

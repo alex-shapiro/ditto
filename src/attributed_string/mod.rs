@@ -3,7 +3,7 @@ mod range;
 
 use self::element::Element;
 use self::range::{Bound, Range};
-use error::Error;
+use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
 use Replica;
@@ -33,7 +33,7 @@ impl AttributedString {
     }
 
     pub fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
-        if index > self.len { return Err(Error::OutOfIndex) }
+        if index > self.len { return Err(Error::OutOfBounds) }
         if text.is_empty() { return Err(Error::Noop) }
 
         self.len += text.len();
@@ -45,7 +45,7 @@ impl AttributedString {
     }
 
     pub fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Result<UpdateAttributedString, Error> {
-        if index + len > self.len { return Err(Error::OutOfIndex) }
+        if index + len > self.len { return Err(Error::OutOfBounds) }
         if len == 0 { return Err(Error::Noop) }
 
         self.len -= len;
@@ -57,7 +57,7 @@ impl AttributedString {
     }
 
     pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
-        if index + len > self.len { return Err(Error::OutOfIndex) }
+        if index + len > self.len { return Err(Error::OutOfBounds) }
         if len == 0 && text.is_empty() { return Err(Error::Noop) }
 
         let mut op1 = self.delete_text(index, len, replica).unwrap_or(UpdateAttributedString::default());
@@ -204,6 +204,7 @@ impl AttributedString {
 mod tests {
     use super::*;
     use super::element::Element;
+    use Error;
     use op::remote::UpdateAttributedString;
     use Replica;
 
@@ -222,7 +223,7 @@ mod tests {
     fn test_insert_empty_string() {
         let mut string = AttributedString::new();
         let op = string.insert_text(0, "".to_string(), &REPLICA1);
-        assert!(op.is_none());
+        assert!(op == Err(Error::Noop));
     }
 
     #[test]
@@ -286,7 +287,7 @@ mod tests {
     fn test_insert_text_invalid() {
         let mut string = AttributedString::new();
         let op = string.insert_text(1, "quick".to_string(), &REPLICA1);
-        assert!(op.is_none());
+        assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
@@ -294,7 +295,7 @@ mod tests {
         let mut string = AttributedString::new();
         let  _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
         let op = string.delete_text(1, 0, &REPLICA2);
-        assert!(op.is_none());
+        assert!(op == Err(Error::Noop));
     }
 
     #[test]
@@ -378,7 +379,7 @@ mod tests {
     fn test_delete_text_invalid() {
         let mut string = AttributedString::new();
         let op = string.delete_text(0, 1, &REPLICA2);
-        assert!(op.is_none());
+        assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
@@ -439,7 +440,7 @@ mod tests {
         let mut string = AttributedString::new();
         let   _ = string.insert_text(0, "the quick brown fox".to_string(), &REPLICA1);
         let op2 = string.replace_text(4, 16, "slow green turtle".to_string(), &REPLICA2);
-        assert!(op2.is_none());
+        assert!(op2 == Err(Error::OutOfBounds));
     }
 
     #[test]
