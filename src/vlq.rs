@@ -179,8 +179,6 @@ mod tests {
         let (value2, rest2) = decode_biguint(&rest1).ok().unwrap();
         let (value3, rest3) = decode_u32(&rest2).ok().unwrap();
 
-        println!("{:?}", vlq);
-
         assert!(value1 == big(10382));
         assert!(value2 == big(4834));
         assert!(value3 == 81023);

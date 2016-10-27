@@ -1,13 +1,13 @@
 use array::Array;
 use attributed_string::AttributedString;
 use Error;
-use object::Object;
+use object::{self, Object};
 use op::remote::IncrementNumber;
 use op::{self, RemoteOp, LocalOp};
-use std::fmt::{self, Debug};
+use sequence;
 use std::str::FromStr;
 
-#[derive(PartialEq,Clone)]
+#[derive(Debug,PartialEq,Clone)]
 pub enum Value {
     Obj(Object),
     Arr(Array),
@@ -102,7 +102,33 @@ impl Value {
             Some(v) => Ok(v),
             None => Err(Error::ValueMismatch("pointer"))
         }
+    }
 
+    pub fn get_nested_remote(&mut self, pointer: &str) -> Result<(&mut Value, String), Error> {
+        let mut value = Some(self);
+        let mut local_pointer = String::new();
+
+        for encoded_uid in pointer.split("/").skip(1) {
+            value = match *value.unwrap() {
+                Value::Obj(ref mut object) => {
+                    let uid = try!(object::UID::from_str(encoded_uid));
+                    let mut element = try!(object.get_by_uid(&uid));
+                    local_pointer.push('/');
+                    local_pointer.push_str(&uid.key);
+                    Some(&mut element.value)
+                },
+                Value::Arr(ref mut array) => {
+                    let uid = try!(sequence::uid::UID::from_str(encoded_uid));
+                    let (mut element, index) = try!(array.get_by_uid(&uid));
+                    local_pointer.push_str(&format!("/{}", index));
+                    Some(&mut element.value)
+                },
+                _ => {
+                    return Err(Error::ValueMismatch("pointer"))
+                }
+            }
+        }
+        Ok((value.unwrap(), local_pointer))
     }
 
     pub fn execute_remote(&mut self, op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
@@ -121,80 +147,53 @@ impl Value {
     }
 }
 
-impl Debug for Value {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &Value::Obj(_) =>
-                write!(f, "<object>"),
-            &Value::Arr(_) =>
-                write!(f, "<array>"),
-            &Value::AttrStr(_) =>
-                write!(f, "<attributed string>"),
-            &Value::Str(ref str) =>
-                write!(f, "\"{}\">", str),
-            &Value::Num(n) =>
-                write!(f, "{}", n),
-            &Value::Bool(b) =>
-                write!(f, "{}", b),
-            &Value::Null =>
-                write!(f, "null"),
-        }
-    }
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use array::Array;
     use Error;
     use object::Object;
+    use raw;
     use Replica;
+    use serde_json::{self, Value as Json};
+
+    const REPLICA: Replica = Replica{site: 1, counter: 1};
 
     #[test]
     fn test_get_nested_trivial() {
-        let mut values = vec![
-            Value::Null,
-            Value::Bool(true),
-            Value::Num(3.2),
-            Value::Str("hello".to_string()),
-            Value::attrstr(),
-            Value::array(),
-            Value::object()];
-
-        for v in &mut values {
+        for v in &mut test_values() {
             assert!(v.clone().get_nested("") == Ok(v));
         }
     }
 
     #[test]
     fn test_get_nested() {
-        let replica = Replica::new(1,1);
         let mut object = Object::new();
 
         // insert a value whose key is empty
         let mut bool_value = Value::Bool(true);
-        object.put("", bool_value.clone(), &replica);
+        object.put("", bool_value.clone(), &REPLICA);
 
         // insert a value whose key contains '/'
         let mut num_value = Value::Num(1.0);
-        object.put("/", num_value.clone(), &replica);
+        object.put("/", num_value.clone(), &REPLICA);
 
         // insert a nested array
         let mut array = Array::new();
         let mut array_0 = Value::Num(1.0);
         let mut array_1 = Value::Num(2.0);
-        array.insert(0, array_0.clone(), &replica);
-        array.insert(1, array_1.clone(), &replica);
+        array.insert(0, array_0.clone(), &REPLICA);
+        array.insert(1, array_1.clone(), &REPLICA);
         let mut array = Value::Arr(array);
-        object.put("101", array.clone(), &replica);
+        object.put("101", array.clone(), &REPLICA);
 
         // insert a nested attribute string
         let mut attrstr = Value::attrstr();
-        object.put("a", attrstr.clone(), &replica);
+        object.put("a", attrstr.clone(), &REPLICA);
 
         // insert a nested object
         let mut nested_object = Value::object();
-        object.put("a%b", nested_object.clone(), &replica);
+        object.put("a%b", nested_object.clone(), &REPLICA);
 
         let mut value = Value::Obj(object);
         assert!(value.get_nested("/") == Ok(&mut bool_value));
@@ -209,5 +208,87 @@ mod tests {
         assert!(value.get_nested("/~1/a") == Err(Error::ValueMismatch("pointer")));
         assert!(value.get_nested("/101/-1") == Err(Error::ValueMismatch("pointer")));
         assert!(value.get_nested("/101/2") == Err(Error::ValueMismatch("pointer")));
+    }
+
+    #[test]
+    fn test_get_nested_remote_root() {
+        for v in &mut test_values() {
+            assert!(v.clone().get_nested("") == Ok(v));
+        }
+    }
+
+    #[test]
+    fn test_get_nested_remote_object() {
+        for v in &mut test_values() {
+            let mut object = Object::new();
+            let op = object.put("foo", v.clone(), &REPLICA);
+            let uid = op.new_element.unwrap().uid;
+            let mut root = Value::Obj(object);
+            let remote_pointer = format!("/{}", uid.to_string());
+            assert!(root.get_nested_remote(&remote_pointer) == Ok((v, "/foo".to_string())));
+        }
+    }
+
+    #[test]
+    fn test_get_nested_remote_array() {
+        for v in &mut test_values() {
+            let mut array = Array::new();
+            let op = array.insert(0, v.clone(), &REPLICA).ok().unwrap();
+            let ref uid = op.inserts[0].uid;
+            let mut root = Value::Arr(array);
+            let remote_pointer = format!("/{}", uid.to_string());
+            assert!(root.get_nested_remote(&remote_pointer) == Ok((v, "/0".to_string())));
+        }
+    }
+
+    #[test]
+    fn test_get_nested_remote_object_array() {
+        for v in &mut test_values() {
+            let mut object = Object::new();
+            let mut array  = Array::new();
+            let op1 = array.insert(0, v.clone(), &REPLICA).ok().unwrap();
+            let op2 = object.put("bar", Value::Arr(array), &REPLICA);
+            let remote_pointer = {
+                let uid2 = op2.new_element.unwrap().uid.to_string();
+                let uid1 = op1.inserts[0].uid.to_string();
+                format!("/{}/{}", uid2, uid1)
+            };
+            let mut root = Value::Obj(object);
+            assert!(root.get_nested_remote(&remote_pointer) == Ok((v, "/bar/0".to_string())));
+        }
+    }
+
+    #[test]
+    fn test_get_nested_remote_array_object() {
+        for v in &mut test_values() {
+            let mut array  = Array::new();
+            let mut object = Object::new();
+            let op1 = object.put("baz", v.clone(), &REPLICA);
+            let op2 = array.insert(0, Value::Obj(object), &REPLICA).ok().unwrap();
+            let remote_pointer = {
+                let uid2 = op2.inserts[0].uid.to_string();
+                let uid1 = op1.new_element.unwrap().uid.to_string();
+                format!("/{}/{}", uid2, uid1)
+            };
+            let mut root = Value::Arr(array);
+            assert!(root.get_nested_remote(&remote_pointer) == Ok((v, "/0/baz".to_string())));
+        }
+    }
+
+    fn test_values() -> Vec<Value> {
+        vec![
+            Value::Null,
+            Value::Bool(false),
+            Value::Num(-1423.8304),
+            Value::Str("wysiwyg".to_string()),
+            from_str(r#"{"__TYPE__":"attrstr", "text":"huh?"}"#),
+            from_str(r#"[true, false, true]"#),
+            from_str(r#"{"a":1, "b":2}"#),
+        ]
+    }
+
+    fn from_str(string: &str) -> Value {
+        let json: Json = serde_json::from_str(string).expect("invalid JSON!");
+        raw::decode(&json, &Replica::new(1,1))
     }
 }

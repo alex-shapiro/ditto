@@ -10,7 +10,7 @@ use Replica;
 use std::collections::HashMap;
 use Value;
 
-#[derive(Clone,PartialEq)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Object(HashMap<String, Vec<Element>>);
 
 impl Object {
@@ -51,21 +51,25 @@ impl Object {
         }
     }
 
-    pub fn get_by_uid(&mut self, uid: &UID) -> Option<&mut Element> {
+    pub fn get_by_uid(&mut self, uid: &UID) -> Result<&mut Element, Error> {
         let key_elements = self.0.get_mut(&uid.key);
         match key_elements {
             None =>
-                None,
-            Some(key_elements) =>
-                key_elements.iter_mut().find(|e| &e.uid == uid),
+                Err(Error::UIDDoesNotExist),
+            Some(key_elements) => {
+                match key_elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
+                    Ok(index) => Ok(&mut key_elements[index]),
+                    Err(_) => Err(Error::UIDDoesNotExist),
+                }
+            }
         }
     }
 
     pub fn replace_by_uid(&mut self, uid: &UID, value: Value) -> bool {
         match self.get_by_uid(uid) {
-            None =>
+            Err(_) =>
                 false,
-            Some(element) => {
+            Ok(element) => {
                 element.value = value;
                 true},
         }

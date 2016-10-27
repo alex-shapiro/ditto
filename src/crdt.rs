@@ -1,7 +1,7 @@
 use compact;
 use Error;
 use op::local::LocalOp;
-use op::NestedRemoteOp;
+use op::{NestedLocalOp, NestedRemoteOp};
 use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
 use raw;
 use Replica;
@@ -119,9 +119,13 @@ impl CRDT {
         number_value.increment(amount)
     }
 
-    pub fn execute_remote(&mut self, nested_op: &NestedRemoteOp) -> Result<Vec<LocalOp>, Error> {
-        let ref pointer = nested_op.pointer;
-        let mut value = try!(self.root_value.get_nested(pointer));
-        value.execute_remote(&nested_op.op)
+    pub fn execute_remote(&mut self, nested_op: &NestedRemoteOp) -> Result<Vec<NestedLocalOp>, Error> {
+        let ref ptr = nested_op.pointer;
+        let (mut value, local_ptr) = try!(self.root_value.get_nested_remote(ptr));
+        let local_ops = try!(value.execute_remote(&nested_op.op));
+        Ok(local_ops
+            .into_iter()
+            .map(|local_op| NestedLocalOp{pointer: local_ptr.clone(), op: local_op})
+            .collect())
     }
 }
