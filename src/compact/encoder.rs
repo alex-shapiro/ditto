@@ -1,8 +1,10 @@
-use Value;
 use array;
 use attributed_string;
 use object;
+use op::{NestedRemoteOp, RemoteOp};
+use op::remote::{UpdateObject, UpdateArray, UpdateAttributedString, IncrementNumber};
 use serde_json::Value as Json;
+use Value;
 
 pub fn encode(value: &Value) -> Json {
     match *value {
@@ -20,6 +22,21 @@ pub fn encode(value: &Value) -> Json {
             Json::Bool(bool_value),
         Value::Null =>
             Json::Null,
+    }
+}
+
+pub fn encode_op(nested_op: &NestedRemoteOp) -> Json {
+    let pointer = nested_op.pointer.clone();
+    let operation = &nested_op.op;
+    match *operation {
+        RemoteOp::UpdateObject(ref op) =>
+            encode_op_update_object(op, pointer),
+        RemoteOp::UpdateArray(ref op) =>
+            encode_op_update_array(op, pointer),
+        RemoteOp::UpdateAttributedString(ref op) =>
+            encode_op_update_attributed_string(op, pointer),
+        RemoteOp::IncrementNumber(ref op) =>
+            encode_op_increment_number(op, pointer),
     }
 }
 
@@ -80,4 +97,70 @@ fn encode_object_element(element: &object::element::Element) -> Json {
     element_vec.push(Json::String(element.uid.to_string()));
     element_vec.push(encode(&element.value));
     Json::Array(element_vec)
+}
+
+// encode UpdateObject op as [3,pointer,key,ObjectElement,[ObjectUID]]
+fn encode_op_update_object(op: &UpdateObject, pointer: String) -> Json {
+    let mut op_vec: Vec<Json> = Vec::with_capacity(5);
+    let mut uid_vec: Vec<Json> = Vec::with_capacity(op.deleted_uids.len());
+
+    for uid in &op.deleted_uids {
+        uid_vec.push(Json::String(uid.to_string()));
+    }
+    let new_element = match op.new_element {
+        Some(ref elt) => encode_object_element(elt),
+        None => Json::Null
+    };
+
+    op_vec.push(Json::U64(3));
+    op_vec.push(Json::String(pointer));
+    op_vec.push(Json::String(op.key.to_string()));
+    op_vec.push(new_element);
+    op_vec.push(Json::Array(uid_vec));
+    Json::Array(op_vec)
+}
+
+// encode UpdateArray op as [4,pointer,[ArrayElement],[SequenceUID]]
+fn encode_op_update_array(op: &UpdateArray, pointer: String) -> Json {
+    let mut op_vec: Vec<Json> = Vec::with_capacity(4);
+    let mut inserts_vec: Vec<Json> = Vec::with_capacity(op.inserts.len());
+    let mut deletes_vec: Vec<Json> = Vec::with_capacity(op.deletes.len());
+
+    for elt in &op.inserts {
+        inserts_vec.push(encode_array_element(&elt));
+    }
+    for uid in &op.deletes {
+        deletes_vec.push(Json::String(uid.to_string()));
+    }
+
+    op_vec.push(Json::U64(4));
+    op_vec.push(Json::String(pointer));
+    op_vec.push(Json::Array(inserts_vec));
+    op_vec.push(Json::Array(deletes_vec));
+    Json::Array(op_vec)
+}
+
+// encode UpdateAttributedString as [5,pointer,[AttrStrElement],[SequenceUID]]
+fn encode_op_update_attributed_string(op: &UpdateAttributedString, pointer: String) -> Json {
+    let mut op_vec: Vec<Json> = Vec::with_capacity(4);
+    let mut inserts_vec: Vec<Json> = Vec::with_capacity(op.inserts.len());
+    let mut deletes_vec: Vec<Json> = Vec::with_capacity(op.deletes.len());
+
+    for elt in &op.inserts {
+        inserts_vec.push(encode_attributed_string_element(&elt));
+    }
+    for uid in &op.deletes {
+        deletes_vec.push(Json::String(uid.to_string()));
+    }
+
+    op_vec.push(Json::U64(5));
+    op_vec.push(Json::String(pointer));
+    op_vec.push(Json::Array(inserts_vec));
+    op_vec.push(Json::Array(deletes_vec));
+    Json::Array(op_vec)
+}
+
+// encode IncrementNumber as [6,pointer,amount]
+fn encode_op_increment_number(op: &IncrementNumber, pointer: String) -> Json {
+    Json::Array(vec![Json::U64(6), Json::String(pointer), Json::F64(op.amount)])
 }

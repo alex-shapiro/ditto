@@ -6,6 +6,8 @@ use Error;
 use object::element::Element as ObjectElement;
 use object::Object;
 use object::uid::UID as ObjectUID;
+use op::{NestedRemoteOp, RemoteOp};
+use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
 use sequence::uid::UID as SequenceUID;
 use serde_json::Value as Json;
 use std::collections::HashMap;
@@ -31,6 +33,24 @@ pub fn decode(json: &Json) -> Result<Value, Error> {
         Json::Object(_) =>
             Err(Error::DecodeCompact),
     }
+}
+
+pub fn decode_op(json: &Json) -> Result<NestedRemoteOp, Error> {
+    let op_array = try!(json.as_array().ok_or(Error::DecodeCompact));
+    if op_array.len() < 2 { return Err(Error::DecodeCompact) }
+
+    let op_type = try!(op_array[0].as_u64().ok_or(Error::DecodeCompact));
+    let pointer = try!(op_array[1].as_str().ok_or(Error::DecodeCompact));
+
+    let op = try!(match op_type {
+        3 => decode_op_update_object(op_array),
+        4 => decode_op_update_array(op_array),
+        5 => decode_op_update_attributed_string(op_array),
+        6 => decode_op_increment_number(op_array),
+        _ => return Err(Error::DecodeCompact),
+    });
+
+    Ok(NestedRemoteOp{pointer: pointer.to_owned(), op: op})
 }
 
 #[inline]
@@ -123,4 +143,102 @@ fn decode_object_element(element: &Json) -> Result<ObjectElement, Error> {
     let value       = try!(decode(&element_vec[1]));
     let uid         = try!(ObjectUID::from_str(encoded_uid));
     Ok(ObjectElement{uid: uid, value: value})
+}
+
+#[inline]
+// decode [3,pointer,key,ObjectElement,[ObjectUID]] as UpdateObject
+fn decode_op_update_object(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
+    if op_vec.len() != 5 { return Err(Error::DecodeCompact) }
+
+    // decode key
+    let key = try!(as_str(&op_vec[2])).to_owned();
+
+    // decode new_element
+    let element = match op_vec[3] {
+        Json::Null => None,
+        ref otherwise  => Some(try!(decode_object_element(otherwise))),
+    };
+
+    // decode deleted_uids
+    let encoded_uids = try!(as_array(&op_vec[4]));
+    let mut uids = Vec::with_capacity(encoded_uids.len());
+    for uid_json in encoded_uids {
+        let uid_str = try!(as_str(uid_json));
+        let uid = try!(ObjectUID::from_str(uid_str));
+        uids.push(uid);
+    }
+
+    let op = UpdateObject{key: key, new_element: element, deleted_uids: uids};
+    Ok(RemoteOp::UpdateObject(op))
+}
+
+#[inline]
+// decode [4,pointer,[ArrayElement],[SequenceUID]] as nested UpdateArray
+fn decode_op_update_array(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
+    if op_vec.len() != 4 { return Err(Error::DecodeCompact) }
+
+    // decode inserts
+    let encoded_inserts = try!(as_array(&op_vec[2]));
+    let mut inserts = Vec::with_capacity(encoded_inserts.len());
+    for encoded_element in encoded_inserts {
+         let element = try!(decode_array_element(encoded_element));
+         inserts.push(element);
+    }
+
+    // decode deletes
+    let encoded_deletes = try!(as_array(&op_vec[3]));
+    let mut deletes = Vec::with_capacity(encoded_deletes.len());
+    for encoded_uid in encoded_deletes {
+        let uid_str = try!(as_str(encoded_uid));
+        let uid = try!(SequenceUID::from_str(uid_str));
+        deletes.push(uid);
+    }
+
+    let op = UpdateArray{inserts: inserts, deletes: deletes};
+    Ok(RemoteOp::UpdateArray(op))
+}
+
+#[inline]
+// decode [5,pointer,[AttrStrElement],[SequenceUID]]  UpdateAttributedString
+fn decode_op_update_attributed_string(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
+    if op_vec.len() != 4 { return Err(Error::DecodeCompact) }
+
+    // decode inserts
+    let encoded_inserts = try!(as_array(&op_vec[2]));
+    let mut inserts = Vec::with_capacity(encoded_inserts.len());
+    for encoded_element in encoded_inserts {
+         let element = try!(decode_attributed_string_element(encoded_element));
+         inserts.push(element);
+    }
+
+    // decode deletes
+    let encoded_deletes = try!(as_array(&op_vec[3]));
+    let mut deletes = Vec::with_capacity(encoded_deletes.len());
+    for encoded_uid in encoded_deletes {
+        let uid_str = try!(as_str(encoded_uid));
+        let uid = try!(SequenceUID::from_str(uid_str));
+        deletes.push(uid);
+    }
+
+    let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
+    Ok(RemoteOp::UpdateAttributedString(op))
+}
+
+#[inline]
+// decode [6,pointer,amount] as IncrementNumber
+fn decode_op_increment_number(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
+    if op_vec.len() != 3 { return Err(Error::DecodeCompact) }
+    let amount = try!(op_vec[2].as_f64().ok_or(Error::DecodeCompact));
+    let op = IncrementNumber{amount: amount};
+    Ok(RemoteOp::IncrementNumber(op))
+}
+
+#[inline]
+fn as_str(json: &Json) -> Result<&str, Error> {
+    json.as_str().ok_or(Error::DecodeCompact)
+}
+
+#[inline]
+fn as_array(json: &Json) -> Result<&Vec<Json>, Error> {
+    json.as_array().ok_or(Error::DecodeCompact)
 }

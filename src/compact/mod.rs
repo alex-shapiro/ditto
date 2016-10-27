@@ -1,8 +1,8 @@
 pub mod decoder;
 pub mod encoder;
 
-pub use self::decoder::decode;
-pub use self::encoder::encode;
+pub use self::decoder::{decode, decode_op};
+pub use self::encoder::{encode, encode_op};
 
 #[cfg(test)]
 mod tests {
@@ -11,6 +11,8 @@ mod tests {
     use attributed_string::AttributedString;
     use Error;
     use object::Object;
+    use op::{NestedRemoteOp, RemoteOp};
+    use op::remote::IncrementNumber;
     use Replica;
     use serde_json;
     use Value;
@@ -107,7 +109,7 @@ mod tests {
 
     #[test]
     fn test_nested() {
-        let mut array   = Array::new();
+        let mut array = Array::new();
         let _ = array.insert(0, Value::object(), &Replica::new(34,2));
         let _ = array.insert(1, Value::attrstr(), &Replica::new(392,12));
         let _ = array.insert(2, Value::array(), &Replica::new(4782,4));
@@ -115,6 +117,60 @@ mod tests {
         let original = Value::Arr(array);
         let encoded  = encode_str(&original);
         let decoded  = decode_str(&encoded).ok().unwrap();
+        assert!(original == decoded);
+    }
+
+    #[test]
+    fn test_update_object() {
+        let replica    = Replica::new(4,3);
+        let mut object = Object::new();
+        let op         = object.put("foo", Value::Num(409.1), &replica);
+        let remote_op  = RemoteOp::UpdateObject(op);
+        let pointer    = "hfas/fs,bar/bhsd".to_owned();
+
+        let original = NestedRemoteOp{pointer: pointer, op: remote_op};
+        let encoded = encode_op(&original);
+        let decoded = decode_op(&encoded).ok().unwrap();
+        assert!(original == decoded);
+    }
+
+    #[test]
+    fn test_update_array() {
+        let replica   = Replica::new(4,3);
+        let mut array = Array::new();
+        let op        = array.insert(0, Value::Num(409.1), &replica).ok().unwrap();
+        let remote_op = RemoteOp::UpdateArray(op);
+        let pointer   = "/asdf/hjkl".to_owned();
+
+        let original = NestedRemoteOp{pointer: pointer, op: remote_op};
+        let encoded = encode_op(&original);
+        let decoded = decode_op(&encoded).ok().unwrap();
+        assert!(original == decoded);
+    }
+
+    #[test]
+    fn test_update_attributed_string() {
+        let replica     = Replica::new(4,3);
+        let mut attrstr = AttributedString::new();
+        let op          = attrstr.insert_text(0, "hello".to_owned(), &replica).ok().unwrap();
+        let remote_op   = RemoteOp::UpdateAttributedString(op);
+        let pointer     = "/asdf/hjkl".to_owned();
+
+        let original = NestedRemoteOp{pointer: pointer, op: remote_op};
+        let encoded = encode_op(&original);
+        let decoded = decode_op(&encoded).ok().unwrap();
+        assert!(original == decoded);
+    }
+
+    #[test]
+    fn test_increment_number() {
+        let op        = IncrementNumber{amount: 483.24};
+        let remote_op = RemoteOp::IncrementNumber(op);
+        let pointer   = "/7nlhs/fhs04-baz/f7y2".to_owned();
+
+        let original = NestedRemoteOp{pointer: pointer, op: remote_op};
+        let encoded = encode_op(&original);
+        let decoded = decode_op(&encoded).ok().unwrap();
         assert!(original == decoded);
     }
 
