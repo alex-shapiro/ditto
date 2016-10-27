@@ -12,6 +12,7 @@ pub struct NestedLocalOp {
     pub op: local::LocalOp,
 }
 
+#[derive(PartialEq)]
 pub struct NestedRemoteOp {
     pub pointer: String,
     pub op: remote::RemoteOp,
