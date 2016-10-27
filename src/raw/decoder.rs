@@ -64,7 +64,6 @@ fn decode_attributed_string(map: &Map<String, Json>, replica: &Replica) -> Attri
 #[cfg(test)]
 mod tests {
     use super::*;
-    use Error;
     use Replica;
     use serde_json;
     use Value;
