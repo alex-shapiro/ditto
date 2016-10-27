@@ -106,30 +106,30 @@ impl Value {
     }
 
     pub fn get_nested_remote(&mut self, pointer: &str) -> Result<(&mut Value, String), Error> {
-        let mut value: Result<&mut Value, Error> = Ok(self);
+        let mut value = Some(self);
         let mut local_pointer = String::new();
 
         for encoded_uid in pointer.split("/").skip(1) {
-            value = match *value.ok().unwrap() {
+            value = match *value.unwrap() {
                 Value::Obj(ref mut object) => {
                     let uid = try!(object::UID::from_str(encoded_uid));
                     let mut element = try!(object.get_by_uid(&uid));
                     local_pointer.push('/');
                     local_pointer.push_str(&uid.key);
-                    Ok(&mut element.value)
+                    Some(&mut element.value)
                 },
                 Value::Arr(ref mut array) => {
                     let uid = try!(sequence::uid::UID::from_str(encoded_uid));
                     let (mut element, index) = try!(array.get_by_uid(&uid));
                     local_pointer.push_str(&format!("/{}", index));
-                    Ok(&mut element.value)
+                    Some(&mut element.value)
                 },
                 _ => {
                     return Err(Error::ValueMismatch("pointer"))
                 }
             }
         }
-        Ok((value.ok().unwrap(), local_pointer))
+        Ok((value.unwrap(), local_pointer))
     }
 
     pub fn execute_remote(&mut self, op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
