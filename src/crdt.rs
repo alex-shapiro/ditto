@@ -127,8 +127,7 @@ impl CRDT {
         Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::IncrementNumber(op)})
     }
 
-    pub fn execute_remote(&mut self, nested_op_json: &Json) -> R<Vec<NestedLocalOp>> {
-        let nested_op = try!(compact::decode_op(nested_op_json));
+    pub fn execute_remote(&mut self, nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
         let ref ptr = nested_op.pointer;
         let (mut value, local_ptr) = try!(self.root_value.get_nested_remote(ptr));
         let local_ops = try!(value.execute_remote(&nested_op.op));
@@ -136,5 +135,10 @@ impl CRDT {
             .into_iter()
             .map(|local_op| NestedLocalOp{pointer: local_ptr.clone(), op: local_op})
             .collect())
+    }
+
+    pub fn execute_remote_json(&mut self, nested_op_json: &Json) -> R<Vec<NestedLocalOp>> {
+        let nested_op = try!(compact::decode_op(nested_op_json));
+        self.execute_remote(nested_op)
     }
 }
