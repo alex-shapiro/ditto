@@ -41,13 +41,17 @@ impl Object {
         }
     }
 
-    pub fn get_by_key(&mut self, key: &str) -> Option<&mut Element> {
-        let key_elements = self.0.get_mut(key);
+    pub fn get_by_key(&mut self, key: &str) -> Result<&mut Element, Error> {
+        let key_elements: Option<&mut Vec<Element>> = self.0.get_mut(key);
         match key_elements {
             None =>
-                None,
-            Some(elements) =>
-                elements.iter_mut().min_by_key(|e| e.uid.site),
+                Err(Error::KeyDoesNotExist),
+            Some(elements) => {
+                match elements.iter_mut().min_by_key(|e| e.uid.site) {
+                    Some(elt) => Ok(elt),
+                    None => Err(Error::KeyDoesNotExist),
+                }
+            }
         }
     }
 
@@ -62,16 +66,6 @@ impl Object {
                     Err(_) => Err(Error::UIDDoesNotExist),
                 }
             }
-        }
-    }
-
-    pub fn replace_by_uid(&mut self, uid: &UID, value: Value) -> bool {
-        match self.get_by_uid(uid) {
-            Err(_) =>
-                false,
-            Ok(element) => {
-                element.value = value;
-                true},
         }
     }
 
@@ -160,7 +154,7 @@ mod tests {
         assert!(op.key == "bar".to_string());
         assert!(op.new_element == None);
         assert!(op.deleted_uids.len() == 1);
-        assert!(object.get_by_key("bar") == None);
+        assert!(object.get_by_key("bar") == Err(Error::KeyDoesNotExist));
     }
 
     #[test]
@@ -203,15 +197,5 @@ mod tests {
         let op4 = object.execute_remote(&op3);
         let op4_unwrapped = op4.put().unwrap();
         assert!(op4_unwrapped.value == Value::Bool(true));
-    }
-
-    #[test]
-    fn test_replace_by_uid() {
-        let mut object = Object::new();
-        let replica = Replica::new(1,1);
-        let op1 = object.put("foo", Value::Num(1.0), &replica);
-        let uid = op1.new_element.unwrap().uid;
-        assert!(object.replace_by_uid(&uid, Value::Bool(true)));
-        assert!(object.get_by_uid(&uid).unwrap().value == Value::Bool(true));
     }
 }

@@ -49,7 +49,7 @@ fn decode_object(map: &Map<String, Json>, replica: &Replica) -> Object {
 fn decode_array(vec: &Vec<Json>, replica: &Replica) -> Array {
     let mut array = Array::new();
     for (i, value) in vec.iter().enumerate() {
-        array.insert(i, decode(value, replica), replica);
+        let _ = array.insert(i, decode(value, replica), replica);
     }
     array
 }
@@ -57,7 +57,7 @@ fn decode_array(vec: &Vec<Json>, replica: &Replica) -> Array {
 fn decode_attributed_string(map: &Map<String, Json>, replica: &Replica) -> AttributedString {
     let mut string = AttributedString::new();
     let text = map.get("text").and_then(|json| json.as_str()).unwrap();
-    string.insert_text(0, text.to_string(), replica);
+    let _ = string.insert_text(0, text.to_string(), replica);
     string
 }
 
