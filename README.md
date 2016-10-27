@@ -39,10 +39,12 @@ assert!(crdt1 == crdt2);
 
 ## Limitations
 
-Ditto does not provide functions for site allocation or network connections. Site allocation must be handled carefully; Ditto may fail to maintain consistency if multiple clients use the same site concurrently.
+Ditto does not provide site allocation or networking features. Site allocation in particular must be handled carefully; two or more clients using the same site concurrently will lead to consistency errors.
 
-Ditto requires that each site send its messages to other sites in order; otherwise it may fail to maintain consistency between sites.
+All remote operations received from some site **S** must be executed in the order that they were generated at **S**. Out-of-order remote execution will lead to consistency errors.
 
 The root value of a CRDT cannot be replaced. This means that your root value type is permanent; if you create a CRDT with a String or Bool root type, that means your CRDT is immutable!
 
 Mutable container types **Object**, **Array**, and **AttributedString** have significant memory and storage overhead associated with both the container and each element. A CRDT, when stored, may take over 3x the size of the equivalent non-CRDT JSON structure. This overhead is due to CRDT requirements of unique IDs for each item.
+
+Ditto is closely bound to `serde_json` at the moment. It is a required crate; this may change over time as more compact binary encoder are evaluated for serialization to disk and network.
