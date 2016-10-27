@@ -7,5 +7,6 @@ pub enum Error {
     InvalidRemoteOp,
     Noop,
     OutOfBounds,
+    UIDDoesNotExist,
     VLQNoTerminatingByte,
 }
