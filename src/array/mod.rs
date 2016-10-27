@@ -58,7 +58,7 @@ impl Array {
 
     pub fn get_by_uid(&mut self, uid: &UID) -> Result<(&mut Element, usize), Error> {
         match self.0.binary_search_by(|elt| elt.uid.cmp(uid)) {
-            Ok(index) => Ok((&mut self.0[index - 1], index - 1)),
+            Ok(index) => Ok((&mut self.0[index], index - 1)),
             Err(_) => Err(Error::UIDDoesNotExist),
         }
     }

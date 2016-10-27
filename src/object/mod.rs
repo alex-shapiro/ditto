@@ -10,7 +10,7 @@ use Replica;
 use std::collections::HashMap;
 use Value;
 
-#[derive(Clone,PartialEq)]
+#[derive(Debug,Clone,PartialEq)]
 pub struct Object(HashMap<String, Vec<Element>>);
 
 impl Object {
