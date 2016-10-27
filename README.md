@@ -1,5 +1,5 @@
-Ditto Rust
-==========
+Ditto
+=====
 
 Ditto is a CRDT library focusing on simplicity. Its goal is to allow real-time collaboration with JSON-like data.
 
@@ -23,11 +23,11 @@ assert!(crdt1 == crdt2);
 
 ## Supported Types
 
-**Object**, a key-value data structure with string-typed keys and any supported type as a value. It functions just like a JSON object, and in case of concurrent updates to the same key it chooses the update with the smaller site. Supported functions are `put` and `delete`.
+**Object**, a mutable key-value data structure with string-typed keys and any supported type as a value. It functions like a JSON object. Supported functions are `put` and `delete`.
 
-**Array**, a vec-like data structure and any supported type as an item value. It functions just like a JSON array, and it executes concurrent inserts in a universally consistent manner. Supported functions are `insert_item` and `delete_item`.
+**Array**, a mutable vec-like data structure that can hold items of any supported type. It functions like a JSON array. Supported functions are `insert_item` and `delete_item`.
 
-**AttributedString**, a mutable string data structure. Like arrays, concurrent inserts and deletes result in a universally consistent state. Supported functions are `insert_text`, `delete_text`, and `replace_text`.
+**AttributedString**, a mutable string-like data structure. Supported functions are `insert_text`, `delete_text`, and `replace_text`.
 
 **String**, an immutable string. Strings, unlike AttributeStrings, do not support any functions.
 
@@ -39,10 +39,12 @@ assert!(crdt1 == crdt2);
 
 ## Limitations
 
-Ditto does not provide functions for site allocation or network connections. Site allocation must be handled carefully; Ditto may fail to maintain consistency if multiple clients use the same site concurrently.
+Ditto does not provide site allocation or networking features. Site allocation in particular must be handled carefully; two or more clients using the same site concurrently will lead to consistency errors.
 
-Ditto requires that each site send its messages to other sites in order; otherwise it may fail to maintain consistency between sites.
+All remote operations received from some site **S** must be executed in the order that they were generated at **S**. Out-of-order remote execution will lead to consistency errors.
 
 The root value of a CRDT cannot be replaced. This means that your root value type is permanent; if you create a CRDT with a String or Bool root type, that means your CRDT is immutable!
 
-Mutable types **Object**, **Array**, and **AttributedString** all have significant memory and storage overhead associated with the container AND each element. The average Ditto CRDT, when stored, clocks in at about 3x the size of an identical JSON structure. This overhead is due to CRDT requirements of unique IDs for each item.
+Mutable container types **Object**, **Array**, and **AttributedString** have significant memory and storage overhead associated with both the container and each element. A CRDT, when stored, may take over 3x the size of the equivalent non-CRDT JSON structure. This overhead is due to CRDT requirements of unique IDs for each item.
+
+Ditto is closely bound to `serde_json` at the moment. It is a required crate; this may change over time as more compact binary encoder are evaluated for serialization to disk and network.
