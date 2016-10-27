@@ -148,7 +148,6 @@ impl Value {
 mod tests {
     use super::*;
     use array::Array;
-    use Error;
     use object::Object;
     use raw;
     use Replica;
@@ -157,60 +156,74 @@ mod tests {
     const REPLICA: Replica = Replica{site: 1, counter: 1};
 
     #[test]
-    fn test_get_nested_trivial() {
+    fn test_get_nested_local_root() {
         for v in &mut test_values() {
-            assert!(v.clone().get_nested("") == Ok(v));
+            assert!(v.clone().get_nested_local("") == Ok((v, String::new())));
         }
     }
 
     #[test]
-    fn test_get_nested() {
-        let mut object = Object::new();
+    fn test_get_nested_local_object() {
+        for v in &mut test_values() {
+            let mut object = Object::new();
+            let op = object.put("foo", v.clone(), &REPLICA);
+            let uid = op.new_element.unwrap().uid;
+            let mut root = Value::Obj(object);
+            let remote_pointer = format!("/{}", uid.to_string());
+            assert!(root.get_nested_local("/foo") == Ok((v, remote_pointer)));
+        }
+    }
 
-        // insert a value whose key is empty
-        let mut bool_value = Value::Bool(true);
-        object.put("", bool_value.clone(), &REPLICA);
+    #[test]
+    fn test_get_nested_local_array() {
+        for v in &mut test_values() {
+            let mut array = Array::new();
+            let op = array.insert(0, v.clone(), &REPLICA).ok().unwrap();
+            let ref uid = op.inserts[0].uid;
+            let mut root = Value::Arr(array);
+            let remote_pointer = format!("/{}", uid.to_string());
+            assert!(root.get_nested_local("/0") == Ok((v, remote_pointer)));
+        }
+    }
 
-        // insert a value whose key contains '/'
-        let mut num_value = Value::Num(1.0);
-        object.put("/", num_value.clone(), &REPLICA);
+    #[test]
+    fn test_get_nested_local_object_array() {
+        for v in &mut test_values() {
+            let mut object = Object::new();
+            let mut array  = Array::new();
+            let op1 = array.insert(0, v.clone(), &REPLICA).ok().unwrap();
+            let op2 = object.put("bar", Value::Arr(array), &REPLICA);
+            let remote_pointer = {
+                let uid2 = op2.new_element.unwrap().uid.to_string();
+                let uid1 = op1.inserts[0].uid.to_string();
+                format!("/{}/{}", uid2, uid1)
+            };
+            let mut root = Value::Obj(object);
+            assert!(root.get_nested_local("/bar/0") == Ok((v, remote_pointer)));
+        }
+    }
 
-        // insert a nested array
-        let mut array = Array::new();
-        let mut array_0 = Value::Num(1.0);
-        let mut array_1 = Value::Num(2.0);
-        array.insert(0, array_0.clone(), &REPLICA);
-        array.insert(1, array_1.clone(), &REPLICA);
-        let mut array = Value::Arr(array);
-        object.put("101", array.clone(), &REPLICA);
-
-        // insert a nested attribute string
-        let mut attrstr = Value::attrstr();
-        object.put("a", attrstr.clone(), &REPLICA);
-
-        // insert a nested object
-        let mut nested_object = Value::object();
-        object.put("a%b", nested_object.clone(), &REPLICA);
-
-        let mut value = Value::Obj(object);
-        assert!(value.get_nested("/") == Ok(&mut bool_value));
-        assert!(value.get_nested("/~1") == Ok(&mut num_value));
-        assert!(value.get_nested("/101") == Ok(&mut array));
-        assert!(value.get_nested("/101/0") == Ok(&mut array_0));
-        assert!(value.get_nested("/101/1") == Ok(&mut array_1));
-        assert!(value.get_nested("/a") == Ok(&mut attrstr));
-        assert!(value.get_nested("/a%b") == Ok(&mut nested_object));
-
-        assert!(value.get_nested("/asdf") == Err(Error::ValueMismatch("pointer")));
-        assert!(value.get_nested("/~1/a") == Err(Error::ValueMismatch("pointer")));
-        assert!(value.get_nested("/101/-1") == Err(Error::ValueMismatch("pointer")));
-        assert!(value.get_nested("/101/2") == Err(Error::ValueMismatch("pointer")));
+    #[test]
+    fn test_get_nested_local_array_object() {
+        for v in &mut test_values() {
+            let mut array  = Array::new();
+            let mut object = Object::new();
+            let op1 = object.put("baz", v.clone(), &REPLICA);
+            let op2 = array.insert(0, Value::Obj(object), &REPLICA).ok().unwrap();
+            let remote_pointer = {
+                let uid2 = op2.inserts[0].uid.to_string();
+                let uid1 = op1.new_element.unwrap().uid.to_string();
+                format!("/{}/{}", uid2, uid1)
+            };
+            let mut root = Value::Arr(array);
+            assert!(root.get_nested_local("/0/baz") == Ok((v, remote_pointer)));
+        }
     }
 
     #[test]
     fn test_get_nested_remote_root() {
         for v in &mut test_values() {
-            assert!(v.clone().get_nested("") == Ok(v));
+            assert!(v.clone().get_nested_remote("") == Ok((v, String::new())));
         }
     }
 
