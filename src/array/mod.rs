@@ -169,7 +169,7 @@ mod tests {
     #[test]
     fn test_delete_invalid_index() {
         let mut array = Array::new();
-        array.insert(0, Value::Num(1.0), &REPLICA);
+        let _ = array.insert(0, Value::Num(1.0), &REPLICA);
         assert!(array.delete(1) == Err(Error::OutOfBounds));
     }
 

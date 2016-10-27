@@ -174,10 +174,10 @@ mod tests {
     #[test]
     fn test_encode_attributed_string() {
         let mut attrstr = AttributedString::new();
-        attrstr.insert_text(0, "the ".to_string(), &REPLICA);
-        attrstr.insert_text(4, "quick ".to_string(), &REPLICA);
-        attrstr.insert_text(10, "brown ".to_string(), &REPLICA);
-        attrstr.insert_text(16, "fox".to_string(), &REPLICA);
+        let _ = attrstr.insert_text(0, "the ".to_string(), &REPLICA);
+        let _ = attrstr.insert_text(4, "quick ".to_string(), &REPLICA);
+        let _ = attrstr.insert_text(10, "brown ".to_string(), &REPLICA);
+        let _ = attrstr.insert_text(16, "fox".to_string(), &REPLICA);
         let value = Value::AttrStr(attrstr);
         assert!(encode_str(&value) == r#"{"__TYPE__":"attrstr","text":"the quick brown fox"}"#);
     }
@@ -185,9 +185,9 @@ mod tests {
     #[test]
     fn test_encode_array() {
         let mut array = Array::new();
-        array.insert(0, Value::Num(1.0), &REPLICA);
-        array.insert(1, Value::Bool(true), &REPLICA);
-        array.insert(2, Value::Str("hey".to_string()), &REPLICA);
+        let _ = array.insert(0, Value::Num(1.0), &REPLICA);
+        let _ = array.insert(1, Value::Bool(true), &REPLICA);
+        let _ = array.insert(2, Value::Str("hey".to_string()), &REPLICA);
         let value = Value::Arr(array);
         assert!(encode_str(&value) == r#"[1.0,true,"hey"]"#);
     }
@@ -195,9 +195,9 @@ mod tests {
     #[test]
     fn test_encode_object() {
         let mut object = Object::new();
-        object.put("a", Value::Num(1.0), &REPLICA);
-        object.put("__TYPE__", Value::Null, &REPLICA);
-        object.put("~cookies~", Value::Bool(true), &REPLICA);
+        let _ = object.put("a", Value::Num(1.0), &REPLICA);
+        let _ = object.put("__TYPE__", Value::Null, &REPLICA);
+        let _ = object.put("~cookies~", Value::Bool(true), &REPLICA);
         let value = Value::Obj(object);
         let json = encode_str(&value);
         assert!(json.contains(r#""a":1.0"#));
@@ -208,13 +208,13 @@ mod tests {
     #[test]
     fn test_encode_nested() {
         let mut array = Array::new();
-        array.insert(0, Value::object(), &REPLICA);
-        array.insert(1, Value::attrstr(), &REPLICA);
-        array.insert(2, Value::array(), &REPLICA);
-        array.insert(3, Value::Str("hi!".to_string()), &REPLICA);
-        array.insert(4, Value::Num(-3234.1), &REPLICA);
-        array.insert(5, Value::Bool(true), &REPLICA);
-        array.insert(6, Value::Null, &REPLICA);
+        let _ = array.insert(0, Value::object(), &REPLICA);
+        let _ = array.insert(1, Value::attrstr(), &REPLICA);
+        let _ = array.insert(2, Value::array(), &REPLICA);
+        let _ = array.insert(3, Value::Str("hi!".to_string()), &REPLICA);
+        let _ = array.insert(4, Value::Num(-3234.1), &REPLICA);
+        let _ = array.insert(5, Value::Bool(true), &REPLICA);
+        let _ = array.insert(6, Value::Null, &REPLICA);
         let value = Value::Arr(array);
         let json = encode_str(&value);
         assert!(json == r#"[{},{"__TYPE__":"attrstr","text":""},[],"hi!",-3234.1,true,null]"#);
