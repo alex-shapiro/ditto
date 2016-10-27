@@ -1,7 +1,6 @@
 use compact;
 use Error;
-use op::{NestedLocalOp, NestedRemoteOp, LocalOp, RemoteOp};
-use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
+use op::{NestedLocalOp, NestedRemoteOp, RemoteOp};
 use raw;
 use Replica;
 use serde_json::Value as Json;
