@@ -74,34 +74,31 @@ impl Value {
         }
     }
 
-    pub fn get_nested<'a>(&'a mut self, pointer: &str) -> Result<&'a mut Value, Error> {
+    pub fn get_nested_local(&mut self, pointer: &str) -> Result<(&mut Value, String), Error> {
         let mut value = Some(self);
+        let mut remote_pointer = String::new();
 
         for escaped_key in pointer.split("/").skip(1) {
             let key = escaped_key.replace("~1", "/").replace("~0", "~");
-            if value.is_none() { return Err(Error::ValueMismatch("pointer")) }
             value = match *value.unwrap() {
-                Value::Obj(ref mut object) =>
-                    object
-                    .get_by_key(&key)
-                    .and_then(|e| Some(&mut e.value)),
-
+                Value::Obj(ref mut object) => {
+                    let mut element = try!(object.get_by_key(&key));
+                    remote_pointer.push('/');
+                    remote_pointer.push_str(&element.uid.to_string());
+                    Some(&mut element.value)
+                },
                 Value::Arr(ref mut array) => {
-                    let index = usize::from_str(&key).ok();
-                    if index.is_some() {
-                        array.get_by_index(index.unwrap()).and_then(|e| Some(&mut e.value))
-                    } else {
-                        None
-                    }
+                    let index = try!(usize::from_str(&key));
+                    let element = try!(array.get_by_index(index));
+                    remote_pointer.push('/');
+                    remote_pointer.push_str(&element.uid.to_string());
+                    Some(&mut element.value)
                 },
                 _ =>
-                    None,
+                    return Err(Error::ValueMismatch("pointer")),
             }
         }
-        match value {
-            Some(v) => Ok(v),
-            None => Err(Error::ValueMismatch("pointer"))
-        }
+        Ok((value.unwrap(), remote_pointer))
     }
 
     pub fn get_nested_remote(&mut self, pointer: &str) -> Result<(&mut Value, String), Error> {

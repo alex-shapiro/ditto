@@ -41,13 +41,17 @@ impl Object {
         }
     }
 
-    pub fn get_by_key(&mut self, key: &str) -> Option<&mut Element> {
-        let key_elements = self.0.get_mut(key);
+    pub fn get_by_key(&mut self, key: &str) -> Result<&mut Element, Error> {
+        let key_elements: Option<&mut Vec<Element>> = self.0.get_mut(key);
         match key_elements {
             None =>
-                None,
-            Some(elements) =>
-                elements.iter_mut().min_by_key(|e| e.uid.site),
+                Err(Error::KeyDoesNotExist),
+            Some(elements) => {
+                match elements.iter_mut().min_by_key(|e| e.uid.site) {
+                    Some(elt) => Ok(elt),
+                    None => Err(Error::KeyDoesNotExist),
+                }
+            }
         }
     }
 

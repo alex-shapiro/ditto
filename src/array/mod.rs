@@ -50,10 +50,10 @@ impl Array {
         }
     }
 
-    pub fn get_by_index(&mut self, index: usize) -> Option<&mut Element> {
-        if index >= self.len() { return None }
+    pub fn get_by_index(&mut self, index: usize) -> Result<&mut Element, Error> {
+        if index >= self.len() { return Err(Error::OutOfBounds) }
         let ref mut element = self.0[index+1];
-        Some(element)
+        Ok(element)
     }
 
     pub fn get_by_uid(&mut self, uid: &UID) -> Result<(&mut Element, usize), Error> {
