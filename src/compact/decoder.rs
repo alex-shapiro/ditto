@@ -201,19 +201,44 @@ fn decode_op_update_array(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
 #[inline]
 // decode [5,pointer,[AttrStrElement],[SequenceUID]]  UpdateAttributedString
 fn decode_op_update_attributed_string(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
-    Err(Error::DecodeCompact)
+    if op_vec.len() != 4 { return Err(Error::DecodeCompact) }
+
+    // decode inserts
+    let encoded_inserts = try!(as_array(&op_vec[2]));
+    let mut inserts = Vec::with_capacity(encoded_inserts.len());
+    for encoded_element in encoded_inserts {
+         let element = try!(decode_attributed_string_element(encoded_element));
+         inserts.push(element);
+    }
+
+    // decode deletes
+    let encoded_deletes = try!(as_array(&op_vec[3]));
+    let mut deletes = Vec::with_capacity(encoded_deletes.len());
+    for encoded_uid in encoded_deletes {
+        let uid_str = try!(as_str(encoded_uid));
+        let uid = try!(SequenceUID::from_str(uid_str));
+        deletes.push(uid);
+    }
+
+    let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
+    Ok(RemoteOp::UpdateAttributedString(op))
 }
 
 #[inline]
 // decode [6,pointer,amount] as IncrementNumber
 fn decode_op_increment_number(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
-    Err(Error::DecodeCompact)
+    if op_vec.len() != 3 { return Err(Error::DecodeCompact) }
+    let amount = try!(op_vec[2].as_f64().ok_or(Error::DecodeCompact));
+    let op = IncrementNumber{amount: amount};
+    Ok(RemoteOp::IncrementNumber(op))
 }
 
+#[inline]
 fn as_str(json: &Json) -> Result<&str, Error> {
     json.as_str().ok_or(Error::DecodeCompact)
 }
 
+#[inline]
 fn as_array(json: &Json) -> Result<&Vec<Json>, Error> {
     json.as_array().ok_or(Error::DecodeCompact)
 }
