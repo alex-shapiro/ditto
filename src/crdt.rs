@@ -62,96 +62,61 @@ impl CRDT {
         })
     }
 
-    pub fn put(&mut self, session_counter: usize, pointer: &str, key: &str, value: &Json) -> R<NestedRemoteOp> {
-        let op = op::local::Put{key: key.to_owned(), value: raw::decode(value, &self.replica)};
-        let nested_op = NestedLocalOp{
-            session_counter: session_counter,
-            pointer: pointer.to_owned(),
-            op: LocalOp::Put(op),
-        };
-
-        self.execute_local(nested_op)
+    pub fn put(&mut self, session_counter: usize, pointer: String, key: String, value: &Json) -> R<NestedRemoteOp> {
+        let op = op::local::Put{key: key, value: raw::decode(value, &self.replica)};
+        self.execute_local(session_counter, pointer, LocalOp::Put(op))
     }
 
-    pub fn put_str(&mut self, session_counter: usize, pointer: &str, key: &str, item: &str) -> R<NestedRemoteOp> {
+    pub fn put_str(&mut self, session_counter: usize, pointer: String, key: String, item: &str) -> R<NestedRemoteOp> {
         let json: Json = serde_json::from_str(item).expect("invalid JSON!");
         self.put(session_counter, pointer, key, &json)
     }
 
-    pub fn delete(&mut self, pointer: &str, key: &str) -> R<NestedRemoteOp> {
-        let (mut nested_value, ptr) = try!(self.root_value.get_nested_local(pointer));
-        let mut object = try!(nested_value.as_object());
-        let op = try!(object.delete(key));
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::UpdateObject(op)})
+    pub fn delete(&mut self, session_counter: usize, pointer: String, key: String) -> R<NestedRemoteOp> {
+        let op = op::local::Delete{key: key};
+        self.execute_local(session_counter, pointer, LocalOp::Delete(op))
     }
 
-    pub fn insert_item(&mut self, pointer: &str, index: usize, item: &Json) -> R<NestedRemoteOp> {
-        let root_value = &mut self.root_value;
-        let replica = &self.replica;
-
-        let (mut nested_value, ptr) = try!(root_value.get_nested_local(pointer));
-        let mut array = try!(nested_value.as_array());
-        let op = try!(array.insert(index, raw::decode(item, replica), replica));
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::UpdateArray(op)})
+    pub fn insert_item(&mut self, session_counter: usize, pointer: String, index: usize, item: &Json) -> R<NestedRemoteOp> {
+        let op = op::local::InsertItem{index: index, value: raw::decode(item, &self.replica)};
+        self.execute_local(session_counter, pointer, LocalOp::InsertItem(op))
     }
 
-    pub fn insert_item_str(&mut self, pointer: &str, index: usize, item: &str) -> R<NestedRemoteOp> {
+    pub fn insert_item_str(&mut self, session_counter: usize, pointer: String, index: usize, item: &str) -> R<NestedRemoteOp> {
         let json: Json = serde_json::from_str(item).expect("invalid JSON!");
-        self.insert_item(pointer, index, &json)
+        self.insert_item(session_counter, pointer, index, &json)
     }
 
-    pub fn delete_item(&mut self, pointer: &str, index: usize) -> R<NestedRemoteOp> {
-        let (mut nested_value, ptr) = try!(self.root_value.get_nested_local(pointer));
-        let mut array = try!(nested_value.as_array());
-        let op = try!(array.delete(index));
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::UpdateArray(op)})
+    pub fn delete_item(&mut self, session_counter: usize, pointer: String, index: usize) -> R<NestedRemoteOp> {
+        let op = op::local::DeleteItem{index: index};
+        self.execute_local(session_counter, pointer, LocalOp::DeleteItem(op))
     }
 
-    pub fn insert_text(&mut self, pointer: &str, index: usize, text: String) -> R<NestedRemoteOp> {
-        let root_value = &mut self.root_value;
-        let replica = &self.replica;
-
-        let (mut nested_value, ptr) = try!(root_value.get_nested_local(pointer));
-        let mut attrstr = try!(nested_value.as_attributed_string());
-        let op = try!(attrstr.insert_text(index, text, replica));
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::UpdateAttributedString(op)})
+    pub fn insert_text(&mut self, session_counter: usize, pointer: String, index: usize, text: String) -> R<NestedRemoteOp> {
+        let op = op::local::InsertText{index: index, text: text};
+        self.execute_local(session_counter, pointer, LocalOp::InsertText(op))
     }
 
-    pub fn delete_text(&mut self, pointer: &str, index: usize, len: usize) -> R<NestedRemoteOp> {
-        let root_value = &mut self.root_value;
-        let replica = &self.replica;
-
-        let (mut nested_value, ptr) = try!(root_value.get_nested_local(pointer));
-        let mut attrstr = try!(nested_value.as_attributed_string());
-        let op = try!(attrstr.delete_text(index, len, replica));
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::UpdateAttributedString(op)})
+    pub fn delete_text(&mut self, session_counter: usize, pointer: String, index: usize, len: usize) -> R<NestedRemoteOp> {
+        let op = op::local::DeleteText{index: index, len: len};
+        self.execute_local(session_counter, pointer, LocalOp::DeleteText(op))
     }
 
-    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: String) -> R<NestedRemoteOp> {
-        let root_value = &mut self.root_value;
-        let replica = &self.replica;
-
-        let (mut nested_value, ptr) = try!(root_value.get_nested_local(pointer));
-        let mut attrstr = try!(nested_value.as_attributed_string());
-        let op = try!(attrstr.replace_text(index, len, text, replica));
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::UpdateAttributedString(op)})
+    pub fn replace_text(&mut self, session_counter: usize, pointer: String, index: usize, len: usize, text: String) -> R<NestedRemoteOp> {
+        let op = op::local::ReplaceText{index: index, len: len, text: text};
+        self.execute_local(session_counter, pointer, LocalOp::ReplaceText(op))
     }
 
-    pub fn increment(&mut self, pointer: &str, amount: f64) -> R<NestedRemoteOp> {
-        let (mut nested_value, ptr) = try!(self.root_value.get_nested_local(pointer));
-        let op = try!(nested_value.increment(amount));
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::IncrementNumber(op)})
+    pub fn increment(&mut self, session_counter: usize, pointer: String, amount: f64) -> R<NestedRemoteOp> {
+        let op = op::local::IncrementNumber{amount: amount};
+        self.execute_local(session_counter, pointer, LocalOp::IncrementNumber(op))
     }
 
-    pub fn execute_local(&mut self, nested_op: NestedLocalOp) -> R<NestedRemoteOp> {
-        let (mut value, ptr) = {
-            let ref ptr = nested_op.pointer;
-            try!(self.root_value.get_nested_local(ptr))
-        };
-
-       let remote_op = try!(value.execute_local(nested_op.op, &self.replica));
+    pub fn execute_local(&mut self, session_counter: usize, pointer: String, op: LocalOp) -> R<NestedRemoteOp> {
+        let (mut value, remote_ptr) = try!(self.root_value.get_nested_local(&pointer));
+        let remote_op = try!(value.execute_local(op, &self.replica));
        self.replica.counter += 1;
-       Ok(NestedRemoteOp{pointer: ptr, op: remote_op})
+       Ok(NestedRemoteOp{pointer: remote_ptr, op: remote_op})
     }
 
     pub fn execute_remote(&mut self, nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
