@@ -9,6 +9,7 @@ use serde;
 
 pub struct NestedLocalOp {
     pub pointer: String,
+    pub session_counter: usize,
     pub op: local::LocalOp,
 }
 

@@ -4,6 +4,7 @@ mod delete_item;
 mod insert_item;
 mod delete_text;
 mod insert_text;
+mod replace_text;
 mod increment_number;
 
 pub use self::delete::Delete;
@@ -12,6 +13,7 @@ pub use self::delete_item::DeleteItem;
 pub use self::insert_item::InsertItem;
 pub use self::delete_text::DeleteText;
 pub use self::insert_text::InsertText;
+pub use self::replace_text::ReplaceText;
 pub use self::increment_number::IncrementNumber;
 
 pub enum LocalOp {
@@ -21,6 +23,7 @@ pub enum LocalOp {
     DeleteItem(DeleteItem),
     InsertText(InsertText),
     DeleteText(DeleteText),
+    ReplaceText(ReplaceText),
     IncrementNumber(IncrementNumber),
 }
 
@@ -60,8 +63,15 @@ impl LocalOp {
     }
 
     pub fn delete_text(&self) -> Option<&DeleteText> {
-        match * self {
+        match *self {
             LocalOp::DeleteText(ref op) => Some(op),
+            _ => None,
+        }
+    }
+
+    pub fn replace_text(&self) -> Option<&ReplaceText> {
+        match *self {
+            LocalOp::ReplaceText(ref op) => Some(op),
             _ => None,
         }
     }

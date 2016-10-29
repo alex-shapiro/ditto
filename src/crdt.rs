@@ -1,6 +1,6 @@
 use compact;
 use Error;
-use op::{NestedLocalOp, NestedRemoteOp, RemoteOp};
+use op::{self, NestedLocalOp, NestedRemoteOp, LocalOp, RemoteOp};
 use raw;
 use Replica;
 use serde_json::Value as Json;
@@ -12,13 +12,20 @@ type R<T> = Result<T, Error>;
 pub struct CRDT {
     root_value: Value,
     replica: Replica,
+    session_counter: usize,
+    rewindable: Vec<NestedRemoteOp>,
 }
 
 impl CRDT {
     pub fn new(json: &Json, site: u32) -> Self {
         let replica = Replica::new(site, 0);
         let value = raw::decode(json, &replica);
-        CRDT{root_value: value, replica: replica}
+        CRDT{
+            root_value: value,
+            replica: replica,
+            session_counter: 0,
+            rewindable: vec![],
+        }
     }
 
     pub fn new_str(string: &str, site: u32) -> Self {
@@ -30,10 +37,18 @@ impl CRDT {
         compact::encode(&self.root_value)
     }
 
-    pub fn deserialize(json: &Json) -> R<Self> {
-        let replica = Replica::new(1, 0);
+    pub fn deserialize(json: &Json, replica: Replica) -> R<Self> {
         let value = try!(compact::decode(json));
-        Ok(CRDT{root_value: value, replica: replica})
+        Ok(CRDT{
+            root_value: value,
+            replica: replica,
+            session_counter: 0,
+            rewindable: vec![],
+        })
+    }
+
+    pub fn get_replica(&self) -> &Replica {
+        &self.replica
     }
 
     pub fn get(&mut self, pointer: &str) -> Option<Json> {
@@ -47,19 +62,20 @@ impl CRDT {
         })
     }
 
-    pub fn put(&mut self, pointer: &str, key: &str, value: &Json) -> R<NestedRemoteOp> {
-        let root_value = &mut self.root_value;
-        let replica = &self.replica;
+    pub fn put(&mut self, session_counter: usize, pointer: &str, key: &str, value: &Json) -> R<NestedRemoteOp> {
+        let op = op::local::Put{key: key.to_owned(), value: raw::decode(value, &self.replica)};
+        let nested_op = NestedLocalOp{
+            session_counter: session_counter,
+            pointer: pointer.to_owned(),
+            op: LocalOp::Put(op),
+        };
 
-        let (mut nested_value, ptr) = try!(root_value.get_nested_local(pointer));
-        let mut object = try!(nested_value.as_object());
-        let op = object.put(key, raw::decode(value, replica), replica);
-        Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::UpdateObject(op)})
+        self.execute_local(nested_op)
     }
 
-    pub fn put_str(&mut self, pointer: &str, key: &str, item: &str) -> R<NestedRemoteOp> {
+    pub fn put_str(&mut self, session_counter: usize, pointer: &str, key: &str, item: &str) -> R<NestedRemoteOp> {
         let json: Json = serde_json::from_str(item).expect("invalid JSON!");
-        self.put(pointer, key, &json)
+        self.put(session_counter, pointer, key, &json)
     }
 
     pub fn delete(&mut self, pointer: &str, key: &str) -> R<NestedRemoteOp> {
@@ -127,13 +143,33 @@ impl CRDT {
         Ok(NestedRemoteOp{pointer: ptr, op: RemoteOp::IncrementNumber(op)})
     }
 
+    pub fn execute_local(&mut self, nested_op: NestedLocalOp) -> R<NestedRemoteOp> {
+        let (mut value, ptr) = {
+            let ref ptr = nested_op.pointer;
+            try!(self.root_value.get_nested_local(ptr))
+        };
+
+       let remote_op = try!(value.execute_local(nested_op.op, &self.replica));
+       self.replica.counter += 1;
+       Ok(NestedRemoteOp{pointer: ptr, op: remote_op})
+    }
+
     pub fn execute_remote(&mut self, nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
-        let ref ptr = nested_op.pointer;
-        let (mut value, local_ptr) = try!(self.root_value.get_nested_remote(ptr));
+        let (mut value, local_ptr) = {
+            let ref ptr = nested_op.pointer;
+            try!(self.root_value.get_nested_remote(ptr))
+        };
         let local_ops = try!(value.execute_remote(&nested_op.op));
+        self.rewindable.push(nested_op);
+        self.session_counter += 1;
+        let session_counter = self.session_counter;
+
         Ok(local_ops
             .into_iter()
-            .map(|local_op| NestedLocalOp{pointer: local_ptr.clone(), op: local_op})
+            .map(|local_op| NestedLocalOp{
+                pointer: local_ptr.clone(),
+                session_counter: session_counter,
+                op: local_op})
             .collect())
     }
 

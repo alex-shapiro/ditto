@@ -4,6 +4,7 @@ use Error;
 use object::{self, Object};
 use op::remote::IncrementNumber;
 use op::{self, RemoteOp, LocalOp};
+use Replica;
 use sequence;
 use std::str::FromStr;
 
@@ -126,6 +127,50 @@ impl Value {
             }
         }
         Ok((value.unwrap(), local_pointer))
+    }
+
+    pub fn execute_local(&mut self, op: LocalOp, replica: &Replica) -> Result<RemoteOp, Error> {
+        match op {
+            LocalOp::Put(op) => {
+                let mut object = try!(self.as_object());
+                let remote_op = object.put(&op.key, op.value, replica);
+                Ok(RemoteOp::UpdateObject(remote_op))
+            },
+            LocalOp::Delete(op) => {
+                let mut object = try!(self.as_object());
+                let remote_op = try!(object.delete(&op.key));
+                Ok(RemoteOp::UpdateObject(remote_op))
+            },
+            LocalOp::InsertItem(op) => {
+                let mut array = try!(self.as_array());
+                let remote_op = try!(array.insert(op.index, op.value, replica));
+                Ok(RemoteOp::UpdateArray(remote_op))
+            },
+            LocalOp::DeleteItem(op) => {
+                let mut array = try!(self.as_array());
+                let remote_op = try!(array.delete(op.index));
+                Ok(RemoteOp::UpdateArray(remote_op))
+            },
+            LocalOp::InsertText(op) => {
+                let mut attrstr = try!(self.as_attributed_string());
+                let remote_op = try!(attrstr.insert_text(op.index, op.text, replica));
+                Ok(RemoteOp::UpdateAttributedString(remote_op))
+            },
+            LocalOp::DeleteText(op) => {
+                let mut attrstr = try!(self.as_attributed_string());
+                let remote_op = try!(attrstr.delete_text(op.index, op.len, replica));
+                Ok(RemoteOp::UpdateAttributedString(remote_op))
+            },
+            LocalOp::ReplaceText(op) => {
+                let mut attrstr = try!(self.as_attributed_string());
+                let remote_op = try!(attrstr.replace_text(op.index, op.len, op.text, replica));
+                Ok(RemoteOp::UpdateAttributedString(remote_op))
+            },
+            LocalOp::IncrementNumber(op) => {
+                let remote_op = try!(self.increment(op.amount));
+                Ok(RemoteOp::IncrementNumber(remote_op))
+            },
+        }
     }
 
     pub fn execute_remote(&mut self, op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
