@@ -1,11 +1,12 @@
 use compact;
 use Error;
-use op::{self, NestedLocalOp, NestedRemoteOp, LocalOp, RemoteOp};
+use op::{self, NestedLocalOp, NestedRemoteOp, LocalOp};
 use raw;
 use Replica;
 use serde_json::Value as Json;
 use serde_json;
 use Value;
+use std::cmp::Ordering;
 
 type R<T> = Result<T, Error>;
 
@@ -113,10 +114,21 @@ impl CRDT {
     }
 
     pub fn execute_local(&mut self, session_counter: usize, pointer: String, op: LocalOp) -> R<NestedRemoteOp> {
-        let (mut value, remote_ptr) = try!(self.root_value.get_nested_local(&pointer));
-        let remote_op = try!(value.execute_local(op, &self.replica));
-       self.replica.counter += 1;
-       Ok(NestedRemoteOp{pointer: remote_ptr, op: remote_op})
+        match session_counter.cmp(&self.session_counter) {
+            Ordering::Greater => {
+                Err(Error::InvalidSessionCounter)
+            },
+            Ordering::Equal => {
+                self.rewindable.clear();
+                self.replica.counter += 1;
+                let (mut value, remote_ptr) = try!(self.root_value.get_nested_local(&pointer));
+                let remote_op = try!(value.execute_local(op, &self.replica));
+                Ok(NestedRemoteOp{pointer: remote_ptr, op: remote_op})
+            },
+            Ordering::Less => {
+                Err(Error::InvalidSessionCounter)
+            },
+        }
     }
 
     pub fn execute_remote(&mut self, nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
