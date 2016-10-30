@@ -113,7 +113,7 @@ impl CRDT {
         self.execute_local(session_counter, pointer, LocalOp::IncrementNumber(op))
     }
 
-    pub fn execute_local(&mut self, session_counter: usize, pointer: String, op: LocalOp) -> R<NestedRemoteOp> {
+    fn execute_local(&mut self, session_counter: usize, pointer: String, op: LocalOp) -> R<NestedRemoteOp> {
         match session_counter.cmp(&self.session_counter) {
             Ordering::Greater => {
                 Err(Error::InvalidSessionCounter)

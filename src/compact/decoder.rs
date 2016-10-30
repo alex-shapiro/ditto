@@ -168,7 +168,7 @@ fn decode_op_update_object(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
         uids.push(uid);
     }
 
-    let op = UpdateObject{key: key, new_element: element, deleted_uids: uids};
+    let op = UpdateObject{key: key, new_element: element, deleted_uids: uids, deleted_elements: vec![]};
     Ok(RemoteOp::UpdateObject(op))
 }
 
