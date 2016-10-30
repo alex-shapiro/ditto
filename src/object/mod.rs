@@ -68,32 +68,36 @@ impl Object {
         }
     }
 
-    pub fn execute_remote(&mut self, op: &UpdateObject) -> LocalOp {
-        let mut key_elements: Vec<Element> = {
-            let ref deleted_uids = op.deleted_uids;
-            let default: Vec<Element> = vec![];
-            self.0
-                .get(&op.key)
-                .unwrap_or(&default)
-                .iter()
-                .filter(|e| !deleted_uids.contains(&e.uid))
-                .map(|e| e.clone())
-                .collect()
+    pub fn execute_remote(&mut self, op: &mut UpdateObject) -> LocalOp {
+        let key_elements = {
+            let mut empty_vec = Vec::new();
+            let key_elements_ref = self.0.get_mut(&op.key).unwrap_or(&mut empty_vec);
+            mem::replace(key_elements_ref, vec![])
         };
 
+        // remove op.deleted_uids and modify op.deleted_elements
+        let deleted_uids = &op.deleted_uids;
+        let (mut new_key_elements, deleted_elements): (Vec<Element>, _) =
+            key_elements
+                .into_iter()
+                .partition(|e| !deleted_uids.contains(&e.uid));
+
+        // insert the new element if it exists
         if let Some(ref e) = op.new_element {
-            key_elements.push(e.clone())
+            new_key_elements.push(e.clone());
         }
 
-        let ref key = op.key;
-        match key_elements.len() > 0 {
-            true => {
-                self.0.insert(key.clone(), key_elements);
-                let elt = self.get_by_key(key).unwrap();
-                LocalOp::Put(Put::new(key.to_string(), elt.value.clone()))},
-            false => {
-                self.0.remove(key);
-                LocalOp::Delete(Delete::new(key.to_string()))},
+        op.deleted_elements = deleted_elements;
+        match new_key_elements.len() {
+            0 => {
+                self.0.remove(&op.key);
+                LocalOp::Delete(Delete::new(op.key.to_owned()))
+            },
+            _ => {
+                self.0.insert(op.key.clone(), new_key_elements);
+                let elt = self.get_by_key(&op.key).expect("execute obj");
+                LocalOp::Put(Put::new(op.key.clone(), elt.value.clone()))
+            },
         }
     }
 
@@ -185,39 +189,35 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_remote() {
+    fn test_execute_remote_put() {
         let mut object = Object::new();
-        let replica1 = Replica::new(2,101);
-        let replica2 = Replica::new(3,69);
-        let elt = Element::new("baz", Value::Num(1.0), &replica1);
-        let _   = object.put("baz", Value::Num(0.0), &replica2);
-        let op2 = UpdateObject::new("baz".to_string(), Some(elt), vec![]);
-        let op3 = object.execute_remote(&op2);
-        let op3_unwrapped = op3.put().unwrap();
+        let _ = object.put("baz", Value::Num(0.0), &Replica::new(3,69));
+        let element = Element::new("baz", Value::Num(1.0), &Replica::new(2,101));
+        let mut remote_op = UpdateObject::new("baz".to_string(), Some(element), vec![]);
+        let local_op = object.execute_remote(&mut remote_op);
 
-        assert!(op3_unwrapped.key == "baz".to_string());
-        assert!(op3_unwrapped.value == Value::Num(1.0));
+        assert!(local_op.put().unwrap().key == "baz".to_owned());
+        assert!(local_op.put().unwrap().value == Value::Num(1.0));
         assert!(object.0.get("baz").unwrap().len() == 2);
+        assert!(remote_op.deleted_elements.len() == 0);
     }
 
     #[test]
-    fn test_execute_remote_2() {
+    fn test_execute_remote_delete() {
         let mut object = Object::new();
-        let replica1 = Replica::new(1,1);
-        let replica2 = Replica::new(2,1);
-        let elt1 = Element::new("foo", Value::Bool(false), &replica1);
-        let elt2 = Element::new("foo", Value::Bool(true), &replica2);
-        let op1 = UpdateObject::new("foo".to_string(), Some(elt1.clone()), vec![]);
-        let op2 = UpdateObject::new("foo".to_string(), Some(elt2.clone()), vec![]);
-        let op3 = UpdateObject::new("foo".to_string(), None, vec![elt1]);
+        let elt1 = Element::new("foo", Value::Bool(false), & Replica::new(1,1));
+        let elt2 = Element::new("foo", Value::Bool(true), &Replica::new(2,1));
+        let mut remote_op1 = UpdateObject::new("foo".to_string(), Some(elt1.clone()), vec![]);
+        let mut remote_op2 = UpdateObject::new("foo".to_string(), Some(elt2.clone()), vec![]);
+        let mut remote_op3 = UpdateObject::new("foo".to_string(), None, vec![elt1]);
+        object.execute_remote(&mut remote_op1);
+        object.execute_remote(&mut remote_op2);
 
-        object.execute_remote(&op1);
-        object.execute_remote(&op2);
-        { assert!(object.get_by_key("foo").unwrap().value == Value::Bool(false)) }
-
-        let op4 = object.execute_remote(&op3);
-        let op4_unwrapped = op4.put().unwrap();
-        assert!(op4_unwrapped.value == Value::Bool(true));
+        assert!(object.get_by_key("foo").unwrap().value == Value::Bool(false));
+        let local_op = object.execute_remote(&mut remote_op3);
+        assert!(local_op.put().unwrap().key == "foo".to_owned());
+        assert!(local_op.put().unwrap().value == Value::Bool(true));
+        assert!(remote_op3.deleted_elements[0].value == Value::Bool(false));
     }
 
     #[test]
@@ -247,7 +247,7 @@ mod tests {
         let mut object = Object::new();
         let element1 = Element::new("foo", Value::Num(1.0), &Replica::new(1,1));
         let element2 = Element::new("foo", Value::Num(2.0), &Replica::new(2,1));
-        let _ = object.execute_remote(&UpdateObject::new("foo".to_owned(), Some(element2.clone()), vec![]));
+        let _ = object.execute_remote(&mut UpdateObject::new("foo".to_owned(), Some(element2.clone()), vec![]));
         let remote_op = UpdateObject::new("foo".to_owned(), None, vec![element1]);
 
         assert!(object.get_by_key("foo").ok().unwrap().value == Value::Num(2.0));

@@ -131,12 +131,12 @@ impl CRDT {
         }
     }
 
-    pub fn execute_remote(&mut self, nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
+    pub fn execute_remote(&mut self, mut nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
         let (mut value, local_ptr) = {
             let ref ptr = nested_op.pointer;
             try!(self.root_value.get_nested_remote(ptr))
         };
-        let local_ops = try!(value.execute_remote(&nested_op.op));
+        let local_ops = try!(value.execute_remote(&mut nested_op.op));
         self.rewindable.push(nested_op);
         self.session_counter += 1;
         let session_counter = self.session_counter;
