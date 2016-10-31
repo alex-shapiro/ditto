@@ -6,6 +6,7 @@ use op::local::{DeleteItem, InsertItem, LocalOp};
 use op::remote::UpdateArray;
 use Replica;
 use sequence::uid::UID;
+use std::mem;
 use Value;
 
 #[derive(Debug,Clone,PartialEq)]
@@ -81,6 +82,41 @@ impl Array {
         let mut local_ops: Vec<LocalOp> = Vec::with_capacity(delete_ops.len() + insert_ops.len());
         for op in delete_ops { local_ops.push(LocalOp::DeleteItem(op)); }
         for op in insert_ops { local_ops.push(LocalOp::InsertItem(op)); }
+        local_ops
+    }
+
+    pub fn reverse_execute_remote(&mut self, op: &UpdateArray) -> Vec<LocalOp> {
+        let elements = mem::replace(&mut self.0, Vec::new());
+        let mut inserted_uids = op.inserts.iter().map(|e| &e.uid).peekable();
+        let mut deleted_elements = op.deleted_elements.iter().peekable();
+        let mut local_ops: Vec<LocalOp> = Vec::new();
+
+        let max_elt = Element::end_marker();
+        let max_uid = UID::max();
+
+        for (index, elt) in elements.into_iter().enumerate() {
+            let should_delete_elt = {
+                let uid = *inserted_uids.peek().unwrap_or(&&max_uid);
+                uid < &max_uid && uid == &elt.uid
+            };
+            // if the current element was inserted by the UpdatedArray op,
+            // remove it
+            if should_delete_elt {
+                inserted_uids.next();
+                let op = DeleteItem::new(index - 1);
+                local_ops.push(LocalOp::DeleteItem(op));
+            // otherwise, insert all deleted element that precede the current
+            // element and then re-insert the current element
+            } else {
+                while *deleted_elements.peek().unwrap_or(&&max_elt) < &elt {
+                    let deleted_elt = deleted_elements.next().unwrap().clone();
+                    let op = InsertItem::new(index - 1, deleted_elt.value.clone());
+                    local_ops.push(LocalOp::InsertItem(op));
+                    self.0.push(deleted_elt);
+                }
+                self.0.push(elt);
+            }
+        }
         local_ops
     }
 
@@ -201,5 +237,27 @@ mod tests {
 
         let lop3 = lops3[0].delete_item().unwrap();
         assert!(lop3.index == 0);
+    }
+
+    #[test]
+    fn text_reverse_execute_remote_insert() {
+        let mut array = Array::new();
+        let remote_op = array.insert(0, Value::Num(1.0), &Replica::new(4,23)).expect("!");
+        let local_ops = array.reverse_execute_remote(&remote_op);
+        assert!(array.len() == 0);
+        assert!(local_ops.len() == 1);
+        assert!(local_ops[0].delete_item().expect("!").index == 0);
+    }
+
+    #[test]
+    fn text_reverse_execute_remote_delete() {
+        let mut array = Array::new();
+        let _ = array.insert(0, Value::Num(1.0), &Replica::new(4,23)).expect("!");
+        let remote_op = array.delete(0).expect("!");
+        let local_ops = array.reverse_execute_remote(&remote_op);
+        assert!(array.len() == 1);
+        assert!(local_ops.len() == 1);
+        assert!(local_ops[0].insert_item().expect("!").index == 0);
+        assert!(local_ops[0].insert_item().expect("!").value == Value::Num(1.0));
     }
 }

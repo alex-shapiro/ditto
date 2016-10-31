@@ -1,4 +1,5 @@
 use sequence::uid::UID;
+use std::cmp::Ordering;
 use Value;
 
 #[derive(Debug,Clone)]
@@ -24,5 +25,19 @@ impl Element {
 impl PartialEq for Element {
     fn eq(&self, other: &Element) -> bool {
         self.uid == other.uid
+    }
+}
+
+impl Eq for Element { }
+
+impl PartialOrd for Element {
+    fn partial_cmp(&self, other: &Element) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl Ord for Element {
+    fn cmp(&self, other: &Element) -> Ordering {
+        self.uid.cmp(&other.uid)
     }
 }
