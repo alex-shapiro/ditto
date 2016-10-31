@@ -173,8 +173,8 @@ impl Value {
         }
     }
 
-    pub fn execute_remote(&mut self, op: &mut RemoteOp) -> Result<Vec<LocalOp>, Error> {
-        match (self, op) {
+    pub fn execute_remote(&mut self, remote_op: &mut RemoteOp) -> Result<Vec<LocalOp>, Error> {
+        match (self, remote_op) {
             (&mut Value::Obj(ref mut object), &mut RemoteOp::UpdateObject(ref mut op)) =>
                 Ok(vec![object.execute_remote(op)]),
             (&mut Value::Arr(ref mut array), &mut RemoteOp::UpdateArray(ref mut op)) =>
@@ -183,6 +183,21 @@ impl Value {
                 Ok(attrstr.execute_remote(op)),
             (ref mut value @ &mut Value::Num(_), &mut RemoteOp::IncrementNumber(ref mut op)) =>
                 value.increment_remote(op.amount),
+            _ =>
+                Err(Error::InvalidRemoteOp),
+        }
+    }
+
+    pub fn reverse_execute_remote(&mut self, remote_op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
+        match (self, remote_op) {
+            (&mut Value::Obj(ref mut object), &RemoteOp::UpdateObject(ref op)) =>
+                Ok(vec![object.reverse_execute_remote(op)]),
+            (&mut Value::Arr(ref mut array), &RemoteOp::UpdateArray(ref op)) =>
+                Ok(array.reverse_execute_remote(op)),
+            (&mut Value::AttrStr(ref mut attrstr), &RemoteOp::UpdateAttributedString(ref op)) =>
+                Ok(attrstr.reverse_execute_remote(op)),
+            (ref mut value @ &mut Value::Num(_), &RemoteOp::IncrementNumber(ref op)) =>
+                value.increment_remote(-op.amount),
             _ =>
                 Err(Error::InvalidRemoteOp),
         }
