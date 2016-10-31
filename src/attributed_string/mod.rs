@@ -66,30 +66,48 @@ impl AttributedString {
         Ok(op1)
     }
 
-    pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
+    pub fn execute_remote(&mut self, op: &mut UpdateAttributedString) -> Vec<LocalOp> {
+        let (local_ops, deleted_elements) = self.do_execute_remote(&op.inserts, &op.deletes);
+        op.deleted_elements = deleted_elements;
+        local_ops
+    }
+
+    pub fn reverse_execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
+        let delete_uids = op.inserts.iter().map(|e| e.uid.clone()).collect();
+        let (local_ops, _) = self.do_execute_remote(&op.deleted_elements, &delete_uids);
+        local_ops
+    }
+
+    fn do_execute_remote(&mut self, insert_elts: &Vec<Element>, delete_uids: &Vec<UID>) -> (Vec<LocalOp>, Vec<Element>) {
         let elements = mem::replace(&mut self.elements, Vec::new());
-        let mut deletes = op.deletes.iter().peekable();
-        let mut inserts = op.inserts.iter().peekable();
-        let mut local_ops: Vec<LocalOp> = Vec::new();
+        let mut insert_iter = insert_elts.iter().peekable();
+        let mut delete_iter = delete_uids.iter().peekable();
+        let mut local_ops = Vec::new();
+        let mut deleted_elements = Vec::new();
 
         let mut char_index = 0;
         let max_elt = Element::end_marker();
-        let max_uid = UID::max();
+        let max_uid = &max_elt.uid;
 
         for elt in elements {
-            // check to make sure the element hasn't been deleted
             let should_delete_elt = {
-                let del = *deletes.peek().unwrap_or(&&max_uid);
-                del < &max_uid && del == &elt.uid};
+                let uid = *delete_iter.peek().unwrap_or(&max_uid);
+                uid < &max_uid && uid == &elt.uid
+            };
+
+            // if elt matches the next deleted UID, delete elt
             if should_delete_elt {
                 self.len -= elt.len();
-                deletes.next();
+                delete_iter.next();
                 let op = DeleteText::new(char_index, elt.len());
                 local_ops.push(LocalOp::DeleteText(op));
+                deleted_elements.push(elt);
+
+            // otherwise insert all new elements that come before elt,
+            // then re-insert elt
             } else {
-                // add inserts that precede the current element
-                while *inserts.peek().unwrap_or(&&max_elt) < &elt {
-                    let ins = inserts.next().unwrap().clone();
+                while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
+                    let ins = insert_iter.next().unwrap().clone();
                     let text = ins.text().unwrap().to_string();
                     let text_len = text.len();
                     let op = InsertText::new(char_index, text);
@@ -98,14 +116,13 @@ impl AttributedString {
                     self.len += text_len;
                     char_index += text_len;
                 }
-                // add the current element to self.elements
                 char_index += elt.len();
                 self.elements.push(elt);
             }
         }
-
-        local_ops
+        (local_ops, deleted_elements)
     }
+
 
     fn insert_at_index(&mut self, index: usize, text: String, replica: &Replica) -> UpdateAttributedString {
         let elt_new = {
@@ -445,22 +462,22 @@ mod tests {
     #[test]
     fn test_execute_remote_empty() {
         let mut string = AttributedString::new();
-        let op = UpdateAttributedString::default();
-        let local_ops = string.execute_remote(&op);
+        let mut op = UpdateAttributedString::default();
+        let local_ops = string.execute_remote(&mut op);
         assert!(local_ops.len() == 0);
     }
 
     #[test]
-    fn test_execute_remote_inserts_only() {
+    fn test_execute_remote() {
         let mut string1 = AttributedString::new();
-        let op1 = string1.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
-        let op2 = string1.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
-        let op3 = string1.replace_text(6, 1, "a".to_string(), &REPLICA1).unwrap();
+        let mut op1 = string1.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
+        let mut op2 = string1.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        let mut op3 = string1.replace_text(6, 1, "a".to_string(), &REPLICA1).unwrap();
 
         let mut string2 = AttributedString::new();
-        let lops1 = string2.execute_remote(&op1);
-        let lops2 = string2.execute_remote(&op2);
-        let lops3 = string2.execute_remote(&op3);
+        let lops1 = string2.execute_remote(&mut op1);
+        let lops2 = string2.execute_remote(&mut op2);
+        let lops3 = string2.execute_remote(&mut op3);
 
         assert!(string1 == string2);
         assert!(lops1.len() == 1);
@@ -486,6 +503,28 @@ mod tests {
         assert!(lop7.index == 4 && lop7.text == "qu");
         assert!(lop8.index == 6 && lop8.text == "a");
         assert!(lop9.index == 7 && lop9.text == "ck ");
+    }
+
+    #[test]
+    fn test_reverse_execute_remote() {
+        let mut string1 = AttributedString::new();
+        let mut remote_op1 = string1.insert_text(0, "the quick yellow fox".to_owned(), &Replica::new(1,1)).unwrap();
+        let mut remote_op2 = string1.replace_text(10, 6, "orange".to_owned(), &Replica::new(1,2)).unwrap();
+        let mut remote_op3 = string1.replace_text(10, 6, "brown".to_owned(), &Replica::new(1,3)).unwrap();
+
+        let mut string2 = AttributedString::new();
+        {
+            let _ = string2.execute_remote(&mut remote_op1);
+            let _ = string2.execute_remote(&mut remote_op2);
+            let _ = string2.execute_remote(&mut remote_op3);
+        }
+        let local_ops = string2.reverse_execute_remote(&mut remote_op3);
+        assert!(string2.raw_string() == "the quick orange fox");
+        assert!(local_ops.len() == 2);
+        assert!(local_ops[0].delete_text().unwrap().index == 10);
+        assert!(local_ops[0].delete_text().unwrap().len == 5);
+        assert!(local_ops[1].insert_text().unwrap().index == 10);
+        assert!(local_ops[1].insert_text().unwrap().text == "orange");
     }
 
     #[test]
