@@ -44,7 +44,7 @@ impl Array {
     pub fn delete(&mut self, index: usize) -> Result<UpdateArray, Error> {
         if index < self.len() {
             let element = self.0.remove(index+1);
-            Ok(UpdateArray::delete(element.uid))
+            Ok(UpdateArray::delete(element))
         } else {
             Err(Error::OutOfBounds)
         }

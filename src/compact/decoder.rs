@@ -194,7 +194,7 @@ fn decode_op_update_array(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
         deletes.push(uid);
     }
 
-    let op = UpdateArray{inserts: inserts, deletes: deletes};
+    let op = UpdateArray{inserts: inserts, deletes: deletes, deleted_elements: vec![]};
     Ok(RemoteOp::UpdateArray(op))
 }
 
