@@ -233,6 +233,8 @@ mod tests {
         // third (delete)
         assert!(local_ops3.len() == 1);
         assert!(local_ops3[0].delete_item().unwrap().index == 1);
+        assert!(remote_op3.deleted_elements.len() == 1);
+        assert!(remote_op3.deleted_elements[0].value == Value::Num(2.0));
     }
 
     #[test]
