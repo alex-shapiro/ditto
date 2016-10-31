@@ -220,7 +220,7 @@ fn decode_op_update_attributed_string(op_vec: &Vec<Json>) -> Result<RemoteOp, Er
         deletes.push(uid);
     }
 
-    let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
+    let op = UpdateAttributedString{inserts: inserts, deletes: deletes, deleted_elements: vec![]};
     Ok(RemoteOp::UpdateAttributedString(op))
 }
 

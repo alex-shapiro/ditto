@@ -137,7 +137,7 @@ impl AttributedString {
         self.elements.insert(index, elt_pre.clone());
         UpdateAttributedString::new(
             vec![elt_pre, elt_new, elt_post],
-            vec![original_elt.uid]
+            vec![original_elt],
         )
     }
 
@@ -146,7 +146,7 @@ impl AttributedString {
         let deleted_element = element.clone();
         element.cut_middle(range.lower.offset, range.upper.offset, replica);
         let insert = element.clone();
-        UpdateAttributedString::new(vec![insert], vec![deleted_element.uid])
+        UpdateAttributedString::new(vec![insert], vec![deleted_element])
     }
 
     fn delete_in_range(&mut self, range: &Range, replica: &Replica) -> UpdateAttributedString {
@@ -177,9 +177,8 @@ impl AttributedString {
             deletes.push(self.elements.remove(lower_index));
         }
 
-        let mut deleted_uids: Vec<UID> = deletes.into_iter().map(|e| e.uid).collect();
-        deleted_uids.sort();
-        UpdateAttributedString::new(inserts, deleted_uids)
+        deletes.sort();
+        UpdateAttributedString::new(inserts, deletes)
     }
 
     pub fn elements(&self) -> &[Element] {
