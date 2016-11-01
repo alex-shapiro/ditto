@@ -158,28 +158,13 @@ fn decode_op_update_object(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
 }
 
 #[inline]
-// decode [4,pointer,[ArrayElement],[SequenceUID]] as nested UpdateArray
+// decode [4,pointer,[ArrayElement],[ArrayElement]] as nested UpdateArray
 fn decode_op_update_array(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
     if op_vec.len() != 4 { return Err(Error::DecodeCompact) }
 
-    // decode inserts
-    let encoded_inserts = try!(as_array(&op_vec[2]));
-    let mut inserts = Vec::with_capacity(encoded_inserts.len());
-    for encoded_element in encoded_inserts {
-         let element = try!(decode_array_element(encoded_element));
-         inserts.push(element);
-    }
-
-    // decode deletes
-    let encoded_deletes = try!(as_array(&op_vec[3]));
-    let mut deletes = Vec::with_capacity(encoded_deletes.len());
-    for encoded_uid in encoded_deletes {
-        let uid_str = try!(as_str(encoded_uid));
-        let uid = try!(SequenceUID::from_str(uid_str));
-        deletes.push(uid);
-    }
-
-    let op = UpdateArray{inserts: inserts, deletes: deletes, deleted_elements: vec![]};
+    let inserts = try!(decode_array_elements(&op_vec[2]));
+    let deletes = try!(decode_array_elements(&op_vec[3]));
+    let op      = UpdateArray{inserts: inserts, deletes: deletes};
     Ok(RemoteOp::UpdateArray(op))
 }
 
@@ -234,6 +219,17 @@ fn decode_object_elements(encoded_elements_json: &Json) -> Result<Vec<ObjectElem
     let mut elements = Vec::with_capacity(encoded_elements.len());
     for encoded_element in encoded_elements {
         let element = try!(decode_object_element(&encoded_element));
+        elements.push(element);
+    }
+    Ok(elements)
+}
+
+#[inline]
+fn decode_array_elements(encoded_elements_json: &Json) -> Result<Vec<ArrayElement>, Error> {
+    let encoded_elements = try!(as_array(encoded_elements_json));
+    let mut elements = Vec::with_capacity(encoded_elements.len());
+    for encoded_element in encoded_elements {
+        let element = try!(decode_array_element(&encoded_element));
         elements.push(element);
     }
     Ok(elements)

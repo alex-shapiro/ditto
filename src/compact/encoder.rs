@@ -106,12 +106,10 @@ fn encode_op_update_object(op: &UpdateObject, pointer: String) -> Json {
     let mut deletes_vec: Vec<Json> = Vec::with_capacity(op.deletes.len());
 
     for insert in &op.inserts {
-        let encoded_insert = encode_object_element(insert);
-        inserts_vec.push(encoded_insert);
+        inserts_vec.push(encode_object_element(insert));
     }
     for delete in &op.deletes {
-        let encoded_delete = encode_object_element(delete);
-        deletes_vec.push(encoded_delete);
+        deletes_vec.push(encode_object_element(delete));
     }
 
     op_vec.push(Json::U64(3));
@@ -122,7 +120,7 @@ fn encode_op_update_object(op: &UpdateObject, pointer: String) -> Json {
     Json::Array(op_vec)
 }
 
-// encode UpdateArray op as [4,pointer,[ArrayElement],[SequenceUID]]
+// encode UpdateArray op as [4,pointer,[ArrayElement],[ArrayElement]]
 fn encode_op_update_array(op: &UpdateArray, pointer: String) -> Json {
     let mut op_vec: Vec<Json> = Vec::with_capacity(4);
     let mut inserts_vec: Vec<Json> = Vec::with_capacity(op.inserts.len());
@@ -131,8 +129,8 @@ fn encode_op_update_array(op: &UpdateArray, pointer: String) -> Json {
     for elt in &op.inserts {
         inserts_vec.push(encode_array_element(&elt));
     }
-    for uid in &op.deletes {
-        deletes_vec.push(Json::String(uid.to_string()));
+    for elt in &op.deletes {
+        deletes_vec.push(encode_array_element(&elt));
     }
 
     op_vec.push(Json::U64(4));
