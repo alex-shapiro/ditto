@@ -146,29 +146,14 @@ fn decode_object_element(element: &Json) -> Result<ObjectElement, Error> {
 }
 
 #[inline]
-// decode [3,pointer,key,ObjectElement,[ObjectUID]] as UpdateObject
+// decode [3,pointer,key,[ObjectElement],[ObjectElement]] as UpdateObject
 fn decode_op_update_object(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
     if op_vec.len() != 5 { return Err(Error::DecodeCompact) }
 
-    // decode key
-    let key = try!(as_str(&op_vec[2])).to_owned();
-
-    // decode new_element
-    let element = match op_vec[3] {
-        Json::Null => None,
-        ref otherwise  => Some(try!(decode_object_element(otherwise))),
-    };
-
-    // decode deleted_uids
-    let encoded_uids = try!(as_array(&op_vec[4]));
-    let mut uids = Vec::with_capacity(encoded_uids.len());
-    for uid_json in encoded_uids {
-        let uid_str = try!(as_str(uid_json));
-        let uid = try!(ObjectUID::from_str(uid_str));
-        uids.push(uid);
-    }
-
-    let op = UpdateObject{key: key, new_element: element, deleted_uids: uids, deleted_elements: vec![]};
+    let key     = try!(as_str(&op_vec[2])).to_owned();
+    let inserts = try!(decode_object_elements(&op_vec[3]));
+    let deletes = try!(decode_object_elements(&op_vec[4]));
+    let op      = UpdateObject{key: key, inserts: inserts, deletes: deletes};
     Ok(RemoteOp::UpdateObject(op))
 }
 
@@ -241,4 +226,15 @@ fn as_str(json: &Json) -> Result<&str, Error> {
 #[inline]
 fn as_array(json: &Json) -> Result<&Vec<Json>, Error> {
     json.as_array().ok_or(Error::DecodeCompact)
+}
+
+#[inline]
+fn decode_object_elements(encoded_elements_json: &Json) -> Result<Vec<ObjectElement>, Error> {
+    let encoded_elements = try!(as_array(encoded_elements_json));
+    let mut elements = Vec::with_capacity(encoded_elements.len());
+    for encoded_element in encoded_elements {
+        let element = try!(decode_object_element(&encoded_element));
+        elements.push(element);
+    }
+    Ok(elements)
 }

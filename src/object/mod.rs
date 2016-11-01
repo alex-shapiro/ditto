@@ -68,67 +68,32 @@ impl Object {
         }
     }
 
-    pub fn execute_remote(&mut self, op: &mut UpdateObject) -> LocalOp {
+    pub fn execute_remote(&mut self, op: &UpdateObject) -> LocalOp {
         let key_elements = {
             let mut empty_vec = Vec::new();
             let key_elements_ref = self.0.get_mut(&op.key).unwrap_or(&mut empty_vec);
             mem::replace(key_elements_ref, vec![])
         };
 
-        // remove op.deleted_uids and modify op.deleted_elements
-        let deleted_uids = &op.deleted_uids;
-        let (mut new_key_elements, deleted_elements): (Vec<Element>, _) =
+        // remote op deletes
+        let mut new_key_elements: Vec<Element> =
             key_elements
                 .into_iter()
-                .partition(|e| !deleted_uids.contains(&e.uid));
+                .filter(|e| !op.deletes.contains(&e))
+                .collect();
 
-        // insert the new element if it exists
-        if let Some(ref e) = op.new_element {
-            new_key_elements.push(e.clone());
+        // add op inserts
+        for element in &op.inserts {
+            new_key_elements.push(element.clone());
         }
 
-        op.deleted_elements = deleted_elements;
-        match new_key_elements.len() {
-            0 => {
-                self.0.remove(&op.key);
-                LocalOp::Delete(Delete::new(op.key.to_owned()))
-            },
-            _ => {
-                self.0.insert(op.key.clone(), new_key_elements);
-                let elt = self.get_by_key(&op.key).expect("execute obj");
-                LocalOp::Put(Put::new(op.key.clone(), elt.value.clone()))
-            },
-        }
-    }
-
-    pub fn reverse_execute_remote(&mut self, op: &UpdateObject) -> LocalOp {
-        let mut key_elements = {
-            let mut empty_vec = Vec::new();
-            let mut key_elements_ref = self.0.get_mut(&op.key).unwrap_or(&mut empty_vec);
-            mem::replace(key_elements_ref, vec![])
-        };
-
-        // remove op.new_element
-        key_elements = match op.new_element {
-            Some(ref e) => key_elements.into_iter().filter(|elt| elt != e).collect(),
-            None => key_elements,
-        };
-
-        // add op.deleted_elements
-        for elt in &op.deleted_elements {
-            key_elements.push(elt.clone())
-        }
-
-        match key_elements.len() {
-            0 => {
-                self.0.remove(&op.key);
-                LocalOp::Delete(Delete::new(op.key.to_string()))
-            },
-            _ => {
-                self.0.insert(op.key.clone(), key_elements);
-                let elt = self.get_by_key(&op.key).expect("reverse execute obj");
-                LocalOp::Put(Put::new(op.key.clone(), elt.value.clone()))
-            },
+        if new_key_elements.is_empty() {
+            self.0.remove(&op.key);
+            LocalOp::Delete(Delete::new(op.key.to_owned()))
+        } else {
+            self.0.insert(op.key.clone(), new_key_elements);
+            let element = self.get_by_key(&op.key).expect("key must have elements!");
+            LocalOp::Put(Put::new(op.key.to_owned(), element.value.clone()))
         }
     }
 
@@ -159,8 +124,8 @@ mod tests {
         let op = object.put("foo", Value::Num(23.0), &REPLICA);
 
         assert!(op.key == "foo".to_string());
-        assert!(op.new_element.unwrap().uid == UID::new("foo", &REPLICA));
-        assert!(op.deleted_uids == vec![]);
+        assert!(op.inserts[0].uid == UID::new("foo", &REPLICA));
+        assert!(op.deletes.is_empty());
 
         assert!(object.0.get("foo").unwrap().len() == 1);
         {
@@ -177,8 +142,8 @@ mod tests {
         let op = object.delete("bar").unwrap();
 
         assert!(op.key == "bar".to_string());
-        assert!(op.new_element == None);
-        assert!(op.deleted_uids.len() == 1);
+        assert!(op.inserts.is_empty());
+        assert!(op.deletes.len() == 1);
         assert!(object.get_by_key("bar") == Err(Error::KeyDoesNotExist));
     }
 
@@ -199,7 +164,7 @@ mod tests {
         assert!(local_op.put().unwrap().key == "baz".to_owned());
         assert!(local_op.put().unwrap().value == Value::Num(1.0));
         assert!(object.0.get("baz").unwrap().len() == 2);
-        assert!(remote_op.deleted_elements.len() == 0);
+        assert!(remote_op.deletes.is_empty());
     }
 
     #[test]
@@ -217,56 +182,6 @@ mod tests {
         let local_op = object.execute_remote(&mut remote_op3);
         assert!(local_op.put().unwrap().key == "foo".to_owned());
         assert!(local_op.put().unwrap().value == Value::Bool(true));
-        assert!(remote_op3.deleted_elements[0].value == Value::Bool(false));
-    }
-
-    #[test]
-    fn test_reverse_execute_remote_put_new() {
-        let mut object = Object::new();
-        let remote_op  = object.put("foo", Value::Num(1.0), &Replica::new(34,43));
-        let local_op   = object.reverse_execute_remote(&remote_op);
-
-        assert!(object.get_by_key("foo") == Err(Error::KeyDoesNotExist));
-        assert!(local_op.delete().unwrap().key == "foo");
-    }
-
-    #[test]
-    fn test_reverse_execute_remote_put_replace() {
-        let mut object = Object::new();
-        let _          = object.put("foo", Value::Num(1.0), &Replica::new(1,1));
-        let remote_op2 = object.put("foo", Value::Num(2.0), &Replica::new(1,2));
-        let local_op   = object.reverse_execute_remote(&remote_op2);
-
-        assert!(object.get_by_key("foo").ok().unwrap().value == Value::Num(1.0));
-        assert!(local_op.put().unwrap().key == "foo");
-        assert!(local_op.put().unwrap().value == Value::Num(1.0));
-    }
-
-    #[test]
-    fn test_reverse_execute_remote_delete_some() {
-        let mut object = Object::new();
-        let element1 = Element::new("foo", Value::Num(1.0), &Replica::new(1,1));
-        let element2 = Element::new("foo", Value::Num(2.0), &Replica::new(2,1));
-        let _ = object.execute_remote(&mut UpdateObject::new("foo".to_owned(), Some(element2.clone()), vec![]));
-        let remote_op = UpdateObject::new("foo".to_owned(), None, vec![element1]);
-
-        assert!(object.get_by_key("foo").ok().unwrap().value == Value::Num(2.0));
-        let local_op = object.reverse_execute_remote(&remote_op);
-        assert!(object.get_by_key("foo").ok().unwrap().value == Value::Num(1.0));
-        assert!(local_op.put().unwrap().key == "foo");
-        assert!(local_op.put().unwrap().value == Value::Num(1.0));
-    }
-
-    #[test]
-    fn test_reverse_execute_remote_delete_all() {
-        let mut object = Object::new();
-        let element = Element::new("foo", Value::Num(1.0), &Replica::new(1,1));
-        let remote_op = UpdateObject::new("foo".to_owned(), None, vec![element]);
-
-        assert!(object.get_by_key("foo") == Err(Error::KeyDoesNotExist));
-        let local_op = object.reverse_execute_remote(&remote_op);
-        assert!(object.get_by_key("foo").ok().unwrap().value == Value::Num(1.0));
-        assert!(local_op.put().unwrap().key == "foo");
-        assert!(local_op.put().unwrap().value == Value::Num(1.0));
+        assert!(remote_op3.deletes[0].value == Value::Bool(false));
     }
 }

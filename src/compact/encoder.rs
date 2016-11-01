@@ -99,24 +99,26 @@ fn encode_object_element(element: &object::element::Element) -> Json {
     Json::Array(element_vec)
 }
 
-// encode UpdateObject op as [3,pointer,key,ObjectElement,[ObjectUID]]
+// encode UpdateObject op as [3,pointer,key,[ObjectElement],[ObjectElement]]
 fn encode_op_update_object(op: &UpdateObject, pointer: String) -> Json {
     let mut op_vec: Vec<Json> = Vec::with_capacity(5);
-    let mut uid_vec: Vec<Json> = Vec::with_capacity(op.deleted_uids.len());
+    let mut inserts_vec: Vec<Json> = Vec::with_capacity(op.inserts.len());
+    let mut deletes_vec: Vec<Json> = Vec::with_capacity(op.deletes.len());
 
-    for uid in &op.deleted_uids {
-        uid_vec.push(Json::String(uid.to_string()));
+    for insert in &op.inserts {
+        let encoded_insert = encode_object_element(insert);
+        inserts_vec.push(encoded_insert);
     }
-    let new_element = match op.new_element {
-        Some(ref elt) => encode_object_element(elt),
-        None => Json::Null
-    };
+    for delete in &op.deletes {
+        let encoded_delete = encode_object_element(delete);
+        deletes_vec.push(encoded_delete);
+    }
 
     op_vec.push(Json::U64(3));
     op_vec.push(Json::String(pointer));
     op_vec.push(Json::String(op.key.to_string()));
-    op_vec.push(new_element);
-    op_vec.push(Json::Array(uid_vec));
+    op_vec.push(Json::Array(inserts_vec));
+    op_vec.push(Json::Array(deletes_vec));
     Json::Array(op_vec)
 }
 

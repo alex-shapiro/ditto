@@ -15,3 +15,7 @@ pub enum RemoteOp {
     UpdateAttributedString(UpdateAttributedString),
     UpdateObject(UpdateObject),
 }
+
+pub trait Reverse {
+    fn reverse(&self) -> Self;
+}
