@@ -1,7 +1,7 @@
 use array::Array;
 use array::element::Element as ArrayElement;
 use attributed_string::AttributedString;
-use attributed_string::element::Element as StringElement;
+use attributed_string::element::Element as AttrStrElement;
 use Error;
 use object::element::Element as ObjectElement;
 use object::Object;
@@ -70,16 +70,16 @@ fn decode_json_array(vec: &[Json]) -> Result<Value, Error> {
 
 #[inline]
 fn decode_attributed_string(encoded_elements: &[Json]) -> Result<Value, Error> {
-    let mut elements: Vec<StringElement> = Vec::with_capacity(encoded_elements.len() + 2);
+    let mut elements: Vec<AttrStrElement> = Vec::with_capacity(encoded_elements.len() + 2);
     let mut len = 0;
 
-    elements.push(StringElement::start_marker());
+    elements.push(AttrStrElement::start_marker());
     for json in encoded_elements {
         let element = try!(decode_attributed_string_element(json));
         len += element.len();
         elements.push(element);
     }
-    elements.push(StringElement::end_marker());
+    elements.push(AttrStrElement::end_marker());
     let string = AttributedString::assemble(elements, len);
     Ok(Value::AttrStr(string))
 }
@@ -113,14 +113,14 @@ fn decode_object(encoded_elements: &[Json]) -> Result<Value, Error> {
 }
 
 #[inline]
-fn decode_attributed_string_element(element: &Json) -> Result<StringElement, Error> {
+fn decode_attributed_string_element(element: &Json) -> Result<AttrStrElement, Error> {
     let element_vec = try!(element.as_array().ok_or(Error::DecodeCompact));
     if element_vec.len() != 2 { return Err(Error::DecodeCompact) }
 
     let encoded_uid = try!(element_vec[0].as_str().ok_or(Error::DecodeCompact));
     let text        = try!(element_vec[1].as_str().ok_or(Error::DecodeCompact));
     let uid         = try!(SequenceUID::from_str(encoded_uid));
-    Ok(StringElement::new_text(text.to_string(), uid))
+    Ok(AttrStrElement::new_text(text.to_string(), uid))
 }
 
 #[inline]
@@ -169,28 +169,13 @@ fn decode_op_update_array(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
 }
 
 #[inline]
-// decode [5,pointer,[AttrStrElement],[SequenceUID]]  UpdateAttributedString
+// decode [5,pointer,[AttrStrElement],[SequenceUID]] as UpdateAttributedString
 fn decode_op_update_attributed_string(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
     if op_vec.len() != 4 { return Err(Error::DecodeCompact) }
 
-    // decode inserts
-    let encoded_inserts = try!(as_array(&op_vec[2]));
-    let mut inserts = Vec::with_capacity(encoded_inserts.len());
-    for encoded_element in encoded_inserts {
-         let element = try!(decode_attributed_string_element(encoded_element));
-         inserts.push(element);
-    }
-
-    // decode deletes
-    let encoded_deletes = try!(as_array(&op_vec[3]));
-    let mut deletes = Vec::with_capacity(encoded_deletes.len());
-    for encoded_uid in encoded_deletes {
-        let uid_str = try!(as_str(encoded_uid));
-        let uid = try!(SequenceUID::from_str(uid_str));
-        deletes.push(uid);
-    }
-
-    let op = UpdateAttributedString{inserts: inserts, deletes: deletes, deleted_elements: vec![]};
+    let inserts = try!(decode_attrstr_elements(&op_vec[2]));
+    let deletes = try!(decode_attrstr_elements(&op_vec[3]));
+    let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
     Ok(RemoteOp::UpdateAttributedString(op))
 }
 
@@ -230,6 +215,17 @@ fn decode_array_elements(encoded_elements_json: &Json) -> Result<Vec<ArrayElemen
     let mut elements = Vec::with_capacity(encoded_elements.len());
     for encoded_element in encoded_elements {
         let element = try!(decode_array_element(&encoded_element));
+        elements.push(element);
+    }
+    Ok(elements)
+}
+
+#[inline]
+fn decode_attrstr_elements(encoded_elements_json: &Json) -> Result<Vec<AttrStrElement>, Error> {
+    let encoded_elements = try!(as_array(encoded_elements_json));
+    let mut elements = Vec::with_capacity(encoded_elements.len());
+    for encoded_element in encoded_elements {
+        let element = try!(decode_attributed_string_element(&encoded_element));
         elements.push(element);
     }
     Ok(elements)

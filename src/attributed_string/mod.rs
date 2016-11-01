@@ -7,7 +7,6 @@ use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
 use Replica;
-use sequence::uid::UID;
 use std::mem;
 
 #[derive(Debug,Clone,PartialEq)]
@@ -66,42 +65,26 @@ impl AttributedString {
         Ok(op1)
     }
 
-    pub fn execute_remote(&mut self, op: &mut UpdateAttributedString) -> Vec<LocalOp> {
-        let (local_ops, deleted_elements) = self.do_execute_remote(&op.inserts, &op.deletes);
-        op.deleted_elements = deleted_elements;
-        local_ops
-    }
-
-    pub fn reverse_execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
-        let delete_uids = op.inserts.iter().map(|e| e.uid.clone()).collect();
-        let (local_ops, _) = self.do_execute_remote(&op.deleted_elements, &delete_uids);
-        local_ops
-    }
-
-    fn do_execute_remote(&mut self, insert_elts: &Vec<Element>, delete_uids: &Vec<UID>) -> (Vec<LocalOp>, Vec<Element>) {
+    pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
         let elements = mem::replace(&mut self.elements, Vec::new());
-        let mut insert_iter = insert_elts.iter().peekable();
-        let mut delete_iter = delete_uids.iter().peekable();
+        let mut insert_iter = op.inserts.iter().peekable();
+        let mut delete_iter = op.deletes.iter().peekable();
         let mut local_ops = Vec::new();
-        let mut deleted_elements = Vec::new();
 
         let mut char_index = 0;
         let max_elt = Element::end_marker();
-        let max_uid = &max_elt.uid;
 
         for elt in elements {
             let should_delete_elt = {
-                let uid = *delete_iter.peek().unwrap_or(&max_uid);
-                uid < &max_uid && uid == &elt.uid
+                let deleted_elt = *delete_iter.peek().unwrap_or(&&max_elt);
+                elt < max_elt && elt == *deleted_elt
             };
-
             // if elt matches the next deleted UID, delete elt
             if should_delete_elt {
                 self.len -= elt.len();
                 delete_iter.next();
                 let op = DeleteText::new(char_index, elt.len());
                 local_ops.push(LocalOp::DeleteText(op));
-                deleted_elements.push(elt);
 
             // otherwise insert all new elements that come before elt,
             // then re-insert elt
@@ -120,9 +103,8 @@ impl AttributedString {
                 self.elements.push(elt);
             }
         }
-        (local_ops, deleted_elements)
+        local_ops
     }
-
 
     fn insert_at_index(&mut self, index: usize, text: String, replica: &Replica) -> UpdateAttributedString {
         let elt_new = {
@@ -296,7 +278,7 @@ mod tests {
         assert!(op2.inserts[2].text().unwrap() == " ");
 
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -328,7 +310,7 @@ mod tests {
 
         assert!(op2.inserts.len() == 0);
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -344,8 +326,8 @@ mod tests {
 
         assert!(op3.inserts.len() == 0);
         assert!(op3.deletes.len() == 2);
-        assert!(op3.deletes[0] == op1.inserts[0].uid);
-        assert!(op3.deletes[1] == op2.inserts[0].uid);
+        assert!(op3.deletes[0] == op1.inserts[0]);
+        assert!(op3.deletes[1] == op2.inserts[0]);
     }
 
     #[test]
@@ -364,7 +346,7 @@ mod tests {
         assert!(op2.inserts.len() == 1);
         assert!(op2.inserts[0].text().unwrap() == "qk ");
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -387,8 +369,8 @@ mod tests {
         assert!(op3.inserts[0].text().unwrap() == "th");
         assert!(op3.inserts[1].text().unwrap() == "umps ");
         assert!(op3.deletes.len() == 5);
-        assert!(op3.deletes[0] == op1.inserts[0].uid);
-        assert!(op3.deletes[4] == op2.inserts[0].uid);
+        assert!(op3.deletes[0] == op1.inserts[0]);
+        assert!(op3.deletes[4] == op2.inserts[0]);
     }
 
     #[test]
@@ -410,7 +392,7 @@ mod tests {
         assert!(op2.inserts.len() == 1);
         assert!(op2.inserts[0].text().unwrap() == "herld");
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -429,7 +411,7 @@ mod tests {
         assert!(op2.inserts[1].text().unwrap() == "quick ");
         assert!(op2.inserts[2].text().unwrap() == "fox");
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -444,7 +426,7 @@ mod tests {
         assert!(text(&string, 3) == " fox");
 
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
         assert!(op2.inserts.len() == 3);
         assert!(op2.inserts[0].text().unwrap() == "the ");
         assert!(op2.inserts[1].text().unwrap() == "qwik");
@@ -503,28 +485,6 @@ mod tests {
         assert!(lop7.index == 4 && lop7.text == "qu");
         assert!(lop8.index == 6 && lop8.text == "a");
         assert!(lop9.index == 7 && lop9.text == "ck ");
-    }
-
-    #[test]
-    fn test_reverse_execute_remote() {
-        let mut string1 = AttributedString::new();
-        let mut remote_op1 = string1.insert_text(0, "the quick yellow fox".to_owned(), &Replica::new(1,1)).unwrap();
-        let mut remote_op2 = string1.replace_text(10, 6, "orange".to_owned(), &Replica::new(1,2)).unwrap();
-        let mut remote_op3 = string1.replace_text(10, 6, "brown".to_owned(), &Replica::new(1,3)).unwrap();
-
-        let mut string2 = AttributedString::new();
-        {
-            let _ = string2.execute_remote(&mut remote_op1);
-            let _ = string2.execute_remote(&mut remote_op2);
-            let _ = string2.execute_remote(&mut remote_op3);
-        }
-        let local_ops = string2.reverse_execute_remote(&mut remote_op3);
-        assert!(string2.raw_string() == "the quick orange fox");
-        assert!(local_ops.len() == 2);
-        assert!(local_ops[0].delete_text().unwrap().index == 10);
-        assert!(local_ops[0].delete_text().unwrap().len == 5);
-        assert!(local_ops[1].insert_text().unwrap().index == 10);
-        assert!(local_ops[1].insert_text().unwrap().text == "orange");
     }
 
     #[test]
