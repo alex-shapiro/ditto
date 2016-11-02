@@ -1,7 +1,7 @@
 use array::Array;
 use array::element::Element as ArrayElement;
 use attributed_string::AttributedString;
-use attributed_string::element::Element as StringElement;
+use attributed_string::element::Element as AttrStrElement;
 use Error;
 use object::element::Element as ObjectElement;
 use object::Object;
@@ -70,16 +70,16 @@ fn decode_json_array(vec: &[Json]) -> Result<Value, Error> {
 
 #[inline]
 fn decode_attributed_string(encoded_elements: &[Json]) -> Result<Value, Error> {
-    let mut elements: Vec<StringElement> = Vec::with_capacity(encoded_elements.len() + 2);
+    let mut elements: Vec<AttrStrElement> = Vec::with_capacity(encoded_elements.len() + 2);
     let mut len = 0;
 
-    elements.push(StringElement::start_marker());
+    elements.push(AttrStrElement::start_marker());
     for json in encoded_elements {
         let element = try!(decode_attributed_string_element(json));
         len += element.len();
         elements.push(element);
     }
-    elements.push(StringElement::end_marker());
+    elements.push(AttrStrElement::end_marker());
     let string = AttributedString::assemble(elements, len);
     Ok(Value::AttrStr(string))
 }
@@ -113,14 +113,14 @@ fn decode_object(encoded_elements: &[Json]) -> Result<Value, Error> {
 }
 
 #[inline]
-fn decode_attributed_string_element(element: &Json) -> Result<StringElement, Error> {
+fn decode_attributed_string_element(element: &Json) -> Result<AttrStrElement, Error> {
     let element_vec = try!(element.as_array().ok_or(Error::DecodeCompact));
     if element_vec.len() != 2 { return Err(Error::DecodeCompact) }
 
     let encoded_uid = try!(element_vec[0].as_str().ok_or(Error::DecodeCompact));
     let text        = try!(element_vec[1].as_str().ok_or(Error::DecodeCompact));
     let uid         = try!(SequenceUID::from_str(encoded_uid));
-    Ok(StringElement::new_text(text.to_string(), uid))
+    Ok(AttrStrElement::new_text(text.to_string(), uid))
 }
 
 #[inline]
@@ -146,80 +146,35 @@ fn decode_object_element(element: &Json) -> Result<ObjectElement, Error> {
 }
 
 #[inline]
-// decode [3,pointer,key,ObjectElement,[ObjectUID]] as UpdateObject
+// decode [3,pointer,key,[ObjectElement],[ObjectElement]] as UpdateObject
 fn decode_op_update_object(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
     if op_vec.len() != 5 { return Err(Error::DecodeCompact) }
 
-    // decode key
-    let key = try!(as_str(&op_vec[2])).to_owned();
-
-    // decode new_element
-    let element = match op_vec[3] {
-        Json::Null => None,
-        ref otherwise  => Some(try!(decode_object_element(otherwise))),
-    };
-
-    // decode deleted_uids
-    let encoded_uids = try!(as_array(&op_vec[4]));
-    let mut uids = Vec::with_capacity(encoded_uids.len());
-    for uid_json in encoded_uids {
-        let uid_str = try!(as_str(uid_json));
-        let uid = try!(ObjectUID::from_str(uid_str));
-        uids.push(uid);
-    }
-
-    let op = UpdateObject{key: key, new_element: element, deleted_uids: uids};
+    let key     = try!(as_str(&op_vec[2])).to_owned();
+    let inserts = try!(decode_object_elements(&op_vec[3]));
+    let deletes = try!(decode_object_elements(&op_vec[4]));
+    let op      = UpdateObject{key: key, inserts: inserts, deletes: deletes};
     Ok(RemoteOp::UpdateObject(op))
 }
 
 #[inline]
-// decode [4,pointer,[ArrayElement],[SequenceUID]] as nested UpdateArray
+// decode [4,pointer,[ArrayElement],[ArrayElement]] as nested UpdateArray
 fn decode_op_update_array(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
     if op_vec.len() != 4 { return Err(Error::DecodeCompact) }
 
-    // decode inserts
-    let encoded_inserts = try!(as_array(&op_vec[2]));
-    let mut inserts = Vec::with_capacity(encoded_inserts.len());
-    for encoded_element in encoded_inserts {
-         let element = try!(decode_array_element(encoded_element));
-         inserts.push(element);
-    }
-
-    // decode deletes
-    let encoded_deletes = try!(as_array(&op_vec[3]));
-    let mut deletes = Vec::with_capacity(encoded_deletes.len());
-    for encoded_uid in encoded_deletes {
-        let uid_str = try!(as_str(encoded_uid));
-        let uid = try!(SequenceUID::from_str(uid_str));
-        deletes.push(uid);
-    }
-
-    let op = UpdateArray{inserts: inserts, deletes: deletes};
+    let inserts = try!(decode_array_elements(&op_vec[2]));
+    let deletes = try!(decode_array_elements(&op_vec[3]));
+    let op      = UpdateArray{inserts: inserts, deletes: deletes};
     Ok(RemoteOp::UpdateArray(op))
 }
 
 #[inline]
-// decode [5,pointer,[AttrStrElement],[SequenceUID]]  UpdateAttributedString
+// decode [5,pointer,[AttrStrElement],[SequenceUID]] as UpdateAttributedString
 fn decode_op_update_attributed_string(op_vec: &Vec<Json>) -> Result<RemoteOp, Error> {
     if op_vec.len() != 4 { return Err(Error::DecodeCompact) }
 
-    // decode inserts
-    let encoded_inserts = try!(as_array(&op_vec[2]));
-    let mut inserts = Vec::with_capacity(encoded_inserts.len());
-    for encoded_element in encoded_inserts {
-         let element = try!(decode_attributed_string_element(encoded_element));
-         inserts.push(element);
-    }
-
-    // decode deletes
-    let encoded_deletes = try!(as_array(&op_vec[3]));
-    let mut deletes = Vec::with_capacity(encoded_deletes.len());
-    for encoded_uid in encoded_deletes {
-        let uid_str = try!(as_str(encoded_uid));
-        let uid = try!(SequenceUID::from_str(uid_str));
-        deletes.push(uid);
-    }
-
+    let inserts = try!(decode_attrstr_elements(&op_vec[2]));
+    let deletes = try!(decode_attrstr_elements(&op_vec[3]));
     let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
     Ok(RemoteOp::UpdateAttributedString(op))
 }
@@ -241,4 +196,37 @@ fn as_str(json: &Json) -> Result<&str, Error> {
 #[inline]
 fn as_array(json: &Json) -> Result<&Vec<Json>, Error> {
     json.as_array().ok_or(Error::DecodeCompact)
+}
+
+#[inline]
+fn decode_object_elements(encoded_elements_json: &Json) -> Result<Vec<ObjectElement>, Error> {
+    let encoded_elements = try!(as_array(encoded_elements_json));
+    let mut elements = Vec::with_capacity(encoded_elements.len());
+    for encoded_element in encoded_elements {
+        let element = try!(decode_object_element(&encoded_element));
+        elements.push(element);
+    }
+    Ok(elements)
+}
+
+#[inline]
+fn decode_array_elements(encoded_elements_json: &Json) -> Result<Vec<ArrayElement>, Error> {
+    let encoded_elements = try!(as_array(encoded_elements_json));
+    let mut elements = Vec::with_capacity(encoded_elements.len());
+    for encoded_element in encoded_elements {
+        let element = try!(decode_array_element(&encoded_element));
+        elements.push(element);
+    }
+    Ok(elements)
+}
+
+#[inline]
+fn decode_attrstr_elements(encoded_elements_json: &Json) -> Result<Vec<AttrStrElement>, Error> {
+    let encoded_elements = try!(as_array(encoded_elements_json));
+    let mut elements = Vec::with_capacity(encoded_elements.len());
+    for encoded_element in encoded_elements {
+        let element = try!(decode_attributed_string_element(&encoded_element));
+        elements.push(element);
+    }
+    Ok(elements)
 }

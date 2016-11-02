@@ -1,15 +1,15 @@
-use std::mem;
+use super::Reverse;
 use attributed_string::element::Element;
-use sequence::uid::UID;
+use std::mem;
 
 #[derive(Clone,Debug,PartialEq,Default)]
 pub struct UpdateAttributedString {
     pub inserts: Vec<Element>,
-    pub deletes: Vec<UID>,
+    pub deletes: Vec<Element>,
 }
 
 impl UpdateAttributedString {
-    pub fn new(inserts: Vec<Element>, deletes: Vec<UID>) -> Self {
+    pub fn new(inserts: Vec<Element>, deletes: Vec<Element>) -> Self {
         UpdateAttributedString{
             inserts: inserts,
             deletes: deletes,
@@ -23,25 +23,29 @@ impl UpdateAttributedString {
         // delete inserts and deletes that negate each other
         let (mut inserts, removed_inserts): (Vec<Element>, Vec<Element>) =
             inserts
-            .into_iter()
-            .partition(|e| !deletes.contains(&e.uid));
+                .into_iter()
+                .partition(|e| !deletes.contains(&e));
 
-        let removed_insert_uids: Vec<UID> =
-            removed_inserts.into_iter()
-            .map(|e| e.uid)
-            .collect();
-
-        let mut deletes: Vec<UID> =
+        let mut deletes: Vec<Element> =
             deletes
-            .into_iter()
-            .filter(|uid| !removed_insert_uids.contains(uid))
-            .collect();
+                .into_iter()
+                .filter(|e| !removed_inserts.contains(e))
+                .collect();
 
         inserts.append(&mut other.inserts);
         deletes.append(&mut self.deletes);
+        inserts.sort();
+        deletes.sort();
         self.inserts = inserts;
         self.deletes = deletes;
-        self.inserts.sort();
-        self.deletes.sort();
+    }
+}
+
+impl Reverse for UpdateAttributedString {
+    fn reverse(&self) -> Self {
+        UpdateAttributedString {
+            inserts: self.deletes.clone(),
+            deletes: self.inserts.clone(),
+        }
     }
 }

@@ -4,6 +4,7 @@ use Error;
 use object::{self, Object};
 use op::remote::IncrementNumber;
 use op::{self, RemoteOp, LocalOp};
+use Replica;
 use sequence;
 use std::str::FromStr;
 
@@ -128,8 +129,52 @@ impl Value {
         Ok((value.unwrap(), local_pointer))
     }
 
-    pub fn execute_remote(&mut self, op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
-        match (self, op) {
+    pub fn execute_local(&mut self, op: LocalOp, replica: &Replica) -> Result<RemoteOp, Error> {
+        match op {
+            LocalOp::Put(op) => {
+                let mut object = try!(self.as_object());
+                let remote_op = object.put(&op.key, op.value, replica);
+                Ok(RemoteOp::UpdateObject(remote_op))
+            },
+            LocalOp::Delete(op) => {
+                let mut object = try!(self.as_object());
+                let remote_op = try!(object.delete(&op.key));
+                Ok(RemoteOp::UpdateObject(remote_op))
+            },
+            LocalOp::InsertItem(op) => {
+                let mut array = try!(self.as_array());
+                let remote_op = try!(array.insert(op.index, op.value, replica));
+                Ok(RemoteOp::UpdateArray(remote_op))
+            },
+            LocalOp::DeleteItem(op) => {
+                let mut array = try!(self.as_array());
+                let remote_op = try!(array.delete(op.index));
+                Ok(RemoteOp::UpdateArray(remote_op))
+            },
+            LocalOp::InsertText(op) => {
+                let mut attrstr = try!(self.as_attributed_string());
+                let remote_op = try!(attrstr.insert_text(op.index, op.text, replica));
+                Ok(RemoteOp::UpdateAttributedString(remote_op))
+            },
+            LocalOp::DeleteText(op) => {
+                let mut attrstr = try!(self.as_attributed_string());
+                let remote_op = try!(attrstr.delete_text(op.index, op.len, replica));
+                Ok(RemoteOp::UpdateAttributedString(remote_op))
+            },
+            LocalOp::ReplaceText(op) => {
+                let mut attrstr = try!(self.as_attributed_string());
+                let remote_op = try!(attrstr.replace_text(op.index, op.len, op.text, replica));
+                Ok(RemoteOp::UpdateAttributedString(remote_op))
+            },
+            LocalOp::IncrementNumber(op) => {
+                let remote_op = try!(self.increment(op.amount));
+                Ok(RemoteOp::IncrementNumber(remote_op))
+            },
+        }
+    }
+
+    pub fn execute_remote(&mut self, remote_op: &RemoteOp) -> Result<Vec<LocalOp>, Error> {
+        match (self, remote_op) {
             (&mut Value::Obj(ref mut object), &RemoteOp::UpdateObject(ref op)) =>
                 Ok(vec![object.execute_remote(op)]),
             (&mut Value::Arr(ref mut array), &RemoteOp::UpdateArray(ref op)) =>
@@ -167,7 +212,7 @@ mod tests {
         for v in &mut test_values() {
             let mut object = Object::new();
             let op = object.put("foo", v.clone(), &REPLICA);
-            let uid = op.new_element.unwrap().uid;
+            let uid = &op.inserts[0].uid;
             let mut root = Value::Obj(object);
             let remote_pointer = format!("/{}", uid.to_string());
             assert!(root.get_nested_local("/foo") == Ok((v, remote_pointer)));
@@ -194,7 +239,7 @@ mod tests {
             let op1 = array.insert(0, v.clone(), &REPLICA).ok().unwrap();
             let op2 = object.put("bar", Value::Arr(array), &REPLICA);
             let remote_pointer = {
-                let uid2 = op2.new_element.unwrap().uid.to_string();
+                let uid2 = op2.inserts[0].uid.to_string();
                 let uid1 = op1.inserts[0].uid.to_string();
                 format!("/{}/{}", uid2, uid1)
             };
@@ -212,7 +257,7 @@ mod tests {
             let op2 = array.insert(0, Value::Obj(object), &REPLICA).ok().unwrap();
             let remote_pointer = {
                 let uid2 = op2.inserts[0].uid.to_string();
-                let uid1 = op1.new_element.unwrap().uid.to_string();
+                let uid1 = op1.inserts[0].uid.to_string();
                 format!("/{}/{}", uid2, uid1)
             };
             let mut root = Value::Arr(array);
@@ -232,7 +277,7 @@ mod tests {
         for v in &mut test_values() {
             let mut object = Object::new();
             let op = object.put("foo", v.clone(), &REPLICA);
-            let uid = op.new_element.unwrap().uid;
+            let uid = &op.inserts[0].uid;
             let mut root = Value::Obj(object);
             let remote_pointer = format!("/{}", uid.to_string());
             assert!(root.get_nested_remote(&remote_pointer) == Ok((v, "/foo".to_string())));
@@ -259,7 +304,7 @@ mod tests {
             let op1 = array.insert(0, v.clone(), &REPLICA).ok().unwrap();
             let op2 = object.put("bar", Value::Arr(array), &REPLICA);
             let remote_pointer = {
-                let uid2 = op2.new_element.unwrap().uid.to_string();
+                let uid2 = op2.inserts[0].uid.to_string();
                 let uid1 = op1.inserts[0].uid.to_string();
                 format!("/{}/{}", uid2, uid1)
             };
@@ -277,7 +322,7 @@ mod tests {
             let op2 = array.insert(0, Value::Obj(object), &REPLICA).ok().unwrap();
             let remote_pointer = {
                 let uid2 = op2.inserts[0].uid.to_string();
-                let uid1 = op1.new_element.unwrap().uid.to_string();
+                let uid1 = op1.inserts[0].uid.to_string();
                 format!("/{}/{}", uid2, uid1)
             };
             let mut root = Value::Arr(array);

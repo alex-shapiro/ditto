@@ -3,7 +3,7 @@ use array::Array;
 use attributed_string::AttributedString;
 use object::Object;
 use op::{NestedLocalOp, LocalOp};
-use op::local::{Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, IncrementNumber};
+use op::local::{Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, ReplaceText, IncrementNumber};
 use serde_json::builder::ObjectBuilder;
 use serde_json::Value as Json;
 use serde_json::value::Map as SerdeMap;
@@ -43,6 +43,8 @@ pub fn encode_op(nested_op: &NestedLocalOp) -> Json {
             encode_op_insert_text(op, pointer),
         LocalOp::DeleteText(ref op) =>
             encode_op_delete_text(op, pointer),
+        LocalOp::ReplaceText(ref op) =>
+            encode_op_replace_text(op, pointer),
         LocalOp::IncrementNumber(ref op) =>
             encode_op_increment_number(op, pointer),
     }
@@ -128,6 +130,16 @@ fn encode_op_delete_text(op: &DeleteText, pointer: &str) -> Json {
         .build()
 }
 
+fn encode_op_replace_text(op: &ReplaceText, pointer: &str) -> Json {
+    ObjectBuilder::new()
+        .insert("op", Json::String("replace_text".to_string()))
+        .insert("pointer", Json::String(pointer.to_string()))
+        .insert("index", Json::U64(op.index as u64))
+        .insert("len", Json::U64(op.len as u64))
+        .insert("text", Json::String(op.text.clone()))
+        .build()
+}
+
 fn encode_op_increment_number(op: &IncrementNumber, pointer: &str) -> Json {
     ObjectBuilder::new()
         .insert("op", Json::String("increment_number".to_string()))
@@ -144,7 +156,7 @@ mod tests {
     use array::Array;
     use attributed_string::AttributedString;
     use op::NestedLocalOp;
-    use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, IncrementNumber};
+    use op::local::{LocalOp, Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, ReplaceText, IncrementNumber};
     use object::Object;
     use serde_json;
 
@@ -300,6 +312,21 @@ mod tests {
         assert!(json.contains(r#""pointer":"/1/203/xx""#));
         assert!(json.contains(r#""index":112"#));
         assert!(json.contains(r#""len":84"#));
+    }
+
+    #[test]
+    fn test_encode_op_replace_text() {
+        let nested_op = NestedLocalOp{
+            pointer: "/1/203/xx".to_string(),
+            op: LocalOp::ReplaceText(ReplaceText{index: 112,len: 84, text: "hello!".to_owned()}),
+        };
+
+        let json = encode_op_str(&nested_op);
+        assert!(json.contains(r#""op":"replace_text""#));
+        assert!(json.contains(r#""pointer":"/1/203/xx""#));
+        assert!(json.contains(r#""index":112"#));
+        assert!(json.contains(r#""len":84"#));
+        assert!(json.contains(r#""text":"hello!"#));
     }
 
     #[test]

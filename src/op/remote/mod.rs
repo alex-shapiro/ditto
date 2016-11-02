@@ -15,3 +15,22 @@ pub enum RemoteOp {
     UpdateAttributedString(UpdateAttributedString),
     UpdateObject(UpdateObject),
 }
+
+impl RemoteOp {
+    pub fn reverse(&self) -> Self {
+        match *self {
+            RemoteOp::IncrementNumber(ref op) =>
+                RemoteOp::IncrementNumber(op.reverse()),
+            RemoteOp::UpdateArray(ref op) =>
+                RemoteOp::UpdateArray(op.reverse()),
+            RemoteOp::UpdateAttributedString(ref op) =>
+                RemoteOp::UpdateAttributedString(op.reverse()),
+            RemoteOp::UpdateObject(ref op) =>
+                RemoteOp::UpdateObject(op.reverse()),
+        }
+    }
+}
+
+pub trait Reverse {
+    fn reverse(&self) -> Self;
+}

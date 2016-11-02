@@ -6,6 +6,7 @@ use op::local::{DeleteItem, InsertItem, LocalOp};
 use op::remote::UpdateArray;
 use Replica;
 use sequence::uid::UID;
+use std::mem;
 use Value;
 
 #[derive(Debug,Clone,PartialEq)]
@@ -44,7 +45,7 @@ impl Array {
     pub fn delete(&mut self, index: usize) -> Result<UpdateArray, Error> {
         if index < self.len() {
             let element = self.0.remove(index+1);
-            Ok(UpdateArray::delete(element.uid))
+            Ok(UpdateArray::delete(element))
         } else {
             Err(Error::OutOfBounds)
         }
@@ -64,47 +65,37 @@ impl Array {
     }
 
     pub fn execute_remote(&mut self, op: &UpdateArray) -> Vec<LocalOp> {
-        let delete_ops: Vec<DeleteItem> =
-            op.deletes.iter()
-            .map(|uid| self.delete_remote(&uid))
-            .filter(|op| op.is_some())
-            .map(|op| op.unwrap())
-            .collect();
+        let elements = mem::replace(&mut self.0, Vec::new());
+        let mut insert_iter = op.inserts.iter().peekable();
+        let mut delete_iter = op.deletes.iter().peekable();
+        let mut local_ops = Vec::new();
 
-        let insert_ops: Vec<InsertItem> =
-            op.inserts.iter()
-            .map(|elt| self.insert_remote(elt.clone()))
-            .filter(|op| op.is_some())
-            .map(|op| op.unwrap())
-            .collect();
+        let max_elt = Element::end_marker();
 
-        let mut local_ops: Vec<LocalOp> = Vec::with_capacity(delete_ops.len() + insert_ops.len());
-        for op in delete_ops { local_ops.push(LocalOp::DeleteItem(op)); }
-        for op in insert_ops { local_ops.push(LocalOp::InsertItem(op)); }
+        for (index, elt) in elements.into_iter().enumerate() {
+            let should_delete_elt = {
+                let deleted_elt = *delete_iter.peek().unwrap_or(&&max_elt);
+                elt < max_elt && elt == *deleted_elt
+            };
+            // if elt matches the next deleted UID, delete elt
+            if should_delete_elt {
+                delete_iter.next();
+                let op = DeleteItem::new(index - 1);
+                local_ops.push(LocalOp::DeleteItem(op));
+
+            // otherwise insert all new elements that come before elt,
+            // then re-insert elt
+            } else {
+                while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
+                    let insert = insert_iter.next().unwrap().clone();
+                    let op = InsertItem::new(index - 1, insert.value.clone());
+                    local_ops.push(LocalOp::InsertItem(op));
+                    self.0.push(insert);
+                }
+                self.0.push(elt);
+            }
+        }
         local_ops
-    }
-
-    fn insert_remote(&mut self, element: Element) -> Option<InsertItem> {
-        let uid = element.uid.clone();
-        let ref mut elements = self.0;
-        match elements.iter().position(|e| uid < e.uid) {
-            Some(index) => {
-                elements.insert(index, element.clone());
-                Some(InsertItem::new(index-1, element.value.clone()))},
-            None =>
-                None,
-        }
-    }
-
-    fn delete_remote(&mut self, uid: &UID) -> Option<DeleteItem> {
-        let ref mut elements = self.0;
-        match elements.iter().position(|e| *uid == e.uid) {
-            Some(index) => {
-                elements.remove(index);
-                Some(DeleteItem::new(index-1))},
-            None =>
-                None,
-        }
     }
 
     pub fn elements(&self) -> &[Element] {
@@ -163,7 +154,7 @@ mod tests {
         let op2 = array.delete(0).unwrap();
 
         assert!(array.0[1].value == Value::Num(2.0));
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -174,32 +165,56 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_remote() {
+    fn test_execute_remote_insert() {
         let mut array1 = Array::new();
         let mut array2 = Array::new();
-
-        let op1 = array1.insert(0, Value::Num(1.0), &REPLICA).unwrap();
-        let op2 = array1.insert(1, Value::Num(2.0), &REPLICA).unwrap();
-        let op3 = array1.delete(0).unwrap();
-
-        let lops1 = array2.execute_remote(&op1);
-        let lops2 = array2.execute_remote(&op2);
-        let lops3 = array2.execute_remote(&op3);
+        let mut remote_op = array1.insert(0, Value::Num(1.0), &Replica::new(1,1)).unwrap();
+        let local_ops = array2.execute_remote(&mut remote_op);
 
         assert!(array1 == array2);
-        assert!(lops1.len() == 1);
-        assert!(lops2.len() == 1);
-        assert!(lops3.len() == 1);
+        assert!(local_ops.len() == 1);
+        assert!(local_ops[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops[0].insert_item().unwrap().index == 0);
+    }
 
-        let lop1 = lops1[0].insert_item().unwrap();
-        assert!(lop1.index == 0);
-        assert!(lop1.value == Value::Num(1.0));
+    #[test]
+    fn test_execute_remote_delete() {
+        let mut array1 = Array::new();
+        let mut array2 = Array::new();
+        let mut remote_op = array1.insert(0, Value::Num(1.0), &Replica::new(1,1)).unwrap();
+        let local_ops = array2.execute_remote(&mut remote_op);
+        assert!(array1 == array2);
+        assert!(local_ops.len() == 1);
+        assert!(local_ops[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops[0].insert_item().unwrap().index == 0);
+    }
 
-        let lop2 = lops2[0].insert_item().unwrap();
-        assert!(lop2.index == 1);
-        assert!(lop2.value == Value::Num(2.0));
+    #[test]
+    fn test_execute_remote_both() {
+        let mut array1 = Array::new();
+        let mut remote_op1 = array1.insert(0, Value::Num(1.0), &Replica::new(1,1)).unwrap();
+        let mut remote_op2 = array1.insert(1, Value::Num(2.0), &Replica::new(1,2)).unwrap();
+        let mut remote_op3 = array1.delete(1).unwrap();
 
-        let lop3 = lops3[0].delete_item().unwrap();
-        assert!(lop3.index == 0);
+        let mut array2 = Array::new();
+        let local_ops1 = array2.execute_remote(&mut remote_op1);
+        let local_ops2 = array2.execute_remote(&mut remote_op2);
+        let local_ops3 = array2.execute_remote(&mut remote_op3);
+
+        assert!(array1 == array2);
+
+        // first (insert)
+        assert!(local_ops1.len() == 1);
+        assert!(local_ops1[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops1[0].insert_item().unwrap().index == 0);
+
+        // second (insert)
+        assert!(local_ops2.len() == 1);
+        assert!(local_ops2[0].insert_item().unwrap().value == Value::Num(2.0));
+        assert!(local_ops2[0].insert_item().unwrap().index == 1);
+
+        // third (delete)
+        assert!(local_ops3.len() == 1);
+        assert!(local_ops3[0].delete_item().unwrap().index == 1);
     }
 }

@@ -7,7 +7,6 @@ use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
 use Replica;
-use sequence::uid::UID;
 use std::mem;
 
 #[derive(Debug,Clone,PartialEq)]
@@ -68,28 +67,30 @@ impl AttributedString {
 
     pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
         let elements = mem::replace(&mut self.elements, Vec::new());
-        let mut deletes = op.deletes.iter().peekable();
-        let mut inserts = op.inserts.iter().peekable();
-        let mut local_ops: Vec<LocalOp> = Vec::new();
+        let mut insert_iter = op.inserts.iter().peekable();
+        let mut delete_iter = op.deletes.iter().peekable();
+        let mut local_ops = Vec::new();
 
         let mut char_index = 0;
         let max_elt = Element::end_marker();
-        let max_uid = UID::max();
 
         for elt in elements {
-            // check to make sure the element hasn't been deleted
             let should_delete_elt = {
-                let del = *deletes.peek().unwrap_or(&&max_uid);
-                del < &max_uid && del == &elt.uid};
+                let deleted_elt = *delete_iter.peek().unwrap_or(&&max_elt);
+                elt < max_elt && elt == *deleted_elt
+            };
+            // if elt matches the next deleted UID, delete elt
             if should_delete_elt {
                 self.len -= elt.len();
-                deletes.next();
+                delete_iter.next();
                 let op = DeleteText::new(char_index, elt.len());
                 local_ops.push(LocalOp::DeleteText(op));
+
+            // otherwise insert all new elements that come before elt,
+            // then re-insert elt
             } else {
-                // add inserts that precede the current element
-                while *inserts.peek().unwrap_or(&&max_elt) < &elt {
-                    let ins = inserts.next().unwrap().clone();
+                while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
+                    let ins = insert_iter.next().unwrap().clone();
                     let text = ins.text().unwrap().to_string();
                     let text_len = text.len();
                     let op = InsertText::new(char_index, text);
@@ -98,12 +99,10 @@ impl AttributedString {
                     self.len += text_len;
                     char_index += text_len;
                 }
-                // add the current element to self.elements
                 char_index += elt.len();
                 self.elements.push(elt);
             }
         }
-
         local_ops
     }
 
@@ -137,7 +136,7 @@ impl AttributedString {
         self.elements.insert(index, elt_pre.clone());
         UpdateAttributedString::new(
             vec![elt_pre, elt_new, elt_post],
-            vec![original_elt.uid]
+            vec![original_elt],
         )
     }
 
@@ -146,7 +145,7 @@ impl AttributedString {
         let deleted_element = element.clone();
         element.cut_middle(range.lower.offset, range.upper.offset, replica);
         let insert = element.clone();
-        UpdateAttributedString::new(vec![insert], vec![deleted_element.uid])
+        UpdateAttributedString::new(vec![insert], vec![deleted_element])
     }
 
     fn delete_in_range(&mut self, range: &Range, replica: &Replica) -> UpdateAttributedString {
@@ -177,9 +176,8 @@ impl AttributedString {
             deletes.push(self.elements.remove(lower_index));
         }
 
-        let mut deleted_uids: Vec<UID> = deletes.into_iter().map(|e| e.uid).collect();
-        deleted_uids.sort();
-        UpdateAttributedString::new(inserts, deleted_uids)
+        deletes.sort();
+        UpdateAttributedString::new(inserts, deletes)
     }
 
     pub fn elements(&self) -> &[Element] {
@@ -280,7 +278,7 @@ mod tests {
         assert!(op2.inserts[2].text().unwrap() == " ");
 
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -312,7 +310,7 @@ mod tests {
 
         assert!(op2.inserts.len() == 0);
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -328,8 +326,8 @@ mod tests {
 
         assert!(op3.inserts.len() == 0);
         assert!(op3.deletes.len() == 2);
-        assert!(op3.deletes[0] == op1.inserts[0].uid);
-        assert!(op3.deletes[1] == op2.inserts[0].uid);
+        assert!(op3.deletes[0] == op1.inserts[0]);
+        assert!(op3.deletes[1] == op2.inserts[0]);
     }
 
     #[test]
@@ -348,7 +346,7 @@ mod tests {
         assert!(op2.inserts.len() == 1);
         assert!(op2.inserts[0].text().unwrap() == "qk ");
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -371,8 +369,8 @@ mod tests {
         assert!(op3.inserts[0].text().unwrap() == "th");
         assert!(op3.inserts[1].text().unwrap() == "umps ");
         assert!(op3.deletes.len() == 5);
-        assert!(op3.deletes[0] == op1.inserts[0].uid);
-        assert!(op3.deletes[4] == op2.inserts[0].uid);
+        assert!(op3.deletes[0] == op1.inserts[0]);
+        assert!(op3.deletes[4] == op2.inserts[0]);
     }
 
     #[test]
@@ -394,7 +392,7 @@ mod tests {
         assert!(op2.inserts.len() == 1);
         assert!(op2.inserts[0].text().unwrap() == "herld");
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -413,7 +411,7 @@ mod tests {
         assert!(op2.inserts[1].text().unwrap() == "quick ");
         assert!(op2.inserts[2].text().unwrap() == "fox");
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
     #[test]
@@ -428,7 +426,7 @@ mod tests {
         assert!(text(&string, 3) == " fox");
 
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0].uid);
+        assert!(op2.deletes[0] == op1.inserts[0]);
         assert!(op2.inserts.len() == 3);
         assert!(op2.inserts[0].text().unwrap() == "the ");
         assert!(op2.inserts[1].text().unwrap() == "qwik");
@@ -446,22 +444,22 @@ mod tests {
     #[test]
     fn test_execute_remote_empty() {
         let mut string = AttributedString::new();
-        let op = UpdateAttributedString::default();
-        let local_ops = string.execute_remote(&op);
+        let mut op = UpdateAttributedString::default();
+        let local_ops = string.execute_remote(&mut op);
         assert!(local_ops.len() == 0);
     }
 
     #[test]
-    fn test_execute_remote_inserts_only() {
+    fn test_execute_remote() {
         let mut string1 = AttributedString::new();
-        let op1 = string1.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
-        let op2 = string1.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
-        let op3 = string1.replace_text(6, 1, "a".to_string(), &REPLICA1).unwrap();
+        let mut op1 = string1.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
+        let mut op2 = string1.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
+        let mut op3 = string1.replace_text(6, 1, "a".to_string(), &REPLICA1).unwrap();
 
         let mut string2 = AttributedString::new();
-        let lops1 = string2.execute_remote(&op1);
-        let lops2 = string2.execute_remote(&op2);
-        let lops3 = string2.execute_remote(&op3);
+        let lops1 = string2.execute_remote(&mut op1);
+        let lops2 = string2.execute_remote(&mut op2);
+        let lops3 = string2.execute_remote(&mut op3);
 
         assert!(string1 == string2);
         assert!(lops1.len() == 1);
