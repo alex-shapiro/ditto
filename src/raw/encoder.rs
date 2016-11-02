@@ -236,7 +236,6 @@ mod tests {
     fn test_encode_op_put() {
         let nested_op = NestedLocalOp{
             pointer: "/a/sdf/x".to_string(),
-            session_counter: 123,
             op: LocalOp::Put(Put{key: "foo".to_string(), value: Value::Bool(true)}),
         };
 
@@ -251,7 +250,6 @@ mod tests {
     fn test_encode_op_delete() {
         let nested_op = NestedLocalOp{
             pointer: "/a/sdf/x".to_string(),
-            session_counter: 123,
             op: LocalOp::Delete(Delete{key: "foo".to_string()}),
         };
 
@@ -265,7 +263,6 @@ mod tests {
     fn test_encode_op_insert_item() {
         let nested_op = NestedLocalOp{
             pointer: "/1/203/xx".to_string(),
-            session_counter: 123,
             op: LocalOp::InsertItem(InsertItem{index: 43, value: Value::array()}),
         };
 
@@ -280,7 +277,6 @@ mod tests {
     fn test_encode_op_delete_item() {
         let nested_op = NestedLocalOp{
             pointer: "/1/203/xx".to_string(),
-            session_counter: 123,
             op: LocalOp::DeleteItem(DeleteItem{index: 43}),
         };
 
@@ -294,7 +290,6 @@ mod tests {
     fn test_encode_op_insert_text() {
         let nested_op = NestedLocalOp{
             pointer: "/1/203/xx".to_string(),
-            session_counter: 123,
             op: LocalOp::InsertText(InsertText{index: 112, text: "Hiya".to_string()}),
         };
 
@@ -309,7 +304,6 @@ mod tests {
     fn test_encode_op_delete_text() {
         let nested_op = NestedLocalOp{
             pointer: "/1/203/xx".to_string(),
-            session_counter: 123,
             op: LocalOp::DeleteText(DeleteText{index: 112,len: 84}),
         };
 
@@ -324,7 +318,6 @@ mod tests {
     fn test_encode_op_replace_text() {
         let nested_op = NestedLocalOp{
             pointer: "/1/203/xx".to_string(),
-            session_counter: 123,
             op: LocalOp::ReplaceText(ReplaceText{index: 112,len: 84, text: "hello!".to_owned()}),
         };
 
@@ -340,7 +333,6 @@ mod tests {
     fn test_encode_op_increment_number() {
         let nested_op = NestedLocalOp{
             pointer: "/1/203/xx".to_string(),
-            session_counter: 123,
             op: LocalOp::IncrementNumber(IncrementNumber{amount: 232.013,}),
         };
 

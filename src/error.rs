@@ -7,7 +7,6 @@ pub enum Error {
     DeserializeSequenceUID,
     InvalidIndex,
     InvalidRemoteOp,
-    InvalidSessionCounter,
     KeyDoesNotExist,
     Noop,
     OutOfBounds,

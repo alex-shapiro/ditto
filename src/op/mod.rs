@@ -9,7 +9,6 @@ use serde;
 
 pub struct NestedLocalOp {
     pub pointer: String,
-    pub session_counter: usize,
     pub op: local::LocalOp,
 }
 
@@ -17,6 +16,12 @@ pub struct NestedLocalOp {
 pub struct NestedRemoteOp {
     pub pointer: String,
     pub op: remote::RemoteOp,
+}
+
+impl NestedRemoteOp {
+    pub fn reverse(&self) -> Self {
+        NestedRemoteOp{pointer: self.pointer.clone(), op: self.op.reverse()}
+    }
 }
 
 impl serde::Serialize for NestedLocalOp {
