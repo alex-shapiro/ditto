@@ -18,10 +18,7 @@ impl CRDT {
     pub fn new(json: &Json, site: u32) -> Self {
         let replica = Replica::new(site, 0);
         let value = raw::decode(json, &replica);
-        CRDT{
-            root_value: value,
-            replica: replica,
-        }
+        CRDT{root_value: value, replica: replica}
     }
 
     pub fn new_str(string: &str, site: u32) -> Self {
@@ -35,10 +32,7 @@ impl CRDT {
 
     pub fn deserialize(json: &Json, replica: Replica) -> R<Self> {
         let value = try!(compact::decode(json));
-        Ok(CRDT{
-            root_value: value,
-            replica: replica,
-        })
+        Ok(CRDT{root_value: value, replica: replica})
     }
 
     pub fn get_replica(&self) -> &Replica {
