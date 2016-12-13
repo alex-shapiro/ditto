@@ -79,6 +79,7 @@ impl Value {
         let mut value = Some(self);
         let mut remote_pointer = String::new();
 
+        if !(pointer.is_empty() || pointer.starts_with("/")) { return Err(Error::InvalidPath) }
         for escaped_key in pointer.split("/").skip(1) {
             let key = escaped_key.replace("~1", "/").replace("~0", "~");
             value = match *value.unwrap() {
@@ -106,6 +107,7 @@ impl Value {
         let mut value = Some(self);
         let mut local_pointer = String::new();
 
+        if !(pointer.is_empty() || pointer.starts_with("/")) { return Err(Error::InvalidPath) }
         for encoded_uid in pointer.split("/").skip(1) {
             value = match *value.unwrap() {
                 Value::Obj(ref mut object) => {
@@ -266,6 +268,12 @@ mod tests {
     }
 
     #[test]
+    fn test_get_nested_local_invalid_path() {
+        let mut root = Value::array();
+        assert!(root.get_nested_local("x/0") == Err(Error::InvalidPath));
+    }
+
+    #[test]
     fn test_get_nested_remote_root() {
         for v in &mut test_values() {
             assert!(v.clone().get_nested_remote("") == Ok((v, String::new())));
@@ -328,6 +336,12 @@ mod tests {
             let mut root = Value::Arr(array);
             assert!(root.get_nested_remote(&remote_pointer) == Ok((v, "/0/baz".to_string())));
         }
+    }
+
+    #[test]
+    fn test_get_nested_remote_invalid_path() {
+        let mut root = Value::array();
+        assert!(root.get_nested_remote("x/x") == Err(Error::InvalidPath));
     }
 
     fn test_values() -> Vec<Value> {

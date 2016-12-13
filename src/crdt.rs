@@ -21,9 +21,10 @@ impl CRDT {
         CRDT{root_value: value, replica: replica}
     }
 
-    pub fn new_str(string: &str, site: u32) -> Self {
-        let json: Json = serde_json::from_str(string).expect("invalid JSON!");
-        CRDT::new(&json, site)
+    pub fn new_str(string: &str, site: u32) -> R<Self> {
+        let json: Json = try!(serde_json::from_str(string));
+        let crdt = CRDT::new(&json, site);
+        Ok(crdt)
     }
 
     pub fn serialize(&self) -> Json {
@@ -56,7 +57,7 @@ impl CRDT {
     }
 
     pub fn put_str(&mut self, pointer: String, key: String, item: &str) -> R<NestedRemoteOp> {
-        let json: Json = serde_json::from_str(item).expect("invalid JSON!");
+        let json: Json = try!(serde_json::from_str(item));
         self.put(pointer, key, &json)
     }
 
@@ -71,7 +72,7 @@ impl CRDT {
     }
 
     pub fn insert_item_str(&mut self, pointer: String, index: usize, item: &str) -> R<NestedRemoteOp> {
-        let json: Json = serde_json::from_str(item).expect("invalid JSON!");
+        let json: Json = try!(serde_json::from_str(item));
         self.insert_item(pointer, index, &json)
     }
 
