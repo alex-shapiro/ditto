@@ -1,3 +1,4 @@
+#[derive(Debug)]
 pub struct Replica {
     pub site: u32,
     pub counter: u32,
