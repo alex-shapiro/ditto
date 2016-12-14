@@ -10,8 +10,8 @@ use ditto::{CRDT, Value};
 
 #[test]
 fn serialize_value_alone() {
-    let mut crdt = CRDT::create(r#"{"__TYPE__":"attrstr", "text":"The quick fox ran over the lazy dog."}"#).unwrap();
-    let value: &Value = crdt.get("").unwrap();
+    let crdt = CRDT::create(r#"{"__TYPE__":"attrstr", "text":"The quick fox ran over the lazy dog."}"#).unwrap();
+    let value: &Value = crdt.value();
     let json = serde_json::to_string(value).unwrap();
     assert!(json == r#"{"__TYPE__":"attrstr","text":"The quick fox ran over the lazy dog."}"#);
 }
@@ -24,10 +24,10 @@ fn serialize_value_inside_struct() {
         value: &'a Value,
     }
 
-    let mut crdt = CRDT::create(r#"{"__TYPE__":"attrstr", "text":"abcdefg"}"#).unwrap();
+    let crdt = CRDT::create(r#"{"__TYPE__":"attrstr", "text":"abcdefg"}"#).unwrap();
     let s = SomeStruct{
         afield: "hiya!",
-        value: crdt.get("").unwrap(),
+        value: crdt.value(),
     };
 
     let json = serde_json::to_string(&s).unwrap();

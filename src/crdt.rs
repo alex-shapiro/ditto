@@ -11,7 +11,7 @@ type R<T> = Result<T, Error>;
 
 #[derive(Debug)]
 pub struct CRDT {
-    pub root_value: Value,
+    root_value: Value,
     replica: Replica,
 }
 
@@ -43,9 +43,8 @@ impl CRDT {
         self.replica.counter
     }
 
-    pub fn get<'a>(&'a mut self, pointer: &'a str) -> R<&'a Value> {
-        let (value, _) = try!(self.root_value.get_nested_local(pointer));
-        Ok(value)
+    pub fn value<'a>(&'a self) -> &'a Value {
+        &self.root_value
     }
 
     pub fn put(&mut self, pointer: &str, key: &str, value: &str) -> R<NestedRemoteOp> {
