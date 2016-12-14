@@ -4,8 +4,10 @@ use Error;
 use object::{self, Object};
 use op::remote::IncrementNumber;
 use op::{self, RemoteOp, LocalOp};
+use raw;
 use Replica;
 use sequence;
+use serde;
 use std::str::FromStr;
 
 #[derive(Debug,PartialEq,Clone)]
@@ -188,6 +190,13 @@ impl Value {
             _ =>
                 Err(Error::InvalidRemoteOp),
         }
+    }
+}
+
+impl serde::Serialize for Value {
+    fn serialize<S>(&self, serializer: &mut S) -> Result<(), S::Error>
+        where S: serde::Serializer {
+            serializer.serialize_some(raw::encode(self))
     }
 }
 

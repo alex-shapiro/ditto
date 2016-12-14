@@ -5,6 +5,7 @@ authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
 
 [dev-dependencies]
 regex = "0.1"
+serde_derive = "0.8"
 
 [dependencies]
 num = "0.1.36"
