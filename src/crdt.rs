@@ -47,6 +47,10 @@ impl CRDT {
         &self.root_value
     }
 
+    pub fn as_value(self) -> Value {
+        self.root_value
+    }
+
     pub fn put(&mut self, pointer: &str, key: &str, value: &str) -> R<NestedRemoteOp> {
         let value_json: Json = try!(serde_json::from_str(value));
         let op = op::local::Put{key: key.to_owned(), value: raw::decode(&value_json, &self.replica)};
