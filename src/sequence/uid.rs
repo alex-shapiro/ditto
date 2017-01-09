@@ -32,11 +32,16 @@ const BASE_LEVEL: usize = 3;
 const MAX_LEVEL:  usize = 32;
 const BOUNDARY:   usize = 10;
 
+
 #[derive(Clone,PartialEq,Eq)]
 pub struct UID {
     position: BigUint,
     pub site: u32,
     pub counter: u32,
+}
+
+lazy_static! {
+    pub static ref STATE: u32 = 41;
 }
 
 impl UID {

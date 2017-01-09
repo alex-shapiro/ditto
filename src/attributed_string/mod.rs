@@ -1,5 +1,7 @@
 pub mod element;
+mod attribute;
 mod range;
+mod rope;
 
 use self::element::Element;
 use self::range::{Bound, Range};
@@ -11,8 +13,8 @@ use std::mem;
 
 #[derive(Debug,Clone,PartialEq)]
 pub struct AttributedString{
-    elements: Vec<Element>,
     len: usize,
+    elements: Vec<Element>,
 }
 
 impl AttributedString {
@@ -81,9 +83,9 @@ impl AttributedString {
             };
             // if elt matches the next deleted UID, delete elt
             if should_delete_elt {
-                self.len -= elt.len();
+                self.len -= elt.len;
                 delete_iter.next();
-                let op = DeleteText::new(char_index, elt.len());
+                let op = DeleteText::new(char_index, elt.len);
                 local_ops.push(LocalOp::DeleteText(op));
 
             // otherwise insert all new elements that come before elt,
@@ -91,7 +93,7 @@ impl AttributedString {
             } else {
                 while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
                     let ins = insert_iter.next().unwrap().clone();
-                    let text = ins.text().unwrap().to_string();
+                    let text = ins.text.to_string();
                     let text_len = text.len();
                     let op = InsertText::new(char_index, text);
                     local_ops.push(LocalOp::InsertText(op));
@@ -99,7 +101,7 @@ impl AttributedString {
                     self.len += text_len;
                     char_index += text_len;
                 }
-                char_index += elt.len();
+                char_index += elt.len;
                 self.elements.push(elt);
             }
         }
@@ -121,7 +123,7 @@ impl AttributedString {
         let original_elt = self.elements.remove(index);
 
         let (elt_pre, elt_new, elt_post) = {
-            let original_text = original_elt.text().unwrap();
+            let original_text = original_elt.text;
             let (text_pre, text_post) = original_text.split_at(offset);
             let ref elt_ppre = self.elements[index-1];
             let ref elt_ppost = self.elements[index];
@@ -189,9 +191,8 @@ impl AttributedString {
     pub fn raw_string(&self) -> String {
         let mut raw = String::with_capacity(self.len());
         for elt in &self.elements {
-            match elt.text() {
-                None => (),
-                Some(text) => raw.push_str(text),
+            if elt.is_text() {
+                raw.push_str(&elt.text);
             }
         }
         raw

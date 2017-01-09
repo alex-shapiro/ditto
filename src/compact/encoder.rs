@@ -77,7 +77,7 @@ fn encode_object(object: &object::Object) -> Json {
 fn encode_attributed_string_element(element: &attributed_string::element::Element) -> Json {
     let mut element_vec: Vec<Json> = Vec::with_capacity(2);
     element_vec.push(Json::String(element.uid.to_string()));
-    element.text().and_then(|text| Some(element_vec.push(Json::String(text.to_string()))));
+    element_vec.push(Json::String(element.text.clone()));
     Json::Array(element_vec)
 }
 

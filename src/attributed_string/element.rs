@@ -1,106 +1,69 @@
 use std::cmp::Ordering;
-use sequence::uid::UID;
+use sequence::uid::{self, UID};
 use Replica;
 use std::fmt;
 use std::fmt::Debug;
 
-#[derive(Clone)]
-pub enum EltValue {
-    None,
-    Text(String),
-}
-
-impl EltValue {
-    pub fn len(&self) -> usize {
-        match self {
-            &EltValue::Text(ref str) => str.len(),
-            _ => 0,
-        }
-    }
-}
-
-impl Debug for EltValue {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        match self {
-            &EltValue::None => write!(f, "None"),
-            &EltValue::Text(ref str) => write!(f, "\"{}\"", str),
-        }
-    }
-}
-
 #[derive(Debug, Clone)]
 pub struct Element {
     pub uid: UID,
-    value: EltValue,
+    pub len: usize,
+    pub text: String,
 }
 
 impl Element {
-    pub fn new(value: EltValue, uid: UID) -> Self {
-        Element{uid: uid, value: value}
-    }
-
-    pub fn new_text(text: String, uid: UID) -> Self {
-        Element{uid: uid, value: EltValue::Text(text)}
+    pub fn text(text: String, uid: UID) -> Self {
+        Element{uid: uid, len: text.chars().count(), text: text}
     }
 
     pub fn start_marker() -> Self {
-        Self::new(EltValue::None, UID::min())
+        Element{uid: UID::min(), len: 0, text: String::new()}
     }
 
     pub fn end_marker() -> Self {
-        Self::new(EltValue::None, UID::max())
+        Element{uid: UID::max(), len: 0, text: String::new()}
     }
 
     pub fn between(elt1: &Element, elt2: &Element, text: String, replica: &Replica) -> Self {
-        let uid = UID::between(&elt1.uid, &elt2.uid, replica);
-        Self::new(EltValue::Text(text), uid)
+        Self::text(text, UID::between(&elt1.uid, &elt2.uid, replica))
     }
 
+    #[inline]
     pub fn is_end_marker(&self) -> bool {
-        match &self.value {
-            &EltValue::None => (self.uid == UID::max()),
-            _ => false,
-        }
+        self.len == uid::STATE
     }
 
-    pub fn text(&self) -> Option<&str> {
-        match &self.value {
-            &EltValue::Text(ref str) => Some(str),
-            _ => None,
-        }
+    #[inline]
+    pub fn is_text(&self) -> bool {
+        self.len > 0
     }
-
-    pub fn len(&self) -> usize {
-        self.value.len()
-    }
-
 
     pub fn cut_left(&mut self, index: usize, replica: &Replica) {
         self.uid.set_replica(replica);
-        self.value = EltValue::Text({
-            let (_, t) = self.text().unwrap().split_at(index);
-            t.to_string()
-        });
+        self.text = {
+            let (_, t) = self.text.split_at(index);
+            t.to_owned()
+        };
     }
 
     pub fn cut_middle(&mut self, lower: usize, upper: usize, replica: &Replica) {
         self.uid.set_replica(replica);
-        self.value = EltValue::Text({
-            let original_text = self.text().unwrap();
-            let (pre, _)  = original_text.split_at(lower);
-            let (_, post) = original_text.split_at(upper);
-            let mut text = pre.to_string();
+        self.text = {
+            let (pre, _) = self.text.split_at(lower);
+            let (_, post) = self.text.split_at(upper);
+            let mut text = String::with_capacity(pre.len() + post.len());
+            text.push_str(pre);
             text.push_str(post);
             text
-        });
+        };
     }
 
     pub fn cut_right(&mut self, index: usize, replica: &Replica) {
         self.uid.set_replica(replica);
-        self.value = EltValue::Text({
-            let (t, _) = self.text().unwrap().split_at(index);
+        self.text = {
+            let (t, _) = self.text.split_at(index);
             t.to_string()
-        });
+        };
     }
 }
 

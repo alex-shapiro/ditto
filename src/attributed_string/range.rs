@@ -16,13 +16,13 @@ impl Bound {
     pub fn new(elements: &[Element], char_index: usize) -> Self {
         let mut current_char_index = 0;
         for (index, elt) in elements.iter().enumerate() {
-            if current_char_index + elt.len() > char_index {
+            if current_char_index + elt.len > char_index {
                 let offset = char_index - current_char_index;
                 return Bound{index:index, offset: offset};
             } else if elt.is_end_marker() {
                 return Bound{index: index, offset: 0};
             }
-            current_char_index += elt.len();
+            current_char_index += elt.len;
         }
         Bound{index: elements.len() - 1, offset: 0}
     }
