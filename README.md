@@ -27,7 +27,7 @@ assert!(crdt1 == crdt2);
 
 **Array**, a mutable vec-like data structure that can hold items of any supported type. It functions like a JSON array. Supported functions are `insert_item` and `delete_item`.
 
-**AttributedString**, a mutable string-like data structure. Supported functions are `insert_text`, `delete_text`, and `replace_text`.
+**AttributedString**, a mutable string-like data structure. Supported functions are `insert_text`, `delete_text`, and `replace_text`. AttributedStrings are indexed by unicode character.
 
 **String**, an immutable string. Strings, unlike AttributeStrings, do not support any functions.
 

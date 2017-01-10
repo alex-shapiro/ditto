@@ -76,7 +76,7 @@ fn decode_attributed_string(encoded_elements: &[Json]) -> Result<Value, Error> {
     elements.push(AttrStrElement::start_marker());
     for json in encoded_elements {
         let element = try!(decode_attributed_string_element(json));
-        len += element.len();
+        len += element.len;
         elements.push(element);
     }
     elements.push(AttrStrElement::end_marker());
@@ -120,7 +120,7 @@ fn decode_attributed_string_element(element: &Json) -> Result<AttrStrElement, Er
     let encoded_uid = try!(element_vec[0].as_str().ok_or(Error::DecodeCompact));
     let text        = try!(element_vec[1].as_str().ok_or(Error::DecodeCompact));
     let uid         = try!(SequenceUID::from_str(encoded_uid));
-    Ok(AttrStrElement::new_text(text.to_string(), uid))
+    Ok(AttrStrElement::text(text.to_string(), uid))
 }
 
 #[inline]
