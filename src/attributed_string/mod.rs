@@ -1,9 +1,10 @@
 pub mod element;
+mod index;
 mod range;
-mod rope;
 
 use self::element::Element;
 use self::range::{Bound, Range};
+use self::index::Index;
 use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
@@ -196,23 +197,43 @@ impl AttributedString {
         raw
     }
 
-    pub fn index_of(&self, index: usize) -> Result<(usize, usize), Error> {
-        if index > self.len { return Err(Error::OutOfBounds) }
-        if index == self.len { return Ok((self.elements.len() - 1, 0)) }
+    pub fn index(&self, index: &Index, distance: usize) -> Result<Index, Error> {
+        let location = index.location + distance;
+        if location > self.len { return Err(Error::OutOfBounds) }
+        if location == self.len { return Ok(self.end_index()) }
 
-        let mut eidx = 1;
-        let mut cidx = index;
+        let mut eidx = index.eidx;
+        let mut cidx = index.cidx;
+        let mut bidx = index.bidx;
+        let mut distance_left = distance;
 
-        for element in &self.elements[1..] {
-            if cidx < element.len {
-                return Ok((eidx, cidx))
-            } else {
-                eidx += 1;
-                cidx -= element.len;
+        for element in &self.elements[eidx..] {
+            if distance_left < element.len - cidx {
+                for c in element.text[cidx..].chars() {
+                    if distance_left == 0 {
+                        return Ok(Index{eidx: eidx, cidx: cidx, bidx: bidx, location: location})
+                    }
+
+                    cidx += 1;
+                    bidx += c.len_utf8();
+                    distance_left -= 1;
+                }
             }
-        }
 
-        Err(Error::InvalidIndex)
+            distance_left -= element.len - cidx;
+            eidx += 1;
+            cidx = 0;
+            bidx = 0;
+        }
+        Err(Error::OutOfBounds)
+    }
+
+    pub fn start_index(&self) -> Index {
+        Index{eidx: 1, cidx: 0, bidx: 0, location: 0}
+    }
+
+    pub fn end_index(&self) -> Index {
+        Index{eidx: self.elements.len() - 1, bidx: 0, cidx: 0, location: self.len}
     }
 }
 
@@ -220,6 +241,7 @@ impl AttributedString {
 mod tests {
     use super::*;
     use super::element::Element;
+    use super::index::Index;
     use Error;
     use op::remote::UpdateAttributedString;
     use Replica;
@@ -515,29 +537,48 @@ mod tests {
     }
 
     #[test]
-    fn test_index_of() {
+    fn test_index_from_start() {
         let s = build_string(vec!["thé","qüiçk","brøwn","fox🇨🇦😀"]);
-        assert!(s.index_of(0)  == Ok((1,0)));
-        assert!(s.index_of(1)  == Ok((1,1)));
-        assert!(s.index_of(2)  == Ok((1,2)));
-        assert!(s.index_of(3)  == Ok((2,0)));
-        assert!(s.index_of(4)  == Ok((2,1)));
-        assert!(s.index_of(5)  == Ok((2,2)));
-        assert!(s.index_of(6)  == Ok((2,3)));
-        assert!(s.index_of(7)  == Ok((2,4)));
-        assert!(s.index_of(8)  == Ok((3,0)));
-        assert!(s.index_of(9)  == Ok((3,1)));
-        assert!(s.index_of(10) == Ok((3,2)));
-        assert!(s.index_of(11) == Ok((3,3)));
-        assert!(s.index_of(12) == Ok((3,4)));
-        assert!(s.index_of(13) == Ok((4,0)));
-        assert!(s.index_of(14) == Ok((4,1)));
-        assert!(s.index_of(15) == Ok((4,2)));
-        assert!(s.index_of(16) == Ok((4,3)));
-        assert!(s.index_of(17) == Ok((4,4)));
-        assert!(s.index_of(18) == Ok((4,5)));
-        assert!(s.index_of(19) == Ok((5,0)));
-        assert!(s.index_of(20) == Err(Error::OutOfBounds));
+        let i = s.start_index();
+
+        assert!(s.index(&i, 0).unwrap()  == idx(1,0,0,0));
+        assert!(s.index(&i, 1).unwrap()  == idx(1,1,1,1));
+        assert!(s.index(&i, 2).unwrap()  == idx(1,2,2,2));
+        assert!(s.index(&i, 3).unwrap()  == idx(2,0,0,3));
+        assert!(s.index(&i, 4).unwrap()  == idx(2,1,1,4));
+        assert!(s.index(&i, 5).unwrap()  == idx(2,2,3,5));
+        assert!(s.index(&i, 6).unwrap()  == idx(2,3,4,6));
+        assert!(s.index(&i, 7).unwrap()  == idx(2,4,6,7));
+        assert!(s.index(&i, 8).unwrap()  == idx(3,0,0,8));
+        assert!(s.index(&i, 9).unwrap()  == idx(3,1,1,9));
+        assert!(s.index(&i, 10).unwrap() == idx(3,2,2,10));
+        assert!(s.index(&i, 11).unwrap() == idx(3,3,4,11));
+        assert!(s.index(&i, 12).unwrap() == idx(3,4,5,12));
+        assert!(s.index(&i, 13).unwrap() == idx(4,0,0,13));
+        assert!(s.index(&i, 14).unwrap() == idx(4,1,1,14));
+        assert!(s.index(&i, 15).unwrap() == idx(4,2,2,15));
+        assert!(s.index(&i, 16).unwrap() == idx(4,3,3,16));
+        assert!(s.index(&i, 17).unwrap() == idx(4,4,7,17));
+        assert!(s.index(&i, 18).unwrap() == idx(4,5,11,18));
+        assert!(s.index(&i, 19).unwrap() == idx(5,0,0,19));
+        assert!(s.index(&i, 20) == Err(Error::OutOfBounds));
+    }
+
+    fn test_index() {
+        let s = build_string(vec!["thé","qüiçk","brøwn","fox🇨🇦😀"]);
+        let j = s.index(&s.start_index(), 10).unwrap();
+
+        assert!(s.index(&j, 0).unwrap() == idx(3,2,2,10));
+        assert!(s.index(&j, 1).unwrap() == idx(3,3,4,11));
+        assert!(s.index(&j, 2).unwrap() == idx(3,4,5,12));
+        assert!(s.index(&j, 3).unwrap() == idx(4,0,0,13));
+        assert!(s.index(&j, 4).unwrap() == idx(4,1,1,14));
+        assert!(s.index(&j, 5).unwrap() == idx(4,2,2,15));
+        assert!(s.index(&j, 6).unwrap() == idx(4,3,3,16));
+        assert!(s.index(&j, 7).unwrap() == idx(4,4,7,17));
+        assert!(s.index(&j, 8).unwrap() == idx(4,5,11,18));
+        assert!(s.index(&j, 9).unwrap() == idx(5,0,0,19));
+        assert!(s.index(&j, 10) == Err(Error::OutOfBounds));
     }
 
     fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {
@@ -557,5 +598,9 @@ mod tests {
         }
         elements.push(end_marker);
         AttributedString{len: len, elements: elements}
+    }
+
+    fn idx(eidx: usize, cidx: usize, bidx: usize, location: usize) -> Index {
+        Index{eidx: eidx, cidx: cidx, bidx: bidx, location: location}
     }
 }

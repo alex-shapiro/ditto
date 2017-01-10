@@ -14,15 +14,6 @@ pub struct Bound {
 
 impl Bound {
     pub fn new(elements: &[Element], char_index: usize) -> Self {
-        if index > elements.len { return Err(Error::OutOfBounds) }
-        if index == elements.len { return Ok(Bound{index: elements.len() -1, offset: 0}) }
-
-        let mut eidx = 1;
-        let mut cidx = char_index;
-        let mut bidx = 0;
-
-
-
         let mut current_char_index = 0;
         for (index, elt) in elements.iter().enumerate() {
             if current_char_index + elt.len > char_index {
