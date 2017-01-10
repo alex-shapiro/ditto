@@ -1,5 +1,3 @@
-#![feature(proc_macro)]
-
 extern crate ditto;
 extern crate serde;
 #[macro_use]

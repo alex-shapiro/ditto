@@ -1,8 +1,6 @@
 use std::cmp::Ordering;
 use sequence::uid::{self, UID};
 use Replica;
-use std::fmt;
-use std::fmt::Debug;
 
 #[derive(Debug, Clone)]
 pub struct Element {
@@ -28,9 +26,13 @@ impl Element {
         Self::text(text, UID::between(&elt1.uid, &elt2.uid, replica))
     }
 
+    pub fn between_uids(uid1: &UID, uid2: &UID, text: &str, replica: &Replica) -> Self {
+        Self::text(text.to_owned(), UID::between(uid1, uid2, replica))
+    }
+
     #[inline]
     pub fn is_end_marker(&self) -> bool {
-        self.len == uid::STATE
+        self.uid == *uid::MAX
     }
 
     #[inline]
@@ -95,30 +97,30 @@ mod tests {
 
     #[test]
     fn test_cut_left() {
-        let mut elt = Element::new(EltValue::Text("hello world".to_string()), UID::min());
+        let mut elt = Element::text("hello world".to_owned(), UID::min());
         let replica = Replica{site: 101, counter: 202};
         elt.cut_left(3, &replica);
-        assert!(elt.text().unwrap() == "lo world");
+        assert!(elt.text == "lo world");
         assert!(elt.uid.site == 101);
         assert!(elt.uid.counter == 202);
     }
 
     #[test]
     fn test_cut_middle() {
-        let mut elt = Element::new(EltValue::Text("hello world!".to_string()), UID::min());
+        let mut elt = Element::text("hello world!".to_owned(), UID::min());
         let replica = Replica{site: 8, counter: 999};
         elt.cut_middle(3, 7, &replica);
-        assert!(elt.text().unwrap() == "helorld!");
+        assert!(elt.text == "helorld!");
         assert!(elt.uid.site == 8);
         assert!(elt.uid.counter == 999);
     }
 
     #[test]
     fn test_cut_right() {
-        let mut elt = Element::new(EltValue::Text("hello world".to_string()), UID::min());
+        let mut elt = Element::text("hello world!".to_owned(), UID::min());
         let replica = Replica{site: 483, counter: 8328};
         elt.cut_right(6, &replica);
-        assert!(elt.text().unwrap() == "hello ");
+        assert!(elt.text == "hello ");
         assert!(elt.uid.site == 483);
         assert!(elt.uid.counter == 8328);
     }

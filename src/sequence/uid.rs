@@ -41,7 +41,8 @@ pub struct UID {
 }
 
 lazy_static! {
-    pub static ref STATE: u32 = 41;
+    pub static ref MIN: UID = UID::min();
+    pub static ref MAX: UID = UID::max();
 }
 
 impl UID {
