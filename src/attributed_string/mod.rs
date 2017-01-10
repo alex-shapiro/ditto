@@ -197,7 +197,7 @@ impl AttributedString {
     }
 
     pub fn index_of(&self, index: usize) -> Result<(usize, usize), Error> {
-        if index > self.len { return Err(Error::InvalidIndex) }
+        if index > self.len { return Err(Error::OutOfBounds) }
         if index == self.len { return Ok((self.elements.len() - 1, 0)) }
 
         let mut eidx = 1;
@@ -516,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_index_of() {
-        let s = build_string(vec!["thé","qüiçk","brøwn","fox"]);
+        let s = build_string(vec!["thé","qüiçk","brøwn","fox🇨🇦😀"]);
         assert!(s.index_of(0)  == Ok((1,0)));
         assert!(s.index_of(1)  == Ok((1,1)));
         assert!(s.index_of(2)  == Ok((1,2)));
@@ -533,8 +533,11 @@ mod tests {
         assert!(s.index_of(13) == Ok((4,0)));
         assert!(s.index_of(14) == Ok((4,1)));
         assert!(s.index_of(15) == Ok((4,2)));
-        assert!(s.index_of(16) == Ok((5,0)));
-        assert!(s.index_of(17) == Err(Error::InvalidIndex));
+        assert!(s.index_of(16) == Ok((4,3)));
+        assert!(s.index_of(17) == Ok((4,4)));
+        assert!(s.index_of(18) == Ok((4,5)));
+        assert!(s.index_of(19) == Ok((5,0)));
+        assert!(s.index_of(20) == Err(Error::OutOfBounds));
     }
 
     fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {
