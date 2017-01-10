@@ -1,9 +1,7 @@
 pub mod element;
 mod index;
-mod range;
 
 use self::element::Element;
-use self::range::{Bound, Range};
 use self::index::Index;
 use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
@@ -34,26 +32,25 @@ impl AttributedString {
     }
 
     pub fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
-        if index > self.len { return Err(Error::OutOfBounds) }
         if text.is_empty() { return Err(Error::Noop) }
 
-        self.len += text.len();
-        let bound = Bound::new(&self.elements, index);
-        Ok(match bound.offset {
-            0 => self.insert_at_index(bound.index, text, replica),
-            _ => self.insert_in_index(bound.index, bound.offset, text, replica),
+        let index = self.index(&self.start_index(), index)?;
+        self.len += text.chars().count();
+        Ok(match index.bidx {
+            0 => self.insert_at_index(index.eidx, text, replica),
+            b => self.insert_in_index(index.eidx, b, text, replica),
         })
     }
 
     pub fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Result<UpdateAttributedString, Error> {
-        if index + len > self.len { return Err(Error::OutOfBounds) }
         if len == 0 { return Err(Error::Noop) }
 
+        let start = self.index(&self.start_index(), index)?;
+        let end = self.index(&start, len)?;
         self.len -= len;
-        let range = Range::new(&self.elements, index, len);
-        Ok(match range.lower.index == range.upper.index {
-            true  => self.delete_in_element(&range, replica),
-            false => self.delete_in_range(&range, replica),
+        Ok(match start.eidx == end.eidx {
+            true  => self.delete_in_element(&start, &end, replica),
+            false => self.delete_in_elements(&start, &end, replica),
         })
     }
 
@@ -94,7 +91,7 @@ impl AttributedString {
                 while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
                     let ins = insert_iter.next().unwrap().clone();
                     let text = ins.text.to_string();
-                    let text_len = text.len();
+                    let text_len = text.chars().count();
                     let op = InsertText::new(char_index, text);
                     local_ops.push(LocalOp::InsertText(op));
                     self.elements.push(ins);
@@ -108,73 +105,73 @@ impl AttributedString {
         local_ops
     }
 
-    fn insert_at_index(&mut self, index: usize, text: String, replica: &Replica) -> UpdateAttributedString {
+    fn insert_at_index(&mut self, eidx: usize, text: String, replica: &Replica) -> UpdateAttributedString {
         let elt_new = {
-            let ref elt1 = self.elements[index-1];
-            let ref elt2 = self.elements[index];
+            let ref elt1 = self.elements[eidx-1];
+            let ref elt2 = self.elements[eidx];
             Element::between(elt1, elt2, text, replica)
         };
 
-        self.elements.insert(index, elt_new.clone());
+        self.elements.insert(eidx, elt_new.clone());
         UpdateAttributedString::new(vec![elt_new], vec![])
     }
 
-    fn insert_in_index(&mut self, index: usize, offset: usize, text: String, replica: &Replica) -> UpdateAttributedString {
-        let original_elt = self.elements.remove(index);
+    fn insert_in_index(&mut self, eidx: usize, bidx: usize, text: String, replica: &Replica) -> UpdateAttributedString {
+        let original_elt = self.elements.remove(eidx);
 
         let (elt_pre, elt_new, elt_post) = {
-            let (text_pre, text_post) = original_elt.text.split_at(offset);
-            let ref elt_ppre = self.elements[index-1];
-            let ref elt_ppost = self.elements[index];
+            let (text_pre, text_post) = original_elt.text.split_at(bidx);
+            let ref elt_ppre = self.elements[eidx-1];
+            let ref elt_ppost = self.elements[eidx];
             let elt_new  = Element::between(elt_ppre, elt_ppost, text, &replica);
             let elt_pre  = Element::between(elt_ppre, &elt_new, text_pre.to_string(), replica);
             let elt_post = Element::between(&elt_new, elt_ppost, text_post.to_string(), replica);
             (elt_pre, elt_new, elt_post)
         };
 
-        self.elements.insert(index, elt_post.clone());
-        self.elements.insert(index, elt_new.clone());
-        self.elements.insert(index, elt_pre.clone());
+        self.elements.insert(eidx, elt_post.clone());
+        self.elements.insert(eidx, elt_new.clone());
+        self.elements.insert(eidx, elt_pre.clone());
         UpdateAttributedString::new(
             vec![elt_pre, elt_new, elt_post],
             vec![original_elt],
         )
     }
 
-    fn delete_in_element(&mut self, range: &Range, replica: &Replica) -> UpdateAttributedString {
-        let ref mut element = self.elements[range.lower.index];
+    fn delete_in_element(&mut self, start: &Index, end: &Index, replica: &Replica) -> UpdateAttributedString {
+        let ref mut element = self.elements[start.eidx];
         let deleted_element = element.clone();
-        element.cut_middle(range.lower.offset, range.upper.offset, replica);
+        element.cut_middle(start.bidx, end.bidx, replica);
         let insert = element.clone();
         UpdateAttributedString::new(vec![insert], vec![deleted_element])
     }
 
-    fn delete_in_range(&mut self, range: &Range, replica: &Replica) -> UpdateAttributedString {
+    fn delete_in_elements(&mut self, start: &Index, end: &Index, replica: &Replica) -> UpdateAttributedString {
         let mut deletes: Vec<Element> = vec![];
         let mut inserts: Vec<Element> = vec![];
-        let mut lower_index = range.lower.index;
-        let upper_index = range.upper.index;
+        let mut start_eidx = start.eidx;
+        let end_eidx = end.eidx;
 
         // if part of the lower-bound element is deleted, update the
         // element in-place instead of deleting and re-inserting it
-        if range.lower.offset > 0 {
-            let ref mut element = self.elements[range.lower.index];
+        if start.bidx > 0 {
+            let ref mut element = self.elements[start.eidx];
             deletes.push(element.clone());
-            element.cut_right(range.lower.offset, replica);
+            element.cut_right(start.bidx, replica);
             inserts.push(element.clone());
-            lower_index += 1;
+            start_eidx += 1;
         }
 
         // same for the upper-bound element
-        if range.upper.offset > 0 {
-            let ref mut element = self.elements[range.upper.index];
+        if end.bidx > 0 {
+            let ref mut element = self.elements[end.eidx];
             deletes.push(element.clone());
-            element.cut_left(range.upper.offset, replica);
+            element.cut_left(end.bidx, replica);
             inserts.push(element.clone());
         }
 
-        for _ in lower_index..upper_index {
-            deletes.push(self.elements.remove(lower_index));
+        for _ in start_eidx..end_eidx {
+            deletes.push(self.elements.remove(start_eidx));
         }
 
         deletes.sort();
@@ -564,6 +561,7 @@ mod tests {
         assert!(s.index(&i, 20) == Err(Error::OutOfBounds));
     }
 
+    #[test]
     fn test_index() {
         let s = build_string(vec!["thé","qüiçk","brøwn","fox🇨🇦😀"]);
         let j = s.index(&s.start_index(), 10).unwrap();
