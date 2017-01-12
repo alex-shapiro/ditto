@@ -18,14 +18,10 @@ struct Node {
 }
 
 impl BTree {
-    pub fn new(element: Element) -> Self {
+    pub fn new() -> Self {
         BTree{
-            root: Node{
-            len: element.len,
-            leaf: true,
-            elements: vec![element],
-            children: vec![],
-        }}
+            root: Node{len: 0, leaf: true, elements: vec![], children: vec![]}
+        }
     }
 
     pub fn insert(&mut self, element: Element) {
