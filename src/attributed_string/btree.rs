@@ -1,3 +1,5 @@
+#![allow(dead_code)]
+
 use super::element::Element;
 use error::Error;
 use std::mem;
@@ -46,7 +48,7 @@ impl Node {
     /// If the index is out of bounds, returns an error.
     /// Otherwise returns a reference to the node and
     /// the offset of the index inside the node.
-    pub fn search(&self, index: usize) -> Result<(&Node, usize), Error> {
+    fn search(&self, index: usize) -> Result<(&Node, usize), Error> {
         if index >= self.len { return Err(Error::OutOfBounds) }
 
         let mut i = index;
@@ -68,11 +70,11 @@ impl Node {
     /// Each new child has B-1 elements and B children. The original
     /// child's median element is promoted as the ith element of the
     /// parent node.
-    pub fn split_child(&mut self, i: usize) {
+    fn split_child(&mut self, i: usize) {
         let (median, new_child) = {
             let ref mut child = self.children[i];
             let mut elements = child.elements.split_off(MIN_LEN);
-            let mut children = match child.leaf {
+            let children = match child.leaf {
                 true  => vec![],
                 false => child.children.split_off(B),
             };
@@ -81,7 +83,7 @@ impl Node {
 
             let mut new_child_len = elements.iter().map(|e| e.len).sum();
             new_child_len += children.iter().map(|e| e.len).sum();
-            let mut new_child = Node{
+            let new_child = Node{
                 len: new_child_len,
                 leaf: child.leaf,
                 elements: elements,
