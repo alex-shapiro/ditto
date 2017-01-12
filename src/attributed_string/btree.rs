@@ -98,6 +98,20 @@ impl Node {
         self.children.insert(i + 1, new_child);
     }
 
+    /// Merge the node's ith and (i+1)th children, then remove the median
+    /// separating them as well as the (i+1)th node. The new node MUST
+    /// contain 2B-1 elements.
+    fn merge_children(&mut self, index: usize) {
+        let removed_element = self.elements.remove(index);
+        let Node{len, mut elements, mut children, ..} = self.children.remove(index+1);
+
+        let ref mut child = self.children[index];
+        child.len += removed_element.len + len;
+        child.elements.push(removed_element);
+        child.elements.append(&mut elements);
+        child.children.append(&mut children);
+    }
+
     /// Insert a new element into a node that is not full.
     fn insert_nonfull(&mut self, elt: Element) {
         let mut pos = self.elements.binary_search(&elt).err().expect("Duplicate UID!");
@@ -112,7 +126,9 @@ impl Node {
         }
     }
 
-    pub fn is_full(&self) -> bool {
+    /// Checks whether the node contains the maximum allowed
+    /// number of elements
+    fn is_full(&self) -> bool {
         self.elements.len() == CAPACITY
     }
 }
