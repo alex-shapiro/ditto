@@ -1,5 +1,6 @@
 pub mod element;
 mod index;
+mod btree;
 
 use self::element::Element;
 use self::index::Index;
