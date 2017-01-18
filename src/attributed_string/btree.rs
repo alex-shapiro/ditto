@@ -1,5 +1,3 @@
-#![allow(dead_code)]
-
 use super::element::Element;
 use sequence::uid::UID;
 use error::Error;
@@ -15,7 +13,6 @@ struct BTree {
 
 struct Node {
     len: usize,
-    leaf: bool,
     elements: Vec<Element>,
     children: Vec<Node>,
 }
@@ -23,13 +20,13 @@ struct Node {
 impl BTree {
     pub fn new() -> Self {
         BTree{
-            root: Node{len: 0, leaf: true, elements: vec![], children: vec![]}
+            root: Node{len: 0, elements: vec![], children: vec![]}
         }
     }
 
     pub fn insert(&mut self, element: Element) {
         if self.root.is_full() {
-            let new_root = Node{len: 0, leaf: false, elements: vec![], children: vec![]};
+            let new_root = Node{len: 0, elements: vec![], children: vec![]};
             let old_root = mem::replace(&mut self.root, new_root);
             self.root.len = old_root.len;
             self.root.children.push(old_root);
@@ -56,7 +53,7 @@ impl Node {
         for child in &self.children {
             if i >= child.len {
                 i -= child.len
-            } else if child.leaf {
+            } else if child.is_leaf() {
                 return Ok((&child, i))
             } else {
                 return child.search(i);
@@ -74,19 +71,17 @@ impl Node {
     fn split_child(&mut self, i: usize) {
         let (median, new_child) = {
             let ref mut child = self.children[i];
-            let mut elements = child.elements.split_off(MIN_LEN);
-            let children = match child.leaf {
+            let elements = child.elements.split_off(B);
+            let median = child.elements.pop().expect("Element must exist!");
+            let children = match child.is_leaf() {
                 true  => vec![],
                 false => child.children.split_off(B),
             };
-
-            let median = elements.remove(0);
 
             let mut new_child_len = elements.iter().map(|e| e.len).sum();
             new_child_len += children.iter().map(|e| e.len).sum();
             let new_child = Node{
                 len: new_child_len,
-                leaf: child.leaf,
                 elements: elements,
                 children: children,
             };
@@ -118,7 +113,7 @@ impl Node {
     /// elements)
     fn insert(&mut self, elt: Element) {
         let mut pos = self.elements.binary_search(&elt).err().expect("Duplicate UID!");
-        if self.leaf {
+        if self.is_leaf() {
             self.elements.insert(pos, elt);
         } else {
             if self.children[pos].is_full() {
@@ -129,91 +124,141 @@ impl Node {
         }
     }
 
-    /// Delete an element from a tree, returning the deleted
-    /// element. The root node must contain at least
-    /// MIN_LEN + 1 elements.
+    /// Delete an element from a tree, returning the deleted element.
+    /// The root node must contain at least MIN_LEN + 1 elements.
     fn delete(&mut self, uid: &UID) -> Option<Element> {
+        debug_assert!(self.has_spare_element());
 
-        // determine whether the parent node contains the element,
-        // as well as the index for the element or child that contains
-        // the element.
-        let (node_contains_element, index) = match self.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
-            Ok(index) => (true, index),
-            Err(index) => (false, index),
-        };
+        let (contains_element, index) =
+            match self.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
+                Ok(index) => (true, index),
+                Err(index) => (false, index),
+            };
 
-        // if the parent node contains the element and the parent node
-        // is a leaf, simply remove the element at the correct index.
-        if node_contains_element && self.leaf {
+        // if the parent is a leaf and it contains the element,
+        // simply remove the element.
+        if self.is_leaf() && contains_element {
             let deleted_element = self.elements.remove(index);
             self.len -= deleted_element.len;
             Some(deleted_element)
 
-        // if the parent node contains the element and the parent node
-        // is internal, a more involved approach is needed:
-        } else if node_contains_element {
-            let prev = self.children[index];
-            let next = self.children[index+1];
+        // if the parent is a leaf and does not contain the element
+        // then the element does not exist in the BTree.
+        } else if self.is_leaf() {
+            None
 
-            // if `prev`, the child before the deleted element, has
-            // > MIN_LEN elements, recusively delete the last element
-            // from `prev`. Replace the deleted element with the recursively
-            // deleted element, then return the deleted element.
-            if prev.children.len() >= B {
-                let ref prev_child_uid = prev.children.last().unwrap().uid;
-                let e = prev.delete(uid);
+        // if the parent is internal and it contains the element,
+        // remove the element from the parent and rebalance from
+        // either the child node to either the left or right of
+        // the element.
+        } else if contains_element {
+            if self.children[index].has_spare_element() {
+                let ref mut prev = self.children[index];
+                let predecessor_uid = prev.last_uid();
+                let e = prev.delete(&predecessor_uid).expect("Element must exist!");
                 let deleted_element = mem::replace(&mut self.elements[index], e);
                 self.len -= deleted_element.len;
                 Some(deleted_element)
 
-            // Otherwise if `next`, the child after the deleted element, has
-            // > MIN_LEN elements, recursively delete the first element
-            // from `next`. Replace the deleted element with recursively
-            // deleted element, then return the deleted element.
-            } else if next.children.len() >= B {
-                let ref next_child_uid = prev.children[0].uid;
-                let e = next.delete(uid);
+            } else if self.children[index+1].has_spare_element() {
+                let ref mut next = self.children[index+1];
+                let successor_uid = next.first_uid();
+                let e = next.delete(&successor_uid).expect("Element must exist!");
                 let deleted_element = mem::replace(&mut self.elements[index], e);
                 self.len -= deleted_element.len;
                 Some(deleted_element)
 
-            // if both `prev` and `next` have MIN_LEN elements, merge them
-            // and call recursively on the newly merged child.
             } else {
                 self.merge_children(index);
                 self.children[index].delete(uid)
             }
 
-        // if the parent node is a leaf and does not contain the element,
-        // then the BTree does not contain the element.
-        } else if self.leaf {
-            None
-
-        // if the parent node is internal and does not contain the element,
-        // find the appropriate child, make sure it has > MIN_LEN elements,
-        // and recurse on that child.
+        // if the parent is internal and does not contain the element
+        // then call recursively on the correct child node. Before
+        // the call, check that child has MIN_LEN + 1 elements. If not,
+        // rebalance from the child's left and right siblings.
         } else {
-            let ref mut child = self.children[index];
-            if child.children.len() < B {
-                if index > 0 && self.children[index-1].children.len() >= B {
-                    let e_sibling = self.children[index-1].elements.pop().expect("Missing element!");
-                    let e_parent = mem::replace(&mut self.elements[index-1], e_sibling);
-                    child.children.insert(0, e_parent);
-                } else if index+1 < self.children.len() && self.children[index+1].children.len() >= B {
-                    let e_sibling = self.children[index+1].elements.remove(0);
-                    let e_parent = mem::replace(&mut self.elements[index+1], e_sibling);
-                    child.children.push(e_parent);
-                } else {
+            if !self.children[index].has_spare_element() {
+                if self.children.get(index-1).map_or(false, Self::has_spare_element) {
+                    let (sibling_elt, sibling_child) = self.children[index-1].pop_last();
+                    let parent_elt = mem::replace(&mut self.elements[index-1], sibling_elt);
+                    let child = &mut self.children[index];
+                    child.elements.insert(0, parent_elt);
+                    if let Some(c) = sibling_child {
+                        child.len += c.len;
+                        child.children.insert(0, c);
+                    }
+                }
+                else if self.children.get(index+1).map_or(false, Self::has_spare_element) {
+                    let (sibling_elt, sibling_child) = self.children[index+1].pop_first();
+                    let parent_elt = mem::replace(&mut self.elements[index], sibling_elt);
+                    let child = &mut self.children[index];
+                    child.elements.push(parent_elt);
+                    if let Some(c) = sibling_child {
+                        child.len += c.len;
+                        child.children.push(c);
+                    }
+                }
+                else {
                     self.merge_children(index);
                 }
             }
-            child.delete(uid)
+            self.children[index].delete(uid)
         }
     }
 
-    /// Checks whether the node contains the maximum allowed
-    /// number of elements
+    fn pop_first(&mut self) -> (Element, Option<Self>) {
+        let element = self.elements.remove(0);
+        self.len -= element.len;
+        if self.is_internal() {
+            let child = self.children.remove(0);
+            self.len -= child.len;
+            (element, Some(child))
+        } else {
+            (element, None)
+        }
+    }
+
+    fn pop_last(&mut self) -> (Element, Option<Self>) {
+        let element = self.elements.pop().expect("Element must exist!");
+        self.len -= element.len;
+        if let Some(child) = self.children.pop() {
+            self.len -= child.len;
+            (element, Some(child))
+        } else {
+            (element, None)
+        }
+    }
+
+    #[inline]
     fn is_full(&self) -> bool {
         self.elements.len() == CAPACITY
+    }
+
+    #[inline]
+    fn has_spare_element(&self) -> bool {
+        self.elements.len() > MIN_LEN
+    }
+
+    #[inline]
+    fn is_leaf(&self) -> bool {
+        self.children.is_empty()
+    }
+
+    #[inline]
+    fn is_internal(&self) -> bool {
+        !self.is_leaf()
+    }
+
+    fn first_uid(&self) -> UID {
+        let mut node = self;
+        while node.is_internal() { node = &node.children[0] }
+        node.elements[0].uid.clone()
+    }
+
+    fn last_uid(&self) -> UID {
+        let mut node = self;
+        while self.is_internal() { node = &node.children.last().expect("Child must exist!") }
+        node.elements.last().expect("Element must exist!").uid.clone()
     }
 }
