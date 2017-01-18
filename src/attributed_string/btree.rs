@@ -35,8 +35,19 @@ impl BTree {
         self.root.insert(element);
     }
 
+    pub fn delete(&mut self, uid: &UID) -> Option<Element> {
+        match self.root.elements.is_empty() {
+            true => None,
+            false => self.root.delete(uid),
+        }
+    }
+
     pub fn search(&self, index: usize) -> Result<(&Node, usize), Error> {
         self.root.search(index)
+    }
+
+    pub fn len(&self) -> usize {
+        self.root.len
     }
 }
 
@@ -203,7 +214,9 @@ impl Node {
                     self.merge_children(index);
                 }
             }
-            self.children[index].delete(uid)
+
+            let element = self.children[index].delete(uid);
+            element.map(|e| { self.len -= e.len; e })
         }
     }
 
