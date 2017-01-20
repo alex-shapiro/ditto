@@ -7,11 +7,11 @@ const B: usize = 6;
 const MIN_LEN: usize = B - 1;
 const CAPACITY: usize = 2 * B - 1;
 
-struct BTree {
+pub struct BTree {
     root: Node,
 }
 
-struct Node {
+pub struct Node {
     len: usize,
     elements: Vec<Element>,
     children: Vec<Node>,
@@ -20,7 +20,11 @@ struct Node {
 impl BTree {
     pub fn new() -> Self {
         BTree{
-            root: Node{len: 0, elements: vec![], children: vec![]}
+            root: Node{
+                len: 0,
+                elements: vec![Element::start_marker(), Element::end_marker()],
+                children: vec![]
+            }
         }
     }
 
@@ -42,8 +46,34 @@ impl BTree {
         }
     }
 
-    pub fn search(&self, index: usize) -> Result<(&Node, usize), Error> {
+    pub fn search(&self, index: usize) -> Result<(&Element, usize), Error> {
         self.root.search(index)
+    }
+
+    fn index_of(&self, uid: &UID) -> Result<usize, Error> {
+        let ref mut node = self.root;
+        let char_index = 0;
+
+        loop {
+            let (contains_element, index) =
+                match node.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
+                    Ok(index) => (true, index),
+                    Err(index) => (false, index),
+                };
+
+            char_index += node.elements[..index].iter().fold(0, |acc, elt| acc+elt.len);
+            if node.is_leaf() && contains_element {
+                return Ok(char_index)
+            } else if node.is_leaf() {
+                return Err(Error::OutOfBounds)
+            } else if contains_element {
+                char_index += node.children[..index+1].iter().fold(0, |acc, node| acc+node.len);
+                return Ok(char_index)
+            } else {
+                char_index += node.children[..index].iter().fold(0, |acc, node| acc+node.len);
+                node = &mut node.children[index];
+            }
+        }
     }
 
     pub fn len(&self) -> usize {
@@ -51,23 +81,23 @@ impl BTree {
     }
 }
 
-
 impl Node {
-    /// finds the node that contains `index`.
-    /// If the index is out of bounds, returns an error.
-    /// Otherwise returns a reference to the node and
-    /// the offset of the index inside the node.
-    fn search(&self, index: usize) -> Result<(&Node, usize), Error> {
-        if index >= self.len { return Err(Error::OutOfBounds) }
+    /// Find the element that contains `index`. Returns a reference
+    /// to the element and the offset of the index inside the element.
+    /// If the index is out of bounds, it returns an OutOfBounds error.
+    fn search(&self, mut i: usize) -> Result<(&Element, usize), Error> {
+        if i >= self.len { return Err(Error::OutOfBounds) }
 
-        let mut i = index;
-        for child in &self.children {
-            if i >= child.len {
-                i -= child.len
-            } else if child.is_leaf() {
-                return Ok((&child, i))
-            } else {
-                return child.search(i);
+        if self.is_leaf() {
+            for e in &self.elements {
+                if i < e.len { return Ok((e, i)) } else { i -= e.len }
+            }
+        } else {
+            let elements = self.elements.iter();
+            for c in &self.children {
+                if i < c.len { return c.search(i) } else { i -= c.len }
+                let e = elements.next().expect("Element must exist!");
+                if i < e.len { return Ok((e, i)) } else { i -= e.len }
             }
         }
 
@@ -131,6 +161,7 @@ impl Node {
                 self.split_child(pos);
                 if elt > self.elements[pos] { pos += 1 }
             }
+            self.len += elt.len;
             self.children[pos].insert(elt)
         }
     }
