@@ -70,17 +70,13 @@ fn decode_json_array(vec: &[Json]) -> Result<Value, Error> {
 
 #[inline]
 fn decode_attributed_string(encoded_elements: &[Json]) -> Result<Value, Error> {
-    let mut elements: Vec<AttrStrElement> = Vec::with_capacity(encoded_elements.len() + 2);
-    let mut len = 0;
+    let elements: Vec<AttrStrElement> =
+        try!(encoded_elements
+            .into_iter()
+            .map(|json| decode_attributed_string_element(json))
+            .collect());
 
-    elements.push(AttrStrElement::start_marker());
-    for json in encoded_elements {
-        let element = try!(decode_attributed_string_element(json));
-        len += element.len;
-        elements.push(element);
-    }
-    elements.push(AttrStrElement::end_marker());
-    let string = AttributedString::assemble(elements, len);
+    let string = AttributedString::assemble(elements);
     Ok(Value::AttrStr(string))
 }
 

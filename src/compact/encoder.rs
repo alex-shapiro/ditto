@@ -43,7 +43,7 @@ pub fn encode_op(nested_op: &NestedRemoteOp) -> Json {
 #[inline]
 // Encode AttributedString as [0,[Element]]
 fn encode_attributed_string(string: &attributed_string::AttributedString) -> Json {
-    let mut elements: Vec<Json> = Vec::new();
+    let mut elements: Vec<Json> = vec![];
     for element in string.elements() {
         elements.push(encode_attributed_string_element(element));
     }

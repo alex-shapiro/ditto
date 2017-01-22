@@ -2,15 +2,18 @@ use super::element::Element;
 use sequence::uid::UID;
 use error::Error;
 use std::mem;
+use std::iter::IntoIterator;
 
 const B: usize = 6;
 const MIN_LEN: usize = B - 1;
 const CAPACITY: usize = 2 * B - 1;
 
+#[derive(Clone, PartialEq)]
 pub struct BTree {
     root: Node,
 }
 
+#[derive(Clone, PartialEq)]
 pub struct Node {
     len: usize,
     elements: Vec<Element>,
@@ -50,9 +53,9 @@ impl BTree {
         self.root.search(index)
     }
 
-    fn index_of(&self, uid: &UID) -> Result<usize, Error> {
-        let ref mut node = self.root;
-        let char_index = 0;
+    pub fn index_of(&self, uid: &UID) -> Result<usize, Error> {
+        let mut node = &self.root;
+        let mut char_index = 0;
 
         loop {
             let (contains_element, index) =
@@ -71,7 +74,7 @@ impl BTree {
                 return Ok(char_index)
             } else {
                 char_index += node.children[..index].iter().fold(0, |acc, node| acc+node.len);
-                node = &mut node.children[index];
+                node = &node.children[index];
             }
         }
     }
@@ -93,7 +96,7 @@ impl Node {
                 if i < e.len { return Ok((e, i)) } else { i -= e.len }
             }
         } else {
-            let elements = self.elements.iter();
+            let mut elements = self.elements.iter();
             for c in &self.children {
                 if i < c.len { return c.search(i) } else { i -= c.len }
                 let e = elements.next().expect("Element must exist!");
@@ -304,5 +307,51 @@ impl Node {
         let mut node = self;
         while self.is_internal() { node = &node.children.last().expect("Child must exist!") }
         node.elements.last().expect("Element must exist!").uid.clone()
+    }
+}
+
+pub struct BTreeIter<'a> {
+    stack: Vec<(&'a Node, usize)>,
+    node: &'a Node,
+    next_index: usize,
+}
+
+impl<'a> IntoIterator for &'a BTree {
+    type Item = &'a Element;
+    type IntoIter = BTreeIter<'a>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        let mut node = &self.root;
+        let mut stack = vec![];
+        while node.is_internal() {
+            stack.push((node, 0));
+            node = &node.children[0];
+        }
+        BTreeIter{stack: stack, node: node, next_index: 0}
+    }
+}
+
+impl<'a> Iterator for BTreeIter<'a> {
+    type Item = &'a Element;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        loop {
+            if let Some(ref element) = self.node.elements.get(self.next_index) {
+                self.next_index += 1;
+                while self.node.is_internal() {
+                    self.stack.push((self.node, self.next_index));
+                    self.node = &self.node.children[self.next_index];
+                    self.next_index = 0;
+                }
+                return Some(element)
+            } else {
+                if let Some((node, next_index)) = self.stack.pop() {
+                    self.node = node;
+                    self.next_index = next_index;
+                } else {
+                    return None
+                }
+            }
+        }
     }
 }

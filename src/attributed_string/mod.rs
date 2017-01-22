@@ -1,62 +1,119 @@
 pub mod element;
-mod index;
 mod btree;
 
+use self::btree::{BTree, BTreeIter};
 use self::element::Element;
-use self::index::Index;
 use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
 use Replica;
-use std::mem;
+use std::fmt::{self, Debug};
 
-#[derive(Debug,Clone,PartialEq)]
-pub struct AttributedString{
-    len: usize,
-    elements: Vec<Element>,
-}
+#[derive(Clone, PartialEq)]
+pub struct AttributedString(BTree);
 
 impl AttributedString {
     pub fn new() -> Self {
-        AttributedString{
-            elements: vec![Element::start_marker(), Element::end_marker()],
-            len: 0,
+        AttributedString(BTree::new())
+    }
+
+    pub fn assemble(elements: Vec<Element>) -> Self {
+        let mut btree = BTree::new();
+        for element in elements {
+            btree.insert(element)
         }
+        AttributedString(btree)
     }
 
-    pub fn assemble(elements: Vec<Element>, len: usize) -> Self {
-        AttributedString{elements: elements, len: len}
-    }
-
+    #[inline]
     pub fn len(&self) -> usize {
-        self.len
+        self.0.len()
+    }
+
+    pub fn elements(&self) -> BTreeIter {
+        self.0.into_iter()
     }
 
     pub fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
         if text.is_empty() { return Err(Error::Noop) }
 
-        let index = self.index(&self.start_index(), index)?;
-        self.len += text.chars().count();
-        Ok(match index.bidx {
-            0 => self.insert_at_index(index.eidx, text, replica),
-            b => self.insert_in_index(index.eidx, b, text, replica),
-        })
+        let (uid, offset) = {
+            let (ref element, offset) = self.0.search(index)?;
+            (element.uid.clone(), offset)
+        };
+
+        let deletes = match offset {
+            0 => vec![],
+            _ => vec![self.0.delete(&uid).expect("Element must exist!")],
+        };
+
+        let inserts = {
+            let (ref prev, _) = self.0.search(index-1)?;
+            let (ref next, _) = self.0.search(index)?;
+            if offset == 0 {
+                vec![Element::between(prev, next, text, replica)]
+            } else {
+                let (text_pre, text_post) = split_at_char(&deletes[0].text, offset);
+                let pre = Element::between(prev, next, text_pre.to_owned(), replica);
+                let new = Element::between(&pre, next, text, replica);
+                let post = Element::between(&new, next, text_post.to_owned(), replica);
+                vec![pre, new, post]
+            }
+        };
+
+        for e in &inserts { self.0.insert(e.clone()) }
+        Ok(UpdateAttributedString{inserts: inserts, deletes: deletes})
     }
 
     pub fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Result<UpdateAttributedString, Error> {
         if len == 0 { return Err(Error::Noop) }
+        let mut deleted_len = 0;
 
-        let start = self.index(&self.start_index(), index)?;
-        let end = self.index(&start, len)?;
-        self.len -= len;
-        Ok(match start.eidx == end.eidx {
-            true  => self.delete_in_element(&start, &end, replica),
-            false => self.delete_in_elements(&start, &end, replica),
-        })
+        let (uid, offset) = {
+            let (ref element, offset) = self.0.search(index)?;
+            (element.uid.clone(), offset)
+        };
+
+        let mut deletes = vec![self.0.delete(&uid).expect("Element must exist!")];
+
+        while deleted_len < len {
+            let uid = {
+                let (elt, _) = self.0.search(index)?;
+                elt.uid.clone()
+            };
+
+            let element = self.0.delete(&uid).expect("Element must exist!");
+            deleted_len += element.len;
+            deletes.push(element);
+        }
+
+        let mut inserts = vec![];
+        if offset > 0 || deleted_len > len {
+            let (prev, _) = self.0.search(index-1)?;
+            let (next, _) = self.0.search(index)?;
+
+            if offset > 0 {
+                let (text, _) = split_at_char(&deletes[0].text, offset);
+                inserts.push(Element::between(prev, next, text.to_owned(), replica));
+            }
+
+            if deleted_len > len {
+                let overdeleted_text = &deletes.last().expect("Element must exist!").text;
+                let (_, text)  = split_at_char(overdeleted_text, deleted_len-len);
+                let element = {
+                    let prev = if inserts.is_empty() { prev } else { &inserts[0] };
+                    Element::between(prev, next, text.to_owned(), replica)
+                };
+                inserts.push(element);
+            }
+        };
+
+        for e in &inserts { self.0.insert(e.clone()) }
+        Ok(UpdateAttributedString{inserts: inserts, deletes: deletes})
     }
 
     pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
-        if index + len > self.len { return Err(Error::OutOfBounds) }
+        if index + len > self.len() { return Err(Error::OutOfBounds) }
         if len == 0 && text.is_empty() { return Err(Error::Noop) }
 
         let mut op1 = self.delete_text(index, len, replica).unwrap_or(UpdateAttributedString::default());
@@ -66,173 +123,51 @@ impl AttributedString {
     }
 
     pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
-        let elements = mem::replace(&mut self.elements, Vec::new());
-        let mut insert_iter = op.inserts.iter().peekable();
-        let mut delete_iter = op.deletes.iter().peekable();
-        let mut local_ops = Vec::new();
+        let mut local_ops = Vec::with_capacity(op.inserts.len() + op.deletes.len());
 
-        let mut char_index = 0;
-        let max_elt = Element::end_marker();
+        for element in &op.inserts {
+            self.0.insert(element.clone());
+            let char_index = self.0.index_of(&element.uid).expect("Element must exist!");
+            let op = InsertText::new(char_index, element.text.clone());
+            local_ops.push(LocalOp::InsertText(op));
+        }
 
-        for elt in elements {
-            let should_delete_elt = {
-                let deleted_elt = *delete_iter.peek().unwrap_or(&&max_elt);
-                elt < max_elt && elt == *deleted_elt
-            };
-            // if elt matches the next deleted UID, delete elt
-            if should_delete_elt {
-                self.len -= elt.len;
-                delete_iter.next();
-                let op = DeleteText::new(char_index, elt.len);
+        for element in &op.deletes {
+            if let Ok(char_index) = self.0.index_of(&element.uid) {
+                self.0.delete(&element.uid);
+                let op = DeleteText::new(char_index, element.len);
                 local_ops.push(LocalOp::DeleteText(op));
-
-            // otherwise insert all new elements that come before elt,
-            // then re-insert elt
-            } else {
-                while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
-                    let ins = insert_iter.next().unwrap().clone();
-                    let text = ins.text.to_string();
-                    let text_len = text.chars().count();
-                    let op = InsertText::new(char_index, text);
-                    local_ops.push(LocalOp::InsertText(op));
-                    self.elements.push(ins);
-                    self.len += text_len;
-                    char_index += text_len;
-                }
-                char_index += elt.len;
-                self.elements.push(elt);
             }
         }
+
         local_ops
     }
 
-    fn insert_at_index(&mut self, eidx: usize, text: String, replica: &Replica) -> UpdateAttributedString {
-        let elt_new = {
-            let ref elt1 = self.elements[eidx-1];
-            let ref elt2 = self.elements[eidx];
-            Element::between(elt1, elt2, text, replica)
-        };
-
-        self.elements.insert(eidx, elt_new.clone());
-        UpdateAttributedString::new(vec![elt_new], vec![])
-    }
-
-    fn insert_in_index(&mut self, eidx: usize, bidx: usize, text: String, replica: &Replica) -> UpdateAttributedString {
-        let original_elt = self.elements.remove(eidx);
-
-        let (elt_pre, elt_new, elt_post) = {
-            let (text_pre, text_post) = original_elt.text.split_at(bidx);
-            let ref elt_ppre = self.elements[eidx-1];
-            let ref elt_ppost = self.elements[eidx];
-            let elt_new  = Element::between(elt_ppre, elt_ppost, text, &replica);
-            let elt_pre  = Element::between(elt_ppre, &elt_new, text_pre.to_string(), replica);
-            let elt_post = Element::between(&elt_new, elt_ppost, text_post.to_string(), replica);
-            (elt_pre, elt_new, elt_post)
-        };
-
-        self.elements.insert(eidx, elt_post.clone());
-        self.elements.insert(eidx, elt_new.clone());
-        self.elements.insert(eidx, elt_pre.clone());
-        UpdateAttributedString::new(
-            vec![elt_pre, elt_new, elt_post],
-            vec![original_elt],
-        )
-    }
-
-    fn delete_in_element(&mut self, start: &Index, end: &Index, replica: &Replica) -> UpdateAttributedString {
-        let ref mut element = self.elements[start.eidx];
-        let deleted_element = element.clone();
-        element.cut_middle(start.bidx, end.bidx, replica);
-        let insert = element.clone();
-        UpdateAttributedString::new(vec![insert], vec![deleted_element])
-    }
-
-    fn delete_in_elements(&mut self, start: &Index, end: &Index, replica: &Replica) -> UpdateAttributedString {
-        let mut deletes: Vec<Element> = vec![];
-        let mut inserts: Vec<Element> = vec![];
-        let mut start_eidx = start.eidx;
-        let end_eidx = end.eidx;
-
-        // if part of the lower-bound element is deleted, update the
-        // element in-place instead of deleting and re-inserting it
-        if start.bidx > 0 {
-            let ref mut element = self.elements[start.eidx];
-            deletes.push(element.clone());
-            element.cut_right(start.bidx, replica);
-            inserts.push(element.clone());
-            start_eidx += 1;
-        }
-
-        // same for the upper-bound element
-        if end.bidx > 0 {
-            let ref mut element = self.elements[end.eidx];
-            deletes.push(element.clone());
-            element.cut_left(end.bidx, replica);
-            inserts.push(element.clone());
-        }
-
-        for _ in start_eidx..end_eidx {
-            deletes.push(self.elements.remove(start_eidx));
-        }
-
-        deletes.sort();
-        UpdateAttributedString::new(inserts, deletes)
-    }
-
-    pub fn elements(&self) -> &[Element] {
-        let lower = 1;
-        let upper = self.elements.len() - 1;
-        &self.elements[lower..upper]
-    }
-
     pub fn raw_string(&self) -> String {
-        let mut raw = String::with_capacity(self.len());
-        for elt in &self.elements {
-            if elt.is_text() {
-                raw.push_str(&elt.text);
-            }
-        }
+        let mut raw = String::with_capacity(self.0.len());
+        for elt in self.elements() { raw.push_str(&elt.text) }
         raw
     }
+}
 
-    pub fn index(&self, index: &Index, distance: usize) -> Result<Index, Error> {
-        let location = index.location + distance;
-        if location > self.len { return Err(Error::OutOfBounds) }
-        if location == self.len { return Ok(self.end_index()) }
+impl Debug for AttributedString {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let text = self.raw_string();
+        write!(f, "AttributedString{{text: \"{}\", len: {}}}", text, self.0.len())
+    }
+}
 
-        let mut eidx = index.eidx;
-        let mut cidx = index.cidx;
-        let mut bidx = index.bidx;
-        let mut distance_left = distance;
+fn split_at_char(string: &str, char_index: usize) -> (&str, &str) {
+    let mut bidx = 0;
+    let mut cidx = 0;
 
-        for element in &self.elements[eidx..] {
-            if distance_left < element.len - cidx {
-                for c in element.text[cidx..].chars() {
-                    if distance_left == 0 {
-                        return Ok(Index{eidx: eidx, cidx: cidx, bidx: bidx, location: location})
-                    }
-
-                    cidx += 1;
-                    bidx += c.len_utf8();
-                    distance_left -= 1;
-                }
-            }
-
-            distance_left -= element.len - cidx;
-            eidx += 1;
-            cidx = 0;
-            bidx = 0;
-        }
-        Err(Error::OutOfBounds)
+    for b in string.bytes() {
+        if cidx == char_index { break }
+        if (b as i8) >= -0x40 { cidx += 1 }
+        bidx += 1;
     }
 
-    pub fn start_index(&self) -> Index {
-        Index{eidx: 1, cidx: 0, bidx: 0, location: 0}
-    }
-
-    pub fn end_index(&self) -> Index {
-        Index{eidx: self.elements.len() - 1, bidx: 0, cidx: 0, location: self.len}
-    }
+    string.split_at(bidx)
 }
 
 #[cfg(test)]
