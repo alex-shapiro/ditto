@@ -174,11 +174,10 @@ fn split_at_char(string: &str, char_index: usize) -> (&str, &str) {
 mod tests {
     use super::*;
     use super::element::Element;
-    use super::index::Index;
     use Error;
     use op::remote::UpdateAttributedString;
     use Replica;
-    use sequence::uid::{self, UID};
+    use sequence::uid;
 
     const REPLICA1: Replica = Replica{site: 5, counter: 1023};
     const REPLICA2: Replica = Replica{site: 8, counter: 16};
@@ -187,8 +186,8 @@ mod tests {
     fn test_new() {
         let string = AttributedString::new();
         assert!(string.len() == 0);
-        assert!(string.elements[0] == Element::start_marker());
-        assert!(string.elements[1] == Element::end_marker());
+        assert!(string.0.index_of(&uid::MIN).unwrap() == 0);
+        assert!(string.0.index_of(&uid::MAX).unwrap() == 0);
     }
 
     #[test]
@@ -204,29 +203,29 @@ mod tests {
         let op = string.insert_text(0, "quick".to_string(), &REPLICA1).unwrap();
 
         assert!(string.len() == 5);
-        assert!(text(&string, 1) == "quick");
+        let element = elt_at(&string, 0, "quick");
 
         assert!(op.inserts.len() == 1);
-        assert!(op.inserts[0].uid == string.elements[1].uid);
-        assert!(op.inserts[0].text == "quick");
-        assert!(op.deletes.len() == 0);
+        assert!(op.inserts[0].uid == element.uid);
+        assert!(op.inserts[0].text == element.text);
+        assert!(op.deletes.is_empty());
     }
 
     #[test]
     fn test_insert_text_before_index() {
         let mut string = AttributedString::new();
-        let  _ = string.insert_text(0, "the ".to_string(), &REPLICA1);
-        let  _ = string.insert_text(4, "brown".to_string(), &REPLICA1);
-        let op = string.insert_text(4, "quick ".to_string(), &REPLICA2).unwrap();
+        let  _ = string.insert_text(0, "the ".to_owned(), &REPLICA1);
+        let  _ = string.insert_text(4, "brown".to_owned(), &REPLICA1);
+        let op = string.insert_text(4, "quick ".to_owned(), &REPLICA2).unwrap();
 
         assert!(string.len() == 15);
-        assert!(text(&string, 1) == "the ");
-        assert!(text(&string, 2) == "quick ");
-        assert!(text(&string, 3) == "brown");
+        let _  = elt_at(&string,  0, "the ");
+        let e1 = elt_at(&string,  4, "quick ");
+        let _  = elt_at(&string, 10, "brown");
 
         assert!(op.inserts.len() == 1);
-        assert!(op.inserts[0].uid == string.elements[2].uid);
-        assert!(op.inserts[0].text == "quick ");
+        assert!(op.inserts[0].uid == e1.uid);
+        assert!(op.inserts[0].text == e1.text);
         assert!(op.deletes.len() == 0);
     }
 
@@ -238,18 +237,18 @@ mod tests {
         let op2 = string.insert_text(4, "quick".to_string(), &REPLICA2).unwrap();
 
         assert!(string.len() == 15);
-        assert!(text(&string, 1) == "the ");
-        assert!(text(&string, 2) == "quick");
-        assert!(text(&string, 3) == " ");
-        assert!(text(&string, 4) == "brown");
+        let e0 = elt_at(&string,  0, "the ");
+        let e1 = elt_at(&string,  4, "quick");
+        let e2 = elt_at(&string,  9, " ");
+        let _  = elt_at(&string, 10, "brown");
 
         assert!(op2.inserts.len() == 3);
-        assert!(op2.inserts[0].uid == string.elements[1].uid);
-        assert!(op2.inserts[1].uid == string.elements[2].uid);
-        assert!(op2.inserts[2].uid == string.elements[3].uid);
-        assert!(op2.inserts[0].text == "the ");
-        assert!(op2.inserts[1].text == "quick");
-        assert!(op2.inserts[2].text == " ");
+        assert!(op2.inserts[0].uid == e0.uid);
+        assert!(op2.inserts[1].uid == e1.uid);
+        assert!(op2.inserts[2].uid == e2.uid);
+        assert!(op2.inserts[0].text == e0.text);
+        assert!(op2.inserts[1].text == e1.text);
+        assert!(op2.inserts[2].text == e2.text);
 
         assert!(op2.deletes.len() == 1);
         assert!(op2.deletes[0] == op1.inserts[0]);
@@ -279,8 +278,8 @@ mod tests {
         let op2 = string.delete_text(4, 6, &REPLICA2).unwrap();
 
         assert!(string.len() == 9);
-        assert!(text(&string, 1) == "the ");
-        assert!(text(&string, 2) == "brown");
+        let _ = elt_at(&string, 0, "the ");
+        let _ = elt_at(&string, 4, "brown");
 
         assert!(op2.inserts.len() == 0);
         assert!(op2.deletes.len() == 1);
@@ -296,7 +295,7 @@ mod tests {
         let op3 = string.delete_text(4, 11, &REPLICA2).unwrap();
 
         assert!(string.len() == 4);
-        assert!(text(&string, 1) == "the ");
+        let _ = elt_at(&string, 0, "the ");
 
         assert!(op3.inserts.len() == 0);
         assert!(op3.deletes.len() == 2);
@@ -313,9 +312,9 @@ mod tests {
         let op2 = string.delete_text(5, 3, &REPLICA2).unwrap();
 
         assert!(string.len() == 12);
-        assert!(text(&string, 1) == "the ");
-        assert!(text(&string, 2) == "qk ");
-        assert!(text(&string, 3) == "brown");
+        let _ = elt_at(&string, 0, "the ");
+        let _ = elt_at(&string, 4, "qk ");
+        let _ = elt_at(&string, 7, "brown");
 
         assert!(op2.inserts.len() == 1);
         assert!(op2.inserts[0].text == "qk ");
@@ -335,9 +334,9 @@ mod tests {
         let op3 = string.delete_text(2, 19, &REPLICA2).unwrap();
 
         assert!(string.len() == 11);
-        assert!(text(&string, 1) == "th");
-        assert!(text(&string, 2) == "umps ");
-        assert!(text(&string, 3) == "over");
+        let _ = elt_at(&string, 0, "th");
+        let _ = elt_at(&string, 2, "umps ");
+        let _ = elt_at(&string, 7, "over");
 
         assert!(op3.inserts.len() == 2);
         assert!(op3.inserts[0].text == "th");
@@ -361,11 +360,11 @@ mod tests {
         let op2 = string.replace_text(2, 6, "".to_string(), &REPLICA2).unwrap();
 
         assert!(string.len() == 5);
-        assert!(text(&string, 1) == "herld");
+        let _ = elt_at(&string, 0, "herld");
 
         assert!(op2.inserts.len() == 1);
-        assert!(op2.inserts[0].text == "herld");
         assert!(op2.deletes.len() == 1);
+        assert!(op2.inserts[0].text == "herld");
         assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
@@ -376,15 +375,15 @@ mod tests {
         let op2 = string.replace_text(4, 0, "quick ".to_string(), &REPLICA2).unwrap();
 
         assert!(string.len() == 13);
-        assert!(text(&string, 1) == "the ");
-        assert!(text(&string, 2) == "quick ");
-        assert!(text(&string, 3) == "fox");
+        let e0 = elt_at(&string,  0, "the ");
+        let e1 = elt_at(&string,  4, "quick ");
+        let e2 = elt_at(&string, 10, "fox");
 
         assert!(op2.inserts.len() == 3);
-        assert!(op2.inserts[0].text == "the ");
-        assert!(op2.inserts[1].text == "quick ");
-        assert!(op2.inserts[2].text == "fox");
         assert!(op2.deletes.len() == 1);
+        assert!(op2.inserts[0].text == e0.text);
+        assert!(op2.inserts[1].text == e1.text);
+        assert!(op2.inserts[2].text == e2.text);
         assert!(op2.deletes[0] == op1.inserts[0]);
     }
 
@@ -395,16 +394,16 @@ mod tests {
         let op2 = string.replace_text(4, 5, "qwik".to_string(), &REPLICA2).unwrap();
 
         assert!(string.len() == 12);
-        assert!(text(&string, 1) == "the ");
-        assert!(text(&string, 2) == "qwik");
-        assert!(text(&string, 3) == " fox");
+        let e0 = elt_at(&string,  0, "the ");
+        let e1 = elt_at(&string,  4, "qwik");
+        let e2 = elt_at(&string,  8, " fox");
 
         assert!(op2.deletes.len() == 1);
-        assert!(op2.deletes[0] == op1.inserts[0]);
         assert!(op2.inserts.len() == 3);
-        assert!(op2.inserts[0].text == "the ");
-        assert!(op2.inserts[1].text == "qwik");
-        assert!(op2.inserts[2].text == " fox");
+        assert!(op2.deletes[0] == op1.inserts[0]);
+        assert!(op2.inserts[0].text == e0.text);
+        assert!(op2.inserts[1].text == e1.text);
+        assert!(op2.inserts[2].text == e2.text);
     }
 
     #[test]
@@ -469,72 +468,11 @@ mod tests {
         assert!(string.raw_string() == "the quick brown");
     }
 
-    #[test]
-    fn test_index_from_start() {
-        let s = build_string(vec!["thé","qüiçk","brøwn","fox🇨🇦😀"]);
-        let i = s.start_index();
-
-        assert!(s.index(&i, 0).unwrap()  == idx(1,0,0,0));
-        assert!(s.index(&i, 1).unwrap()  == idx(1,1,1,1));
-        assert!(s.index(&i, 2).unwrap()  == idx(1,2,2,2));
-        assert!(s.index(&i, 3).unwrap()  == idx(2,0,0,3));
-        assert!(s.index(&i, 4).unwrap()  == idx(2,1,1,4));
-        assert!(s.index(&i, 5).unwrap()  == idx(2,2,3,5));
-        assert!(s.index(&i, 6).unwrap()  == idx(2,3,4,6));
-        assert!(s.index(&i, 7).unwrap()  == idx(2,4,6,7));
-        assert!(s.index(&i, 8).unwrap()  == idx(3,0,0,8));
-        assert!(s.index(&i, 9).unwrap()  == idx(3,1,1,9));
-        assert!(s.index(&i, 10).unwrap() == idx(3,2,2,10));
-        assert!(s.index(&i, 11).unwrap() == idx(3,3,4,11));
-        assert!(s.index(&i, 12).unwrap() == idx(3,4,5,12));
-        assert!(s.index(&i, 13).unwrap() == idx(4,0,0,13));
-        assert!(s.index(&i, 14).unwrap() == idx(4,1,1,14));
-        assert!(s.index(&i, 15).unwrap() == idx(4,2,2,15));
-        assert!(s.index(&i, 16).unwrap() == idx(4,3,3,16));
-        assert!(s.index(&i, 17).unwrap() == idx(4,4,7,17));
-        assert!(s.index(&i, 18).unwrap() == idx(4,5,11,18));
-        assert!(s.index(&i, 19).unwrap() == idx(5,0,0,19));
-        assert!(s.index(&i, 20) == Err(Error::OutOfBounds));
-    }
-
-    #[test]
-    fn test_index() {
-        let s = build_string(vec!["thé","qüiçk","brøwn","fox🇨🇦😀"]);
-        let j = s.index(&s.start_index(), 10).unwrap();
-
-        assert!(s.index(&j, 0).unwrap() == idx(3,2,2,10));
-        assert!(s.index(&j, 1).unwrap() == idx(3,3,4,11));
-        assert!(s.index(&j, 2).unwrap() == idx(3,4,5,12));
-        assert!(s.index(&j, 3).unwrap() == idx(4,0,0,13));
-        assert!(s.index(&j, 4).unwrap() == idx(4,1,1,14));
-        assert!(s.index(&j, 5).unwrap() == idx(4,2,2,15));
-        assert!(s.index(&j, 6).unwrap() == idx(4,3,3,16));
-        assert!(s.index(&j, 7).unwrap() == idx(4,4,7,17));
-        assert!(s.index(&j, 8).unwrap() == idx(4,5,11,18));
-        assert!(s.index(&j, 9).unwrap() == idx(5,0,0,19));
-        assert!(s.index(&j, 10) == Err(Error::OutOfBounds));
-    }
-
-    fn text<'a>(string: &'a AttributedString, index: usize) -> &'a str {
-        &string.elements[index].text
-    }
-
-    fn build_string(text_vec: Vec<&'static str>) -> AttributedString {
-        let mut elements: Vec<Element> = vec![Element::start_marker()];
-        let end_marker = Element::end_marker();
-        let replica = Replica::new(1,1);
-        let mut len = 0;
-
-        for text in text_vec {
-            let uid = UID::between(&elements.last().unwrap().uid, &*uid::MAX, &replica);
-            elements.push(Element::text(text.to_owned(), uid));
-            len += text.chars().count();
-        }
-        elements.push(end_marker);
-        AttributedString{len: len, elements: elements}
-    }
-
-    fn idx(eidx: usize, cidx: usize, bidx: usize, location: usize) -> Index {
-        Index{eidx: eidx, cidx: cidx, bidx: bidx, location: location}
+    fn elt_at<'a>(string: &'a AttributedString, index: usize, text: &'static str) -> &'a Element {
+        let (element, offset) = string.0.search(index).expect("Element does not exist!");
+        assert!(offset == 0);
+        assert!(element.text == text);
+        assert!(element.len == element.text.chars().count());
+        element
     }
 }
