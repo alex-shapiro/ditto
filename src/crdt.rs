@@ -17,9 +17,9 @@ pub struct CRDT {
 
 impl CRDT {
     pub fn create(raw: &str) -> R<Self> {
-        let raw_json = try!(serde_json::from_str(raw));
+        let raw_json = serde_json::from_str(raw)?;
         let replica = Replica::new(1, 0);
-        let value = raw::decode(&raw_json, &replica);
+        let value = raw::decode(&raw_json, &replica)?;
         Ok(CRDT{root_value: value, replica: replica})
     }
 
@@ -52,8 +52,9 @@ impl CRDT {
     }
 
     pub fn put(&mut self, pointer: &str, key: &str, value: &str) -> R<NestedRemoteOp> {
-        let value_json: Json = try!(serde_json::from_str(value));
-        let op = op::local::Put{key: key.to_owned(), value: raw::decode(&value_json, &self.replica)};
+        let value_json: Json = serde_json::from_str(value)?;
+        let value = raw::decode(&value_json, &self.replica)?;
+        let op = op::local::Put{key: key.to_owned(), value: value};
         self.execute_local(pointer, LocalOp::Put(op))
     }
 
@@ -63,8 +64,9 @@ impl CRDT {
     }
 
     pub fn insert_item(&mut self, pointer: &str, index: usize, item: &str) -> R<NestedRemoteOp> {
-        let item_json: Json = try!(serde_json::from_str(item));
-        let op = op::local::InsertItem{index: index, value: raw::decode(&item_json, &self.replica)};
+        let item_json: Json = serde_json::from_str(item)?;
+        let item = raw::decode(&item_json, &self.replica)?;
+        let op = op::local::InsertItem{index: index, value: item};
         self.execute_local(pointer, LocalOp::InsertItem(op))
     }
 

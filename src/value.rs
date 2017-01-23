@@ -367,6 +367,6 @@ mod tests {
 
     fn from_str(string: &str) -> Value {
         let json: Json = serde_json::from_str(string).expect("invalid JSON!");
-        raw::decode(&json, &Replica::new(1,1))
+        raw::decode(&json, &Replica::new(1,1)).unwrap()
     }
 }
