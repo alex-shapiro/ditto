@@ -1,5 +1,5 @@
 use super::element::Element;
-use sequence::uid::UID;
+use sequence::uid::{self, UID};
 use error::Error;
 use std::mem;
 use std::iter::IntoIterator;
@@ -327,7 +327,9 @@ impl<'a> IntoIterator for &'a BTree {
             stack.push((node, 0));
             node = &node.children[0];
         }
-        BTreeIter{stack: stack, node: node, next_index: 0}
+        let mut iterator = BTreeIter{stack: stack, node: node, next_index: 0};
+        let _ = iterator.next();
+        iterator
     }
 }
 
@@ -337,6 +339,7 @@ impl<'a> Iterator for BTreeIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(ref element) = self.node.elements.get(self.next_index) {
+                if element.uid == *uid::MAX { return None }
                 self.next_index += 1;
                 while self.node.is_internal() {
                     self.stack.push((self.node, self.next_index));
