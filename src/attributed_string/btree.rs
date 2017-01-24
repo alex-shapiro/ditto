@@ -1,8 +1,8 @@
 use super::element::Element;
 use sequence::uid::UID;
 use error::Error;
-use std::mem;
 use std::iter::IntoIterator;
+use std::mem;
 
 const B: usize = 6;
 const MIN_LEN: usize = B - 1;
@@ -90,18 +90,21 @@ impl Node {
     /// If the index is out of bounds, it returns an OutOfBounds error.
     fn search(&self, mut i: usize) -> Result<(&Element, usize), Error> {
         if i > self.len { return Err(Error::OutOfBounds) }
-
         if self.is_leaf() {
-            for e in &self.elements {
-                if i < e.len { return Ok((e, i)) } else { i -= e.len }
+            for element in &self.elements {
+                if i < element.len { return Ok((element, i)) }
+                else { i -= element.len }
             }
             return Ok((self.elements.last().unwrap(), 0))
         } else {
             let mut elements = self.elements.iter();
-            for c in &self.children {
-                if i < c.len { return c.search(i) } else { i -= c.len }
-                let e = elements.next().expect("Element must exist!");
-                if i < e.len { return Ok((e, i)) } else { i -= e.len }
+            for child in &self.children {
+                if i < child.len { return child.search(i) }
+                else { i -= child.len }
+
+                let element = elements.next().expect("Element must exist!");
+                if i < element.len { return Ok((element, i)) }
+                else { i -= element.len }
             }
         }
 
@@ -224,9 +227,12 @@ impl Node {
 
             } else {
                 self.merge_children(index);
-                match self.is_leaf() {
-                    true  => self.delete(uid),
-                    false => self.children[index].delete(uid),
+                if self.is_leaf() {
+                    self.delete(uid)
+                } else {
+                    let element = self.children[index].delete(uid);
+                    if let Some(ref e) = element { self.len -= e.len }
+                    element
                 }
             }
 
@@ -240,6 +246,7 @@ impl Node {
                     let (sibling_elt, sibling_child) = self.children[index-1].pop_last();
                     let parent_elt = mem::replace(&mut self.elements[index-1], sibling_elt);
                     let child = &mut self.children[index];
+                    child.len += parent_elt.len;
                     child.elements.insert(0, parent_elt);
                     if let Some(c) = sibling_child {
                         child.len += c.len;
@@ -250,6 +257,7 @@ impl Node {
                     let (sibling_elt, sibling_child) = self.children[index+1].pop_first();
                     let parent_elt = mem::replace(&mut self.elements[index], sibling_elt);
                     let child = &mut self.children[index];
+                    child.len += parent_elt.len;
                     child.elements.push(parent_elt);
                     if let Some(c) = sibling_child {
                         child.len += c.len;
@@ -262,7 +270,8 @@ impl Node {
                 }
             }
             let element = self.children[index].delete(uid);
-            element.map(|e| { self.len -= e.len; e })
+            if let Some(ref e) = element { self.len -= e.len }
+            element
         }
     }
 
@@ -375,6 +384,8 @@ impl<'a> Iterator for BTreeIter<'a> {
 mod tests {
     use super::*;
     use attributed_string::element;
+    use rand;
+    use rand::distributions::{IndependentSample, Range};
     use Replica;
 
     #[test]
@@ -389,7 +400,7 @@ mod tests {
     #[test]
     fn test_insert_into_empty() {
         let mut btree = BTree::new();
-        insert_at(&mut btree, 0, "the", &Replica{site: 1, counter: 1});
+        insert_at(&mut btree, 0, "the");
         assert!(btree.len() == 3);
         assert!(btree.root.is_leaf());
         assert!(btree.root.elements[0].is_start_marker());
@@ -401,8 +412,8 @@ mod tests {
     #[test]
     fn test_insert_emoji() {
         let mut btree = BTree::new();
-        insert_at(&mut btree, 0, "hello", &Replica{site: 1, counter: 1});
-        insert_at(&mut btree, 0, "😀🇦🇽", &Replica{site: 1, counter: 2});
+        insert_at(&mut btree, 0, "hello");
+        insert_at(&mut btree, 0, "😀🇦🇽");
         assert!(btree.len() == 8);
         assert!(btree.root.is_leaf());
         assert!(btree.root.elements[1].text == "😀🇦🇽");
@@ -412,9 +423,9 @@ mod tests {
     #[test]
     fn test_delete() {
         let mut btree = BTree::new();
-        insert_at(&mut btree, 0, "hello", &Replica{site: 1, counter: 1});
-        insert_at(&mut btree, 5, "howareyou", &Replica{site: 1, counter: 1});
-        insert_at(&mut btree, 14, "goodbye", &Replica{site: 1, counter: 2});
+        insert_at(&mut btree, 0, "hello");
+        insert_at(&mut btree, 5, "howareyou");
+        insert_at(&mut btree, 14, "goodbye");
         assert!(btree.len() == 21);
 
         let e = delete_at(&mut btree, 5);
@@ -428,9 +439,9 @@ mod tests {
     #[test]
     fn test_delete_emoji() {
         let mut btree = BTree::new();
-        insert_at(&mut btree, 0, "'sup", &Replica{site: 1, counter: 1});
-        insert_at(&mut btree, 4, "🤣➔🥅", &Replica{site: 1, counter: 1});
-        insert_at(&mut btree, 7, "goodbye", &Replica{site: 1, counter: 2});
+        insert_at(&mut btree, 0, "'sup");
+        insert_at(&mut btree, 4, "🤣➔🥅");
+        insert_at(&mut btree, 7, "goodbye");
         assert!(btree.len() == 14);
 
         let e = delete_at(&mut btree, 4);
@@ -442,7 +453,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_and_delete() {
+    fn test_insert_and_delete_ordered() {
         let mut btree = BTree::new();
         let paragraph = r#"
         a ac adipiscing aliquam aliquet amet arcu at auctor commodo congue
@@ -456,9 +467,8 @@ mod tests {
         tristique turpis ultricies urna ut vehicula vel venenatis vestibulum
         vitae volutpat"#;
 
-        let replica = Replica{site: 1, counter: 1};
         for word in paragraph.split_whitespace().rev() {
-            insert_at(&mut btree, 0, word, &replica);
+            insert_at(&mut btree, 0, word);
         }
 
         assert!(btree.len() == 543);
@@ -484,27 +494,76 @@ mod tests {
         }
     }
 
-    fn insert_at(btree: &mut BTree, index: usize, text: &'static str, replica: &Replica) {
+    #[test]
+    fn test_insert_and_delete_random() {
+        let mut btree = BTree::new();
+        let paragraph = r#"
+        a ac adipiscing aliquam aliquet amet arcu at auctor commodo congue
+        consectetur cras curabitur dignissim dolor dui egestas eleifend elit
+        enim eros est et eu euismod fames feugiat finibus habitant hendrerit
+        imperdiet integer interdum ipsum justo lectus lobortis lorem luctus
+        maecenas magna malesuada mattis maximus metus mi mollis morbi nam nec
+        netus nisi non nulla nunc odio ornare pellentesque pharetra placerat
+        praesent pretium purus quam quis risus sagittis scelerisque sed sem
+        senectus sit sollicitudin suspendisse tellus tempus tincidunt tortor
+        tristique turpis ultricies urna ut vehicula vel venenatis vestibulum
+        vitae volutpat"#;
+
+        for word in paragraph.split_whitespace() {
+            insert_random(&mut btree, word);
+        }
+
+        assert!(btree.len() == 543);
+        assert!(btree.root.is_internal());
+
+        while btree.len() > 0 {
+            let old_len = btree.len();
+            let e1 = delete_random(&mut btree);
+            assert!(btree.len() == old_len - e1.len);
+        }
+    }
+
+    fn insert_at(btree: &mut BTree, index: usize, text: &'static str) {
         debug_assert!(index <= btree.len());
         let element = {
             let (next, offset) = btree.search(index).unwrap();
-            debug_assert!(offset == 0);
-            let prev = match index {
+            let prev = match index-offset {
                 0 => &*element::START,
-                _ => { let (prev, _) = btree.search(index-1).unwrap(); prev },
+                _ => { let (prev, _) = btree.search(index-offset-1).unwrap(); prev },
             };
-            Element::between(prev, next, text.to_owned(), replica)
+            Element::between(prev, next, text.to_owned(), &Replica{site: 1, counter: 1})
         };
+        let elt_len = element.len;
+        let old_len = btree.len();
         btree.insert(element);
+        debug_assert!(btree.len() == old_len + elt_len);
     }
 
     fn delete_at(btree: &mut BTree, index: usize) -> Element {
         debug_assert!(index < btree.len());
         let uid = {
-            let (elt, offset) = btree.search(index).expect("Element must exist for index!");
-            debug_assert!(offset == 0);
+            let (elt, _) = btree.search(index).expect("Element must exist for index!");
+            println!("\n{:?}", &elt);
+            println!("{:?}", btree);
             elt.uid.clone()
         };
-        btree.delete(&uid).expect("Element must exist for UID!")
+        let old_len = btree.len();
+        let element = btree.delete(&uid).expect("Element must exist for UID!");
+        debug_assert!(btree.len() == old_len - element.len);
+        element
+    }
+
+    fn insert_random(btree: &mut BTree, text: &'static str) {
+        let range = Range::new(0, btree.len() + 1);
+        let mut rng = rand::thread_rng();
+        let index = range.ind_sample(&mut rng);
+        insert_at(btree, index, text)
+    }
+
+    fn delete_random(btree: &mut BTree) -> Element {
+        let range = Range::new(0, btree.len());
+        let mut rng = rand::thread_rng();
+        let index = range.ind_sample(&mut rng);
+        delete_at(btree, index)
     }
 }
