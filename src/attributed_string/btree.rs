@@ -1,5 +1,5 @@
 use super::element::Element;
-use sequence::uid::{self, UID};
+use sequence::uid::UID;
 use error::Error;
 use std::mem;
 use std::iter::IntoIterator;
@@ -8,12 +8,12 @@ const B: usize = 6;
 const MIN_LEN: usize = B - 1;
 const CAPACITY: usize = 2 * B - 1;
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct BTree {
     root: Node,
 }
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Node {
     len: usize,
     elements: Vec<Element>,
@@ -33,7 +33,7 @@ impl BTree {
 
     pub fn insert(&mut self, element: Element) {
         if self.root.is_full() {
-            let new_root = Node{len: 0, elements: vec![], children: vec![]};
+            let new_root = Node{len: self.root.len, elements: vec![], children: vec![]};
             let old_root = mem::replace(&mut self.root, new_root);
             self.root.len = old_root.len;
             self.root.children.push(old_root);
@@ -89,12 +89,13 @@ impl Node {
     /// to the element and the offset of the index inside the element.
     /// If the index is out of bounds, it returns an OutOfBounds error.
     fn search(&self, mut i: usize) -> Result<(&Element, usize), Error> {
-        if i >= self.len { return Err(Error::OutOfBounds) }
+        if i > self.len { return Err(Error::OutOfBounds) }
 
         if self.is_leaf() {
             for e in &self.elements {
                 if i < e.len { return Ok((e, i)) } else { i -= e.len }
             }
+            return Ok((self.elements.last().unwrap(), 0))
         } else {
             let mut elements = self.elements.iter();
             for c in &self.children {
@@ -145,11 +146,21 @@ impl Node {
         let removed_element = self.elements.remove(index);
         let Node{len, mut elements, mut children, ..} = self.children.remove(index+1);
 
-        let ref mut child = self.children[index];
-        child.len += removed_element.len + len;
-        child.elements.push(removed_element);
-        child.elements.append(&mut elements);
-        child.children.append(&mut children);
+        {
+            let ref mut child = self.children[index];
+            child.len += removed_element.len + len;
+            child.elements.push(removed_element);
+            child.elements.append(&mut elements);
+            child.children.append(&mut children);
+        }
+
+        // When merging children of the root node it is possible for
+        // root to end up with 0 elements and 1 child. When this happens,
+        // replace the root node with its only child.
+        if self.elements.is_empty() {
+            let child = self.children.remove(0);
+            mem::replace(self, child);
+        }
     }
 
     /// Insert a new element into a tree. The root node must
@@ -157,6 +168,7 @@ impl Node {
     /// elements)
     fn insert(&mut self, elt: Element) {
         let mut pos = self.elements.binary_search(&elt).err().expect("Duplicate UID!");
+        self.len += elt.len;
         if self.is_leaf() {
             self.elements.insert(pos, elt);
         } else {
@@ -164,7 +176,6 @@ impl Node {
                 self.split_child(pos);
                 if elt > self.elements[pos] { pos += 1 }
             }
-            self.len += elt.len;
             self.children[pos].insert(elt)
         }
     }
@@ -172,8 +183,6 @@ impl Node {
     /// Delete an element from a tree, returning the deleted element.
     /// The root node must contain at least MIN_LEN + 1 elements.
     fn delete(&mut self, uid: &UID) -> Option<Element> {
-        debug_assert!(self.has_spare_element());
-
         let (contains_element, index) =
             match self.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
                 Ok(index) => (true, index),
@@ -215,7 +224,10 @@ impl Node {
 
             } else {
                 self.merge_children(index);
-                self.children[index].delete(uid)
+                match self.is_leaf() {
+                    true  => self.delete(uid),
+                    false => self.children[index].delete(uid),
+                }
             }
 
         // if the parent is internal and does not contain the element
@@ -224,7 +236,7 @@ impl Node {
         // rebalance from the child's left and right siblings.
         } else {
             if !self.children[index].has_spare_element() {
-                if self.children.get(index-1).map_or(false, Self::has_spare_element) {
+                if index > 0 && self.children.get(index-1).map_or(false, Self::has_spare_element) {
                     let (sibling_elt, sibling_child) = self.children[index-1].pop_last();
                     let parent_elt = mem::replace(&mut self.elements[index-1], sibling_elt);
                     let child = &mut self.children[index];
@@ -246,9 +258,9 @@ impl Node {
                 }
                 else {
                     self.merge_children(index);
+                    if self.is_leaf() { return self.delete(uid) }
                 }
             }
-
             let element = self.children[index].delete(uid);
             element.map(|e| { self.len -= e.len; e })
         }
@@ -339,7 +351,7 @@ impl<'a> Iterator for BTreeIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(ref element) = self.node.elements.get(self.next_index) {
-                if element.uid == *uid::MAX { return None }
+                if element.is_end_marker() { return None }
                 self.next_index += 1;
                 while self.node.is_internal() {
                     self.stack.push((self.node, self.next_index));
@@ -356,5 +368,143 @@ impl<'a> Iterator for BTreeIter<'a> {
                 }
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use attributed_string::element;
+    use Replica;
+
+    #[test]
+    fn test_new() {
+        let btree = BTree::new();
+        assert!(btree.len() == 0);
+        assert!(btree.root.is_leaf());
+        assert!(btree.root.elements[0].is_start_marker());
+        assert!(btree.root.elements[1].is_end_marker());
+    }
+
+    #[test]
+    fn test_insert_into_empty() {
+        let mut btree = BTree::new();
+        insert_at(&mut btree, 0, "the", &Replica{site: 1, counter: 1});
+        assert!(btree.len() == 3);
+        assert!(btree.root.is_leaf());
+        assert!(btree.root.elements[0].is_start_marker());
+        assert!(btree.root.elements[1].text == "the");
+        assert!(btree.root.elements[1].text == "the");
+        assert!(btree.root.elements[2].is_end_marker());
+    }
+
+    #[test]
+    fn test_insert_emoji() {
+        let mut btree = BTree::new();
+        insert_at(&mut btree, 0, "hello", &Replica{site: 1, counter: 1});
+        insert_at(&mut btree, 0, "😀🇦🇽", &Replica{site: 1, counter: 2});
+        assert!(btree.len() == 8);
+        assert!(btree.root.is_leaf());
+        assert!(btree.root.elements[1].text == "😀🇦🇽");
+        assert!(btree.root.elements[2].text == "hello");
+    }
+
+    #[test]
+    fn test_delete() {
+        let mut btree = BTree::new();
+        insert_at(&mut btree, 0, "hello", &Replica{site: 1, counter: 1});
+        insert_at(&mut btree, 5, "howareyou", &Replica{site: 1, counter: 1});
+        insert_at(&mut btree, 14, "goodbye", &Replica{site: 1, counter: 2});
+        assert!(btree.len() == 21);
+
+        let e = delete_at(&mut btree, 5);
+        assert!(e.text == "howareyou");
+        assert!(btree.len() == 12);
+        assert!(btree.root.is_leaf());
+        assert!(btree.root.elements[1].text == "hello");
+        assert!(btree.root.elements[2].text == "goodbye");
+    }
+
+    #[test]
+    fn test_delete_emoji() {
+        let mut btree = BTree::new();
+        insert_at(&mut btree, 0, "'sup", &Replica{site: 1, counter: 1});
+        insert_at(&mut btree, 4, "🤣➔🥅", &Replica{site: 1, counter: 1});
+        insert_at(&mut btree, 7, "goodbye", &Replica{site: 1, counter: 2});
+        assert!(btree.len() == 14);
+
+        let e = delete_at(&mut btree, 4);
+        assert!(e.text == "🤣➔🥅");
+        assert!(btree.len() == 11);
+        assert!(btree.root.is_leaf());
+        assert!(btree.root.elements[1].text == "'sup");
+        assert!(btree.root.elements[2].text == "goodbye");
+    }
+
+    #[test]
+    fn test_insert_and_delete() {
+        let mut btree = BTree::new();
+        let paragraph = r#"
+        a ac adipiscing aliquam aliquet amet arcu at auctor commodo congue
+        consectetur cras curabitur dignissim dolor dui egestas eleifend elit
+        enim eros est et eu euismod fames feugiat finibus habitant hendrerit
+        imperdiet integer interdum ipsum justo lectus lobortis lorem luctus
+        maecenas magna malesuada mattis maximus metus mi mollis morbi nam nec
+        netus nisi non nulla nunc odio ornare pellentesque pharetra placerat
+        praesent pretium purus quam quis risus sagittis scelerisque sed sem
+        senectus sit sollicitudin suspendisse tellus tempus tincidunt tortor
+        tristique turpis ultricies urna ut vehicula vel venenatis vestibulum
+        vitae volutpat"#;
+
+        let replica = Replica{site: 1, counter: 1};
+        for word in paragraph.split_whitespace().rev() {
+            insert_at(&mut btree, 0, word, &replica);
+        }
+
+        assert!(btree.len() == 543);
+        assert!(btree.root.is_internal());
+        let mut words = paragraph.split_whitespace();
+        for element in btree.into_iter() {
+            let word = words.next().unwrap();
+            assert!(element.text == word);
+        }
+
+        let e1 = delete_at(&mut btree, 0);
+        let e2 = delete_at(&mut btree, 2);
+        let e3 = delete_at(&mut btree, 9);
+        assert!(btree.len() == 525);
+        assert!(e1.text == "a");
+        assert!(e2.text == "adipiscing");
+        assert!(e3.text == "aliquet");
+
+        while btree.len() > 0 {
+            let old_len = btree.len();
+            let e1 = delete_at(&mut btree, 0);
+            assert!(btree.len() == old_len - e1.len);
+        }
+    }
+
+    fn insert_at(btree: &mut BTree, index: usize, text: &'static str, replica: &Replica) {
+        debug_assert!(index <= btree.len());
+        let element = {
+            let (next, offset) = btree.search(index).unwrap();
+            debug_assert!(offset == 0);
+            let prev = match index {
+                0 => &*element::START,
+                _ => { let (prev, _) = btree.search(index-1).unwrap(); prev },
+            };
+            Element::between(prev, next, text.to_owned(), replica)
+        };
+        btree.insert(element);
+    }
+
+    fn delete_at(btree: &mut BTree, index: usize) -> Element {
+        debug_assert!(index < btree.len());
+        let uid = {
+            let (elt, offset) = btree.search(index).expect("Element must exist for index!");
+            debug_assert!(offset == 0);
+            elt.uid.clone()
+        };
+        btree.delete(&uid).expect("Element must exist for UID!")
     }
 }

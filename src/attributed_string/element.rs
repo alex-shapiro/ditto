@@ -9,6 +9,11 @@ pub struct Element {
     pub text: String,
 }
 
+lazy_static! {
+    pub static ref START: Element = Element::start_marker();
+    pub static ref END: Element = Element::end_marker();
+}
+
 impl Element {
     pub fn text(text: String, uid: UID) -> Self {
         Element{uid: uid, len: text.chars().count(), text: text}
@@ -26,8 +31,9 @@ impl Element {
         Self::text(text, UID::between(&elt1.uid, &elt2.uid, replica))
     }
 
-    pub fn between_uids(uid1: &UID, uid2: &UID, text: &str, replica: &Replica) -> Self {
-        Self::text(text.to_owned(), UID::between(uid1, uid2, replica))
+    #[inline]
+    pub fn is_start_marker(&self) -> bool {
+        self.uid == *uid::MIN
     }
 
     #[inline]

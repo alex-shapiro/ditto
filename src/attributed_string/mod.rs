@@ -7,9 +7,8 @@ use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
 use Replica;
-use std::fmt::{self, Debug};
 
-#[derive(Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct AttributedString(BTree);
 
 impl AttributedString {
@@ -48,7 +47,8 @@ impl AttributedString {
         };
 
         let inserts = {
-            let (ref prev, _) = self.0.search(index-1)?;
+            let index = index - offset;
+            let (ref prev, _) = if index == 0 { (&*element::START, 0) } else { self.0.search(index-1)? };
             let (ref next, _) = self.0.search(index)?;
             if offset == 0 {
                 vec![Element::between(prev, next, text, replica)]
@@ -147,13 +147,6 @@ impl AttributedString {
         let mut raw = String::with_capacity(self.0.len());
         for elt in self.elements() { raw.push_str(&elt.text) }
         raw
-    }
-}
-
-impl Debug for AttributedString {
-    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
-        let text = self.raw_string();
-        write!(f, "AttributedString{{text: \"{}\", len: {}}}", text, self.0.len())
     }
 }
 
