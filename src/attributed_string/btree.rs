@@ -1,6 +1,6 @@
 use super::element::{self, Element};
 use sequence::uid::UID;
-use error::Error;
+use Error;
 use std::iter::IntoIterator;
 use std::mem;
 
@@ -22,19 +22,12 @@ pub struct Node {
 
 impl BTree {
     pub fn new() -> Self {
-        BTree{
-            root: Node{
-                len: 0,
-                elements: vec![],
-                children: vec![]
-            }
-        }
+        BTree{root: Node::new()}
     }
 
     pub fn insert(&mut self, element: Element) {
         if self.root.is_full() {
-            let new_root = Node{len: self.root.len, elements: vec![], children: vec![]};
-            let old_root = mem::replace(&mut self.root, new_root);
+            let old_root = mem::replace(&mut self.root, Node::new());
             self.root.len = old_root.len;
             self.root.children.push(old_root);
             self.root.split_child(0);
@@ -85,6 +78,10 @@ impl BTree {
 }
 
 impl Node {
+    fn new() -> Self {
+        Node{len: 0, elements: vec![], children: vec![]}
+    }
+
     /// Find the element that contains `index`. Returns a reference
     /// to the element and the offset of the index inside the element.
     /// If the index is out of bounds, it returns an OutOfBounds error.
