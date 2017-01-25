@@ -25,7 +25,7 @@ impl BTree {
         BTree{
             root: Node{
                 len: 0,
-                elements: vec![Element::start_marker(), Element::end_marker()],
+                elements: vec![],
                 children: vec![]
             }
         }
@@ -349,9 +349,7 @@ impl<'a> IntoIterator for &'a BTree {
             stack.push((node, 0));
             node = &node.children[0];
         }
-        let mut iterator = BTreeIter{stack: stack, node: node, next_index: 0};
-        let _ = iterator.next();
-        iterator
+        BTreeIter{stack: stack, node: node, next_index: 0}
     }
 }
 
@@ -361,7 +359,6 @@ impl<'a> Iterator for BTreeIter<'a> {
     fn next(&mut self) -> Option<Self::Item> {
         loop {
             if let Some(ref element) = self.node.elements.get(self.next_index) {
-                if element.is_end_marker() { return None }
                 self.next_index += 1;
                 while self.node.is_internal() {
                     self.stack.push((self.node, self.next_index));
@@ -393,9 +390,8 @@ mod tests {
     fn test_new() {
         let btree = BTree::new();
         assert!(btree.len() == 0);
-        assert!(btree.root.is_leaf());
-        assert!(btree.root.elements[0].is_start_marker());
-        assert!(btree.root.elements[1].is_end_marker());
+        assert!(btree.root.elements.is_empty());
+        assert!(btree.root.children.is_empty());
     }
 
     #[test]
@@ -445,10 +441,7 @@ mod tests {
         insert_at(&mut btree, 0, "the");
         assert!(btree.len() == 3);
         assert!(btree.root.is_leaf());
-        assert!(btree.root.elements[0].is_start_marker());
-        assert!(btree.root.elements[1].text == "the");
-        assert!(btree.root.elements[1].text == "the");
-        assert!(btree.root.elements[2].is_end_marker());
+        assert!(btree.root.elements[0].text == "the");
     }
 
     #[test]
@@ -458,8 +451,8 @@ mod tests {
         insert_at(&mut btree, 0, "😀🇦🇽");
         assert!(btree.len() == 8);
         assert!(btree.root.is_leaf());
-        assert!(btree.root.elements[1].text == "😀🇦🇽");
-        assert!(btree.root.elements[2].text == "hello");
+        assert!(btree.root.elements[0].text == "😀🇦🇽");
+        assert!(btree.root.elements[1].text == "hello");
     }
 
     #[test]
@@ -474,8 +467,8 @@ mod tests {
         assert!(e.text == "howareyou");
         assert!(btree.len() == 12);
         assert!(btree.root.is_leaf());
-        assert!(btree.root.elements[1].text == "hello");
-        assert!(btree.root.elements[2].text == "goodbye");
+        assert!(btree.root.elements[0].text == "hello");
+        assert!(btree.root.elements[1].text == "goodbye");
     }
 
     #[test]
@@ -490,8 +483,8 @@ mod tests {
         assert!(e.text == "🤣➔🥅");
         assert!(btree.len() == 11);
         assert!(btree.root.is_leaf());
-        assert!(btree.root.elements[1].text == "'sup");
-        assert!(btree.root.elements[2].text == "goodbye");
+        assert!(btree.root.elements[0].text == "'sup");
+        assert!(btree.root.elements[1].text == "goodbye");
     }
 
     #[test]
