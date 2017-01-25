@@ -11,6 +11,7 @@ pub struct Element {
 
 lazy_static! {
     pub static ref START: Element = Element::start_marker();
+    pub static ref END: Element = Element::end_marker();
 }
 
 impl Element {

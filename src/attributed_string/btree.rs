@@ -1,4 +1,4 @@
-use super::element::Element;
+use super::element::{self, Element};
 use sequence::uid::UID;
 use error::Error;
 use std::iter::IntoIterator;
@@ -95,20 +95,19 @@ impl Node {
                 if i < element.len { return Ok((element, i)) }
                 else { i -= element.len }
             }
-            return Ok((self.elements.last().unwrap(), 0))
         } else {
             let mut elements = self.elements.iter();
             for child in &self.children {
                 if i < child.len { return child.search(i) }
                 else { i -= child.len }
 
-                let element = elements.next().expect("Element must exist!");
-                if i < element.len { return Ok((element, i)) }
-                else { i -= element.len }
+                if let Some(element) = elements.next() {
+                    if i < element.len { return Ok((element, i)) }
+                    else { i -= element.len }
+                }
             }
         }
-
-        unreachable!()
+        Ok((&*element::END, 0))
     }
 
     /// Split the node's ith child in half. The original child MUST
@@ -186,7 +185,7 @@ impl Node {
     /// Delete an element from a tree, returning the deleted element.
     /// The root node must contain at least MIN_LEN + 1 elements.
     fn delete(&mut self, uid: &UID) -> Option<Element> {
-        let (contains_element, index) =
+        let (contains_element, mut index) =
             match self.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
                 Ok(index) => (true, index),
                 Err(index) => (false, index),
@@ -209,7 +208,7 @@ impl Node {
         // either the child node to either the left or right of
         // the element.
         } else if contains_element {
-            if self.children[index].has_spare_element() {
+            if self.child_has_spare_element(index) {
                 let ref mut prev = self.children[index];
                 let predecessor_uid = prev.last_uid();
                 let e = prev.delete(&predecessor_uid).expect("Element must exist!");
@@ -217,7 +216,7 @@ impl Node {
                 self.len -= deleted_element.len;
                 Some(deleted_element)
 
-            } else if self.children[index+1].has_spare_element() {
+            } else if self.child_has_spare_element(index+1) {
                 let ref mut next = self.children[index+1];
                 let successor_uid = next.first_uid();
                 let e = next.delete(&successor_uid).expect("Element must exist!");
@@ -241,8 +240,8 @@ impl Node {
         // the call, check that child has MIN_LEN + 1 elements. If not,
         // rebalance from the child's left and right siblings.
         } else {
-            if !self.children[index].has_spare_element() {
-                if index > 0 && self.children.get(index-1).map_or(false, Self::has_spare_element) {
+            if !self.child_has_spare_element(index) {
+                if index > 0 && self.child_has_spare_element(index-1) {
                     let (sibling_elt, sibling_child) = self.children[index-1].pop_last();
                     let parent_elt = mem::replace(&mut self.elements[index-1], sibling_elt);
                     let child = &mut self.children[index];
@@ -252,8 +251,7 @@ impl Node {
                         child.len += c.len;
                         child.children.insert(0, c);
                     }
-                }
-                else if self.children.get(index+1).map_or(false, Self::has_spare_element) {
+                } else if self.child_has_spare_element(index+1) {
                     let (sibling_elt, sibling_child) = self.children[index+1].pop_first();
                     let parent_elt = mem::replace(&mut self.elements[index], sibling_elt);
                     let child = &mut self.children[index];
@@ -263,10 +261,10 @@ impl Node {
                         child.len += c.len;
                         child.children.push(c);
                     }
-                }
-                else {
+                } else {
+                    if self.children.len()-1 == index { index -= 1 }
                     self.merge_children(index);
-                    if self.is_leaf() { return self.delete(uid) }
+                    return self.delete(uid)
                 }
             }
             let element = self.children[index].delete(uid);
@@ -304,8 +302,11 @@ impl Node {
     }
 
     #[inline]
-    fn has_spare_element(&self) -> bool {
-        self.elements.len() > MIN_LEN
+    fn child_has_spare_element(&self, index: usize) -> bool {
+        match self.children.get(index) {
+            Some(child) => child.elements.len() > MIN_LEN,
+            None => false,
+        }
     }
 
     #[inline]
@@ -398,7 +399,48 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_into_empty() {
+    fn search_out_of_bounds() {
+        let btree = BTree::new();
+        assert!(btree.search(1) == Err(Error::OutOfBounds))
+    }
+
+    #[test]
+    fn search_empty() {
+        let btree = BTree::new();
+        let (elt, offset) = btree.search(0).expect("Not out of bounds!");
+        assert!(elt.is_end_marker());
+        assert!(offset == 0);
+    }
+
+    #[test]
+    fn test_search_nonempty() {
+        let mut btree = BTree::new();
+        insert_at(&mut btree, 0, "hello");
+        insert_at(&mut btree, 5, "world");
+
+        let (elt, offset) = btree.search(0).expect("Not out of bounds!");
+        assert!(elt.text == "hello");
+        assert!(offset == 0);
+
+        let (elt, offset) = btree.search(4).expect("Not out of bounds!");
+        assert!(elt.text == "hello");
+        assert!(offset == 4);
+
+        let (elt, offset) = btree.search(5).expect("Not out of bounds!");
+        assert!(elt.text == "world");
+        assert!(offset == 0);
+
+        let (elt, offset) = btree.search(7).expect("Not out of bounds!");
+        assert!(elt.text == "world");
+        assert!(offset == 2);
+
+        let (elt, offset) = btree.search(10).expect("Not out of bounds!");
+        assert!(elt.is_end_marker());
+        assert!(offset == 0);
+    }
+
+    #[test]
+    fn insert_basic() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "the");
         assert!(btree.len() == 3);
@@ -410,7 +452,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_emoji() {
+    fn insert_emoji() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "hello");
         insert_at(&mut btree, 0, "😀🇦🇽");
@@ -421,7 +463,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete() {
+    fn delete_basic() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "hello");
         insert_at(&mut btree, 5, "howareyou");
@@ -437,7 +479,7 @@ mod tests {
     }
 
     #[test]
-    fn test_delete_emoji() {
+    fn delete_emoji() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "'sup");
         insert_at(&mut btree, 4, "🤣➔🥅");
@@ -453,7 +495,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_and_delete_ordered() {
+    fn insert_and_delete_ordered() {
         let mut btree = BTree::new();
         let paragraph = r#"
         a ac adipiscing aliquam aliquet amet arcu at auctor commodo congue
@@ -495,7 +537,7 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_and_delete_random() {
+    fn insert_and_delete_random() {
         let mut btree = BTree::new();
         let paragraph = r#"
         a ac adipiscing aliquam aliquet amet arcu at auctor commodo congue
@@ -543,8 +585,6 @@ mod tests {
         debug_assert!(index < btree.len());
         let uid = {
             let (elt, _) = btree.search(index).expect("Element must exist for index!");
-            println!("\n{:?}", &elt);
-            println!("{:?}", btree);
             elt.uid.clone()
         };
         let old_len = btree.len();
