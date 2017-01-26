@@ -97,16 +97,16 @@ impl Node {
                 Err(index) => (false, index),
             };
 
-        let mut char_index = self.elements[..index].iter().fold(0, |acc, elt| acc+elt.len);
+        let mut char_index = self.elements[..index].iter().map(|e| e.len).sum();
         if self.is_leaf() && contains_element {
             Some(char_index)
         } else if self.is_leaf() {
             None
         } else if contains_element {
-            char_index += self.children[..index+1].iter().fold(0, |acc, node| acc+node.len);
+            char_index += self.children[..index+1].iter().map(|node| node.len).sum();
             Some(char_index)
         } else {
-            char_index += self.children[..index].iter().fold(0, |acc, node| acc+node.len);
+            char_index += self.children[..index].iter().map(|node| node.len).sum();
             match self.children[index].get_index(uid) {
                 Some(sub_index) => Some(char_index + sub_index),
                 None => None,
