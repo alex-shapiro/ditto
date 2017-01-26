@@ -1,3 +1,12 @@
+//! A BTree that for holding ordered text sequences. The BTree
+//! outperforms a Vec for large string CRDTs because it can
+//! perform inserts and deletes in O(log N) operations where a
+//! Vec requires O(N).
+//!
+//! This is a Counted BTree implementation. It tracks the unicode
+//! character count of each subtree, so it can perform lookups by
+//! UID or by character in O(log N) time.
+
 use super::element::{self, Element};
 use sequence::uid::UID;
 use Error;
