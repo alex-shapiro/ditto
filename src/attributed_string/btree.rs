@@ -69,6 +69,7 @@ impl BTree {
         self.root.get_index(uid)
     }
 
+    /// get the unicode character length of the BTree.
     pub fn len(&self) -> usize {
         self.root.len
     }
@@ -398,6 +399,7 @@ mod tests {
     use rand;
     use rand::distributions::{IndependentSample, Range};
     use Replica;
+    use sequence::uid;
 
     #[test]
     fn test_new() {
@@ -408,13 +410,13 @@ mod tests {
     }
 
     #[test]
-    fn search_out_of_bounds() {
+    fn get_element_out_of_bounds() {
         let btree = BTree::new();
         assert!(btree.get_element(1) == Err(Error::OutOfBounds))
     }
 
     #[test]
-    fn search_empty() {
+    fn get_element_empty() {
         let btree = BTree::new();
         let (elt, offset) = btree.get_element(0).expect("Not out of bounds!");
         assert!(elt.is_end_marker());
@@ -422,7 +424,7 @@ mod tests {
     }
 
     #[test]
-    fn test_search_nonempty() {
+    fn get_element_nonempty() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "hello");
         insert_at(&mut btree, 5, "world");
@@ -446,6 +448,23 @@ mod tests {
         let (elt, offset) = btree.get_element(10).expect("Not out of bounds!");
         assert!(elt.is_end_marker());
         assert!(offset == 0);
+    }
+
+    #[test]
+    fn get_index_element_does_not_exist() {
+        let btree = BTree::new();
+        let uid = UID::between(&*uid::MIN, &*uid::MAX, &Replica{site: 1, counter: 1});
+        assert!(btree.get_index(&uid).is_none());
+    }
+
+    #[test]
+    fn get_index_element_exists() {
+        let mut btree = BTree::new();
+        insert_at(&mut btree, 0, "hi");
+        insert_at(&mut btree, 2, "there");
+
+        let uid = btree.root.elements[1].uid.clone();
+        assert!(btree.get_index(&uid) == Some(2));
     }
 
     #[test]
