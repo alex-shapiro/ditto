@@ -49,7 +49,9 @@ impl BTree {
     /// if the index is greater than the total character
     /// length of the BTree.
     pub fn get_element(&self, index: usize) -> Result<(&Element, usize), Error> {
-        self.root.get_element(index)
+        if index > self.len() { return Err(Error::OutOfBounds) }
+        if index == self.len() { return Ok((&*element::END, 0)) }
+        Ok(self.root.get_element(index))
     }
 
     /// Get the starting index of an element by UID.
@@ -68,11 +70,10 @@ impl Node {
         Node{len: 0, elements: vec![], children: vec![]}
     }
 
-    fn get_element(&self, mut i: usize) -> Result<(&Element, usize), Error> {
-        if i > self.len { return Err(Error::OutOfBounds) }
+    fn get_element(&self, mut i: usize) -> (&Element, usize) {
         if self.is_leaf() {
             for element in &self.elements {
-                if i < element.len { return Ok((element, i)) }
+                if i < element.len { return (element, i) }
                 else { i -= element.len }
             }
         } else {
@@ -80,14 +81,13 @@ impl Node {
             for child in &self.children {
                 if i < child.len { return child.get_element(i) }
                 else { i -= child.len }
-
                 if let Some(element) = elements.next() {
-                    if i < element.len { return Ok((element, i)) }
+                    if i < element.len { return (element, i) }
                     else { i -= element.len }
                 }
             }
         }
-        Ok((&*element::END, 0))
+        unreachable!()
     }
 
     fn get_index(&self, uid: &UID) -> Option<usize> {

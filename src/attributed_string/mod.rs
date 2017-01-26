@@ -133,7 +133,7 @@ impl AttributedString {
         }
 
         for element in &op.deletes {
-            if let Ok(char_index) = self.0.get_index(&element.uid) {
+            if let Some(char_index) = self.0.get_index(&element.uid) {
                 self.0.delete(&element.uid);
                 let op = DeleteText::new(char_index, element.len);
                 local_ops.push(LocalOp::DeleteText(op));
