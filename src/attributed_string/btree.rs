@@ -42,11 +42,11 @@ impl BTree {
         }
     }
 
-    pub fn search(&self, index: usize) -> Result<(&Element, usize), Error> {
-        self.root.search(index)
+    pub fn get_element(&self, index: usize) -> Result<(&Element, usize), Error> {
+        self.root.get_element(index)
     }
 
-    pub fn index_of(&self, uid: &UID) -> Result<usize, Error> {
+    pub fn get_index(&self, uid: &UID) -> Result<usize, Error> {
         let mut node = &self.root;
         let mut char_index = 0;
 
@@ -85,7 +85,7 @@ impl Node {
     /// Find the element that contains `index`. Returns a reference
     /// to the element and the offset of the index inside the element.
     /// If the index is out of bounds, it returns an OutOfBounds error.
-    fn search(&self, mut i: usize) -> Result<(&Element, usize), Error> {
+    fn get_element(&self, mut i: usize) -> Result<(&Element, usize), Error> {
         if i > self.len { return Err(Error::OutOfBounds) }
         if self.is_leaf() {
             for element in &self.elements {
@@ -95,7 +95,7 @@ impl Node {
         } else {
             let mut elements = self.elements.iter();
             for child in &self.children {
-                if i < child.len { return child.search(i) }
+                if i < child.len { return child.get_element(i) }
                 else { i -= child.len }
 
                 if let Some(element) = elements.next() {
@@ -394,13 +394,13 @@ mod tests {
     #[test]
     fn search_out_of_bounds() {
         let btree = BTree::new();
-        assert!(btree.search(1) == Err(Error::OutOfBounds))
+        assert!(btree.get_element(1) == Err(Error::OutOfBounds))
     }
 
     #[test]
     fn search_empty() {
         let btree = BTree::new();
-        let (elt, offset) = btree.search(0).expect("Not out of bounds!");
+        let (elt, offset) = btree.get_element(0).expect("Not out of bounds!");
         assert!(elt.is_end_marker());
         assert!(offset == 0);
     }
@@ -411,23 +411,23 @@ mod tests {
         insert_at(&mut btree, 0, "hello");
         insert_at(&mut btree, 5, "world");
 
-        let (elt, offset) = btree.search(0).expect("Not out of bounds!");
+        let (elt, offset) = btree.get_element(0).expect("Not out of bounds!");
         assert!(elt.text == "hello");
         assert!(offset == 0);
 
-        let (elt, offset) = btree.search(4).expect("Not out of bounds!");
+        let (elt, offset) = btree.get_element(4).expect("Not out of bounds!");
         assert!(elt.text == "hello");
         assert!(offset == 4);
 
-        let (elt, offset) = btree.search(5).expect("Not out of bounds!");
+        let (elt, offset) = btree.get_element(5).expect("Not out of bounds!");
         assert!(elt.text == "world");
         assert!(offset == 0);
 
-        let (elt, offset) = btree.search(7).expect("Not out of bounds!");
+        let (elt, offset) = btree.get_element(7).expect("Not out of bounds!");
         assert!(elt.text == "world");
         assert!(offset == 2);
 
-        let (elt, offset) = btree.search(10).expect("Not out of bounds!");
+        let (elt, offset) = btree.get_element(10).expect("Not out of bounds!");
         assert!(elt.is_end_marker());
         assert!(offset == 0);
     }
@@ -558,10 +558,10 @@ mod tests {
     fn insert_at(btree: &mut BTree, index: usize, text: &'static str) {
         debug_assert!(index <= btree.len());
         let element = {
-            let (next, offset) = btree.search(index).unwrap();
+            let (next, offset) = btree.get_element(index).unwrap();
             let prev = match index-offset {
                 0 => &*element::START,
-                _ => { let (prev, _) = btree.search(index-offset-1).unwrap(); prev },
+                _ => { let (prev, _) = btree.get_element(index-offset-1).unwrap(); prev },
             };
             Element::between(prev, next, text.to_owned(), &Replica{site: 1, counter: 1})
         };
@@ -574,7 +574,7 @@ mod tests {
     fn delete_at(btree: &mut BTree, index: usize) -> Element {
         debug_assert!(index < btree.len());
         let uid = {
-            let (elt, _) = btree.search(index).expect("Element must exist for index!");
+            let (elt, _) = btree.get_element(index).expect("Element must exist for index!");
             elt.uid.clone()
         };
         let old_len = btree.len();

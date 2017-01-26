@@ -37,7 +37,7 @@ impl AttributedString {
         if text.is_empty() { return Err(Error::Noop) }
 
         let (uid, offset) = {
-            let (ref element, offset) = self.0.search(index)?;
+            let (ref element, offset) = self.0.get_element(index)?;
             (element.uid.clone(), offset)
         };
 
@@ -48,8 +48,8 @@ impl AttributedString {
 
         let inserts = {
             let index = index - offset;
-            let (ref prev, _) = if index == 0 { (&*element::START, 0) } else { self.0.search(index-1)? };
-            let (ref next, _) = self.0.search(index)?;
+            let (ref prev, _) = if index == 0 { (&*element::START, 0) } else { self.0.get_element(index-1)? };
+            let (ref next, _) = self.0.get_element(index)?;
             if offset == 0 {
                 vec![Element::between(prev, next, text, replica)]
             } else {
@@ -70,7 +70,7 @@ impl AttributedString {
         let mut deleted_len = 0;
 
         let (uid, offset) = {
-            let (ref element, offset) = self.0.search(index)?;
+            let (ref element, offset) = self.0.get_element(index)?;
             (element.uid.clone(), offset)
         };
 
@@ -78,7 +78,7 @@ impl AttributedString {
 
         while deleted_len < len {
             let uid = {
-                let (elt, _) = self.0.search(index)?;
+                let (elt, _) = self.0.get_element(index)?;
                 elt.uid.clone()
             };
 
@@ -89,8 +89,8 @@ impl AttributedString {
 
         let mut inserts = vec![];
         if offset > 0 || deleted_len > len {
-            let (prev, _) = self.0.search(index-1)?;
-            let (next, _) = self.0.search(index)?;
+            let (prev, _) = self.0.get_element(index-1)?;
+            let (next, _) = self.0.get_element(index)?;
 
             if offset > 0 {
                 let (text, _) = split_at_char(&deletes[0].text, offset);
@@ -127,13 +127,13 @@ impl AttributedString {
 
         for element in &op.inserts {
             self.0.insert(element.clone());
-            let char_index = self.0.index_of(&element.uid).expect("Element must exist!");
+            let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
             let op = InsertText::new(char_index, element.text.clone());
             local_ops.push(LocalOp::InsertText(op));
         }
 
         for element in &op.deletes {
-            if let Ok(char_index) = self.0.index_of(&element.uid) {
+            if let Ok(char_index) = self.0.get_index(&element.uid) {
                 self.0.delete(&element.uid);
                 let op = DeleteText::new(char_index, element.len);
                 local_ops.push(LocalOp::DeleteText(op));
@@ -179,8 +179,8 @@ mod tests {
     fn test_new() {
         let string = AttributedString::new();
         assert!(string.len() == 0);
-        assert!(string.0.index_of(&uid::MIN).unwrap() == 0);
-        assert!(string.0.index_of(&uid::MAX).unwrap() == 0);
+        assert!(string.0.get_index(&uid::MIN).unwrap() == 0);
+        assert!(string.0.get_index(&uid::MAX).unwrap() == 0);
     }
 
     #[test]
@@ -462,7 +462,7 @@ mod tests {
     }
 
     fn elt_at<'a>(string: &'a AttributedString, index: usize, text: &'static str) -> &'a Element {
-        let (element, offset) = string.0.search(index).expect("Element does not exist!");
+        let (element, offset) = string.0.get_element(index).expect("Element does not exist!");
         assert!(offset == 0);
         assert!(element.text == text);
         assert!(element.len == element.text.chars().count());
