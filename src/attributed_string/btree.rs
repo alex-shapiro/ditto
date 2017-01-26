@@ -21,10 +21,12 @@ pub struct Node {
 }
 
 impl BTree {
+    /// Creates a new, empty BTree.
     pub fn new() -> Self {
         BTree{root: Node::new()}
     }
 
+    /// Insert an element into the BTree.
     pub fn insert(&mut self, element: Element) {
         if self.root.is_full() {
             let old_root = mem::replace(&mut self.root, Node::new());
@@ -35,38 +37,25 @@ impl BTree {
         self.root.insert(element);
     }
 
+    /// Delete an element by its UID and return it.
+    /// Returns None if the element cannot be found.
     pub fn delete(&mut self, uid: &UID) -> Option<Element> {
         self.root.delete(uid)
     }
 
+    /// Get an element by its unicode character index.
+    /// Returns both the element and the character offset
+    /// of the index inside the element. Returns an error
+    /// if the index is greater than the total character
+    /// length of the BTree.
     pub fn get_element(&self, index: usize) -> Result<(&Element, usize), Error> {
         self.root.get_element(index)
     }
 
-    pub fn get_index(&self, uid: &UID) -> Result<usize, Error> {
-        let mut node = &self.root;
-        let mut char_index = 0;
-
-        loop {
-            let (contains_element, index) =
-                match node.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
-                    Ok(index) => (true, index),
-                    Err(index) => (false, index),
-                };
-
-            char_index += node.elements[..index].iter().fold(0, |acc, elt| acc+elt.len);
-            if node.is_leaf() && contains_element {
-                return Ok(char_index)
-            } else if node.is_leaf() {
-                return Err(Error::OutOfBounds)
-            } else if contains_element {
-                char_index += node.children[..index+1].iter().fold(0, |acc, node| acc+node.len);
-                return Ok(char_index)
-            } else {
-                char_index += node.children[..index].iter().fold(0, |acc, node| acc+node.len);
-                node = &node.children[index];
-            }
-        }
+    /// Get the starting index of an element by UID.
+    /// Returns None if the element cannot be found.
+    pub fn get_index(&self, uid: &UID) -> Option<usize> {
+        self.root.get_index(uid)
     }
 
     pub fn len(&self) -> usize {
@@ -79,9 +68,6 @@ impl Node {
         Node{len: 0, elements: vec![], children: vec![]}
     }
 
-    /// Find the element that contains `index`. Returns a reference
-    /// to the element and the offset of the index inside the element.
-    /// If the index is out of bounds, it returns an OutOfBounds error.
     fn get_element(&self, mut i: usize) -> Result<(&Element, usize), Error> {
         if i > self.len { return Err(Error::OutOfBounds) }
         if self.is_leaf() {
@@ -102,6 +88,30 @@ impl Node {
             }
         }
         Ok((&*element::END, 0))
+    }
+
+    fn get_index(&self, uid: &UID) -> Option<usize> {
+        let (contains_element, index) =
+            match self.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
+                Ok(index) => (true, index),
+                Err(index) => (false, index),
+            };
+
+        let mut char_index = self.elements[..index].iter().fold(0, |acc, elt| acc+elt.len);
+        if self.is_leaf() && contains_element {
+            Some(char_index)
+        } else if self.is_leaf() {
+            None
+        } else if contains_element {
+            char_index += self.children[..index+1].iter().fold(0, |acc, node| acc+node.len);
+            Some(char_index)
+        } else {
+            char_index += self.children[..index].iter().fold(0, |acc, node| acc+node.len);
+            match self.children[index].get_index(uid) {
+                Some(sub_index) => Some(char_index + sub_index),
+                None => None,
+            }
+        }
     }
 
     /// Split the node's ith child in half. The original child MUST
