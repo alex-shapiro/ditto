@@ -35,15 +35,16 @@ impl BTree {
         BTree{root: Node::new()}
     }
 
-    /// Insert an element into the BTree.
-    pub fn insert(&mut self, element: Element) {
+    /// Insert an element into the BTree. Returns an error
+    /// if the element shares a UID with a pre-existing element.
+    pub fn insert(&mut self, element: Element) -> Result<(), Error> {
         if self.root.is_full() {
             let old_root = mem::replace(&mut self.root, Node::new());
             self.root.len = old_root.len;
             self.root.children.push(old_root);
             self.root.split_child(0);
         }
-        self.root.insert(element);
+        self.root.insert(element)
     }
 
     /// Delete an element by its UID and return it.
@@ -182,17 +183,18 @@ impl Node {
     /// Insert a new element into a tree. The root node must
     /// not be full (ie it must contain fewer than CAPACITY
     /// elements)
-    fn insert(&mut self, elt: Element) {
-        let mut pos = self.elements.binary_search(&elt).err().expect("Duplicate UID!");
+    fn insert(&mut self, elt: Element) -> Result<(), Error> {
+        let mut index = self.elements.binary_search(&elt).err().ok_or(Error::DuplicateUID)?;
         self.len += elt.len;
         if self.is_leaf() {
-            self.elements.insert(pos, elt);
+            self.elements.insert(index, elt);
+            Ok(())
         } else {
-            if self.children[pos].is_full() {
-                self.split_child(pos);
-                if elt > self.elements[pos] { pos += 1 }
+            if self.children[index].is_full() {
+                self.split_child(index);
+                if elt > self.elements[index] { index += 1 }
             }
-            self.children[pos].insert(elt)
+            self.children[index].insert(elt)
         }
     }
 
@@ -602,7 +604,7 @@ mod tests {
         };
         let elt_len = element.len;
         let old_len = btree.len();
-        btree.insert(element);
+        let _ = btree.insert(element);
         debug_assert!(btree.len() == old_len + elt_len);
     }
 

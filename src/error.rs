@@ -6,6 +6,7 @@ pub enum Error {
     DecodeCompact,
     DeserializeObjectUID,
     DeserializeSequenceUID,
+    DuplicateUID,
     InvalidIndex,
     InvalidJson,
     InvalidPath,
