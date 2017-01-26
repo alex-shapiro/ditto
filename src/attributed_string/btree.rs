@@ -36,10 +36,7 @@ impl BTree {
     }
 
     pub fn delete(&mut self, uid: &UID) -> Option<Element> {
-        match self.root.elements.is_empty() {
-            true => None,
-            false => self.root.delete(uid),
-        }
+        self.root.delete(uid)
     }
 
     pub fn get_element(&self, index: usize) -> Result<(&Element, usize), Error> {
