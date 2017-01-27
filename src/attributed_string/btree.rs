@@ -1,11 +1,6 @@
-//! A BTree that for holding ordered text sequences. The BTree
-//! outperforms a Vec for large string CRDTs because it can
-//! perform inserts and deletes in O(log N) operations where a
-//! Vec requires O(N).
-//!
-//! This is a Counted BTree implementation. It tracks the unicode
-//! character count of each subtree, so it can perform lookups by
-//! UID or by character in O(log N) time.
+//! A Counted BTree that holds text elements. It can perform lookups
+//! by either element UID or character index. It performs all lookups,
+//! inserts, and deletes in O(log N) time.
 
 use super::element::{self, Element};
 use sequence::uid::UID;
@@ -30,13 +25,15 @@ pub struct Node {
 }
 
 impl BTree {
-    /// Creates a new, empty BTree.
+    /// Constructs a new, empty BTree.
     pub fn new() -> Self {
         BTree{root: Node::new()}
     }
 
-    /// Insert an element into the BTree. Returns an error
-    /// if the element shares a UID with a pre-existing element.
+    /// Inserts an element into the BTree. Returns an error if the
+    /// BTree contains an element with the same UID. Given that a
+    /// UID is only generated once, this allows the CRDT to handle
+    /// duplicate operations without losing consistency.
     pub fn insert(&mut self, element: Element) -> Result<(), Error> {
         if self.root.is_full() {
             let old_root = mem::replace(&mut self.root, Node::new());
@@ -47,30 +44,30 @@ impl BTree {
         self.root.insert(element)
     }
 
-    /// Delete an element by its UID and return it.
-    /// Returns None if the element cannot be found.
+    /// Deletes an element from the BTree. Returns None if the
+    /// element is not in the BTree. This allows the CRDT to handle
+    /// duplicate operations without losing consistency.
     pub fn delete(&mut self, uid: &UID) -> Option<Element> {
         self.root.delete(uid)
     }
 
-    /// Get an element by its unicode character index.
-    /// Returns both the element and the character offset
-    /// of the index inside the element. Returns an error
-    /// if the index is greater than the total character
-    /// length of the BTree.
+    /// Returns the element that contains the character at
+    /// location `index`, as well as the offset of `index`
+    /// within the element. Returns an error if the index
+    /// is out-of-bounds.
     pub fn get_element(&self, index: usize) -> Result<(&Element, usize), Error> {
         if index > self.len() { return Err(Error::OutOfBounds) }
         if index == self.len() { return Ok((&*element::END, 0)) }
         Ok(self.root.get_element(index))
     }
 
-    /// Get the starting index of an element by UID.
-    /// Returns None if the element cannot be found.
+    /// Returns the starting character index of an element.
+    /// Returns None if the element is not in the BTree.
     pub fn get_index(&self, uid: &UID) -> Option<usize> {
         self.root.get_index(uid)
     }
 
-    /// get the unicode character length of the BTree.
+    /// Returns the number of unicode characters in the BTree.
     pub fn len(&self) -> usize {
         self.root.len
     }
