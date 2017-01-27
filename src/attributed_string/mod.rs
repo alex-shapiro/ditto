@@ -1,3 +1,7 @@
+//! A mutable string CRDT. It can efficiently insert, delete,
+//! and replace text in very large strings. AttributedStrings
+//! are indexed by unicode character.
+
 pub mod element;
 mod btree;
 
@@ -12,10 +16,13 @@ use Replica;
 pub struct AttributedString(BTree);
 
 impl AttributedString {
+
+    /// Constructs a new, empty AttributedString.
     pub fn new() -> Self {
         AttributedString(BTree::new())
     }
 
+    /// Creates a new AttributedString from a list of elements.
     pub fn assemble(elements: Vec<Element>) -> Self {
         let mut btree = BTree::new();
         for element in elements {
@@ -24,20 +31,27 @@ impl AttributedString {
         AttributedString(btree)
     }
 
+    /// Returns the number of unicode characters in the AttributedString.
     pub fn len(&self) -> usize {
         self.0.len()
     }
 
+    /// Returns an iterator over the AttributedString's elements.
     pub fn elements(&self) -> BTreeIter {
         self.0.into_iter()
     }
 
+    /// Creates a raw string representation of the AttributedString.
     pub fn to_string(&self) -> String {
         let mut string = String::with_capacity(self.0.len());
         for elt in self.elements() { string.push_str(&elt.text) }
         string
     }
 
+    /// Inserts text at position `index`. Returns an error if the
+    /// text string is empty or if the index is out-of-bounds. A
+    /// successful insert returns an op that can be sent to remote
+    /// sites for replication.
     pub fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
         if text.is_empty() { return Err(Error::Noop) }
 
@@ -70,6 +84,10 @@ impl AttributedString {
         Ok(UpdateAttributedString{inserts: inserts, deletes: deletes})
     }
 
+    /// Deletes a text range that starts at `index` and includes `len`
+    /// unicode characters. Returns an error if the range is empty or
+    /// if the range upper bound is out-of-bounds. A successful delete
+    /// returns an op that can be sent to remote sites for replication.
     pub fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Result<UpdateAttributedString, Error> {
         if len == 0 { return Err(Error::Noop) }
         if index + len > self.len() { return Err(Error::OutOfBounds) }
@@ -111,15 +129,24 @@ impl AttributedString {
         Ok(UpdateAttributedString{inserts: inserts, deletes: deletes})
     }
 
+    /// Replaces a text range that starts at `index` and includes `len`
+    /// unicode characters with new text. Returns an error if the
+    /// range is empty, if the range upper bound is out-of-bounds,
+    /// or if the replacement has no effect. A successful replacement
+    /// returns an op that can be sent to remote sites for replication.
     pub fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Result<UpdateAttributedString, Error> {
         if index + len > self.len() { return Err(Error::OutOfBounds) }
         if len == 0 && text.is_empty() { return Err(Error::Noop) }
 
         let mut op1 = self.delete_text(index, len, replica).unwrap_or(UpdateAttributedString::default());
-        if let Ok(op2) = self.insert_text(index, text, replica) { op.merge(op2) };
+        if let Ok(op2) = self.insert_text(index, text, replica) { op1.merge(op2) };
         Ok(op1)
     }
 
+    /// Executes remotely-generated ops to replicate state from other
+    /// sites. Returns a Vec of LocalOps that can be used to replicate
+    /// the remotely-generated op on raw string representations of the
+    /// AttributedString.
     pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
         let mut local_ops = Vec::with_capacity(op.inserts.len() + op.deletes.len());
 
