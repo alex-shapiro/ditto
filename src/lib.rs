@@ -1,5 +1,5 @@
-#[macro_use]
-extern crate lazy_static;
+extern crate char_fns;
+#[macro_use] extern crate lazy_static;
 extern crate num;
 extern crate rand;
 extern crate rustc_serialize;

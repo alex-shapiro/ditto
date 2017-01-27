@@ -1,6 +1,7 @@
-use std::cmp::Ordering;
-use sequence::uid::{self, UID};
+use char_fns::CharFns;
 use Replica;
+use sequence::uid::{self, UID};
+use std::cmp::Ordering;
 
 #[derive(Debug, Clone)]
 pub struct Element {
@@ -16,7 +17,7 @@ lazy_static! {
 
 impl Element {
     pub fn text(text: String, uid: UID) -> Self {
-        Element{uid: uid, len: text.chars().count(), text: text}
+        Element{uid: uid, len: text.char_len(), text: text}
     }
 
     pub fn between(elt1: &Element, elt2: &Element, text: String, replica: &Replica) -> Self {

@@ -7,6 +7,7 @@ mod btree;
 
 use self::btree::{BTree, BTreeIter};
 use self::element::Element;
+use char_fns::CharFns;
 use Error;
 use op::local::{LocalOp, DeleteText, InsertText};
 use op::remote::UpdateAttributedString;
@@ -72,7 +73,7 @@ impl AttributedString {
             if offset == 0 {
                 vec![Element::between(prev, next, text, replica)]
             } else {
-                let (text_pre, text_post) = split_at_char(&deletes[0].text, offset);
+                let (text_pre, text_post) = deletes[0].text.char_split(offset);
                 let pre = Element::between(prev, next, text_pre.to_owned(), replica);
                 let new = Element::between(&pre, next, text, replica);
                 let post = Element::between(&new, next, text_post.to_owned(), replica);
@@ -109,14 +110,14 @@ impl AttributedString {
             let (next, _) = self.0.get_element(border_index)?;
 
             if offset > 0 {
-                let (text, _) = split_at_char(&deletes[0].text, offset);
+                let (text, _) = deletes[0].text.char_split(offset);
                 inserts.push(Element::between(prev, next, text.to_owned(), replica));
             }
 
             if deleted_len > len {
                 let overdeleted_elt = &deletes.last().expect("Element must exist!");
                 let offset = overdeleted_elt.len + len - deleted_len;
-                let (_, text) = split_at_char(&overdeleted_elt.text, offset);
+                let (_, text) = overdeleted_elt.text.char_split(offset);
                 let element = {
                     let prev = if inserts.is_empty() { prev } else { &inserts[0] };
                     Element::between(prev, next, text.to_owned(), replica)
@@ -185,19 +186,6 @@ impl AttributedString {
             Ok(prev)
         }
     }
-}
-
-fn split_at_char(string: &str, char_index: usize) -> (&str, &str) {
-    let mut bidx = 0;
-    let mut cidx = 0;
-
-    for b in string.bytes() {
-        if cidx == char_index { break }
-        if (b as i8) >= -0x40 { cidx += 1 }
-        bidx += 1;
-    }
-
-    string.split_at(bidx)
 }
 
 #[cfg(test)]
@@ -518,7 +506,7 @@ mod tests {
         let (element, offset) = string.0.get_element(index).expect("Element does not exist!");
         assert!(offset == 0);
         assert!(element.text == text);
-        assert!(element.len == element.text.chars().count());
+        assert!(element.len == element.text.char_len());
         element
     }
 }
