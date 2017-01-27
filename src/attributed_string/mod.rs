@@ -116,20 +116,12 @@ impl AttributedString {
         if len == 0 && text.is_empty() { return Err(Error::Noop) }
 
         let mut op1 = self.delete_text(index, len, replica).unwrap_or(UpdateAttributedString::default());
-        let mut op2 = self.insert_text(index, text, replica).unwrap_or(UpdateAttributedString::default());
-        op1.merge(&mut op2);
+        if let Ok(op2) = self.insert_text(index, text, replica) { op.merge(op2) };
         Ok(op1)
     }
 
     pub fn execute_remote(&mut self, op: &UpdateAttributedString) -> Vec<LocalOp> {
         let mut local_ops = Vec::with_capacity(op.inserts.len() + op.deletes.len());
-
-        for element in &op.inserts {
-            let _ = self.0.insert(element.clone());
-            let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
-            let op = InsertText::new(char_index, element.text.clone());
-            local_ops.push(LocalOp::InsertText(op));
-        }
 
         for element in &op.deletes {
             if let Some(char_index) = self.0.get_index(&element.uid) {
@@ -137,6 +129,13 @@ impl AttributedString {
                 let op = DeleteText::new(char_index, element.len);
                 local_ops.push(LocalOp::DeleteText(op));
             }
+        }
+
+        for element in &op.inserts {
+            let _ = self.0.insert(element.clone());
+            let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
+            let op = InsertText::new(char_index, element.text.clone());
+            local_ops.push(LocalOp::InsertText(op));
         }
 
         local_ops
@@ -459,25 +458,25 @@ mod tests {
         assert!(lops2.len() == 4);
         assert!(lops3.len() == 4);
 
-        // let lop1 = lops1[0].insert_text().unwrap();
-        // let lop2 = lops2[0].delete_text().unwrap();
-        // let lop3 = lops2[1].insert_text().unwrap();
-        // let lop4 = lops2[2].insert_text().unwrap();
-        // let lop5 = lops2[3].insert_text().unwrap();
-        // let lop6 = lops3[0].delete_text().unwrap();
-        // let lop7 = lops3[1].insert_text().unwrap();
-        // let lop8 = lops3[2].insert_text().unwrap();
-        // let lop9 = lops3[3].insert_text().unwrap();
+        let lop1 = lops1[0].insert_text().unwrap();
+        let lop2 = lops2[0].delete_text().unwrap();
+        let lop3 = lops2[1].insert_text().unwrap();
+        let lop4 = lops2[2].insert_text().unwrap();
+        let lop5 = lops2[3].insert_text().unwrap();
+        let lop6 = lops3[0].delete_text().unwrap();
+        let lop7 = lops3[1].insert_text().unwrap();
+        let lop8 = lops3[2].insert_text().unwrap();
+        let lop9 = lops3[3].insert_text().unwrap();
 
-        // assert!(lop1.index == 0 && lop1.text == "the brown");
-        // assert!(lop2.index == 0 && lop2.len == 9);
-        // assert!(lop3.index == 0 && lop3.text == "the ");
-        // assert!(lop4.index == 4 && lop4.text == "quick ");
-        // assert!(lop5.index == 10 && lop5.text == "brown");
-        // assert!(lop6.index == 4 && lop6.len == 6);
-        // assert!(lop7.index == 4 && lop7.text == "qu");
-        // assert!(lop8.index == 6 && lop8.text == "a");
-        // assert!(lop9.index == 7 && lop9.text == "ck ");
+        assert!(lop1.index == 0 && lop1.text == "the brown");
+        assert!(lop2.index == 0 && lop2.len == 9);
+        assert!(lop3.index == 0 && lop3.text == "the ");
+        assert!(lop4.index == 4 && lop4.text == "quick ");
+        assert!(lop5.index == 10 && lop5.text == "brown");
+        assert!(lop6.index == 4 && lop6.len == 6);
+        assert!(lop7.index == 4 && lop7.text == "qu");
+        assert!(lop8.index == 6 && lop8.text == "a");
+        assert!(lop9.index == 7 && lop9.text == "ck ");
     }
 
     #[test]
