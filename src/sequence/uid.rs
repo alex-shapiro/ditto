@@ -39,6 +39,10 @@ pub struct UID {
     pub counter: u32,
 }
 
+lazy_static! {
+    pub static ref MAX: UID = UID::max();
+}
+
 impl UID {
     fn new(position: BigUint, site: u32, counter: u32) -> Self {
         UID{position: position, site: site, counter: counter}

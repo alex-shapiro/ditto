@@ -2,63 +2,64 @@ use Replica;
 use Value;
 use array::Array;
 use attributed_string::AttributedString;
+use error::Error;
 use object::Object;
 use serde_json::Value as Json;
 use serde_json::value::Map;
 
-pub fn decode(json: &Json, replica: &Replica) -> Value {
+pub fn decode(json: &Json, replica: &Replica) -> Result<Value, Error> {
     match *json {
         Json::Object(ref map) =>
             decode_map(map, replica),
         Json::Array(ref vec) =>
-            Value::Arr(decode_array(vec, replica)),
+            decode_array(vec, replica),
         Json::String(ref string) =>
-            Value::Str(string.to_string()),
+            Ok(Value::Str(string.to_string())),
         Json::F64(number) =>
-            Value::Num(number),
+            Ok(Value::Num(number)),
         Json::U64(number) =>
-            Value::Num(number as f64),
+            Ok(Value::Num(number as f64)),
         Json::I64(number) =>
-            Value::Num(number as f64),
+            Ok(Value::Num(number as f64)),
         Json::Bool(bool_value) =>
-            Value::Bool(bool_value),
+            Ok(Value::Bool(bool_value)),
         Json::Null =>
-            Value::Null,
+            Ok(Value::Null),
     }
 }
 
-fn decode_map(map: &Map<String,Json>, replica: &Replica) -> Value {
+fn decode_map(map: &Map<String,Json>, replica: &Replica) -> Result<Value, Error> {
     let special_type = map.get("__TYPE__").and_then(|json| json.as_str());
     match special_type {
-        Some("attrstr") =>
-            Value::AttrStr(decode_attributed_string(map, replica)),
-        _ =>
-            Value::Obj(decode_object(map, replica)),
+        Some("attrstr") => decode_attributed_string(map, replica),
+        _ => decode_object(map, replica),
     }
 }
 
-fn decode_object(map: &Map<String, Json>, replica: &Replica) -> Object {
+fn decode_object(map: &Map<String, Json>, replica: &Replica) -> Result<Value, Error> {
     let mut object = Object::new();
-    for (key, value) in map {
+    for (key, encoded_value) in map {
         let key = key.replace("~1", "__TYPE__").replace("~0", "~");
-        object.put(&key, decode(value, replica), replica);
+        let value = decode(encoded_value, replica)?;
+        object.put(&key, value, replica);
     }
-    object
+    Ok(Value::Obj(object))
 }
 
-fn decode_array(vec: &Vec<Json>, replica: &Replica) -> Array {
+fn decode_array(vec: &Vec<Json>, replica: &Replica) -> Result<Value, Error> {
     let mut array = Array::new();
-    for (i, value) in vec.iter().enumerate() {
-        let _ = array.insert(i, decode(value, replica), replica);
+    for (i, encoded_value) in vec.iter().enumerate() {
+        let value = decode(encoded_value, replica)?;
+        let _ = array.insert(i, value, replica);
     }
-    array
+    Ok(Value::Arr(array))
 }
 
-fn decode_attributed_string(map: &Map<String, Json>, replica: &Replica) -> AttributedString {
+fn decode_attributed_string(map: &Map<String, Json>, replica: &Replica) -> Result<Value, Error> {
     let mut string = AttributedString::new();
-    let text = map.get("text").and_then(|json| json.as_str()).unwrap();
+    let text = map.get("text").and_then(|json| json.as_str()).ok_or(Error::InvalidJson)?;
     let _ = string.insert_text(0, text.to_string(), replica);
-    string
+    Ok(Value::AttrStr(string))
 }
 
 #[cfg(test)]
@@ -104,7 +105,7 @@ mod tests {
 
         let attrstr = value.as_attributed_string().unwrap();
         assert!(attrstr.len() == 12);
-        assert!(attrstr.raw_string() == "Hello world!");
+        assert!(attrstr.to_string() == "Hello world!");
     }
 
     #[test]
@@ -150,6 +151,6 @@ mod tests {
 
     fn decode_str(string: &str, replica: &Replica) -> Value {
         let json: serde_json::Value = serde_json::de::from_str(string).expect("invalid JSON!");
-        decode(&json, replica)
+        decode(&json, replica).unwrap()
     }
 }
