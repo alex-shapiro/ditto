@@ -105,7 +105,7 @@ mod tests {
 
         let attrstr = value.as_attributed_string().unwrap();
         assert!(attrstr.len() == 12);
-        assert!(attrstr.raw_string() == "Hello world!");
+        assert!(attrstr.to_string() == "Hello world!");
     }
 
     #[test]

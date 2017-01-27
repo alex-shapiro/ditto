@@ -71,10 +71,10 @@ fn encode_array(array: &Array) -> Json {
     Json::Array(vec)
 }
 
-fn encode_attributed_string(string: &AttributedString) -> Json {
+fn encode_attributed_string(attrstr: &AttributedString) -> Json {
     ObjectBuilder::new()
         .insert("__TYPE__", Json::String("attrstr".to_string()))
-        .insert("text", Json::String(string.raw_string()))
+        .insert("text", Json::String(attrstr.to_string()))
         .build()
 }
 
