@@ -398,7 +398,6 @@ mod tests {
     use rand;
     use rand::distributions::{IndependentSample, Range};
     use Replica;
-    use sequence::uid;
 
     #[test]
     fn test_new() {
@@ -452,7 +451,7 @@ mod tests {
     #[test]
     fn get_index_element_does_not_exist() {
         let btree = BTree::new();
-        let uid = UID::between(&*uid::MIN, &*uid::MAX, &Replica{site: 1, counter: 1});
+        let uid = UID::between(&UID::min(), &UID::max(), &Replica{site: 1, counter: 1});
         assert!(btree.get_index(&uid).is_none());
     }
 
