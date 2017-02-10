@@ -23,3 +23,5 @@ pub use crdt::CRDT;
 pub use error::Error;
 pub use replica::Replica;
 pub use value::Value;
+pub use op::NestedLocalOp;
+pub use op::NestedRemoteOp;
