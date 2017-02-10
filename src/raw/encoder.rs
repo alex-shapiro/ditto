@@ -4,7 +4,6 @@ use attributed_string::AttributedString;
 use object::Object;
 use op::{NestedLocalOp, LocalOp};
 use op::local::{Put, Delete, InsertItem, DeleteItem, InsertText, DeleteText, ReplaceText, IncrementNumber};
-use serde_json::builder::ObjectBuilder;
 use serde_json::Value as Json;
 use serde_json::value::Map as SerdeMap;
 
@@ -17,13 +16,13 @@ pub fn encode(value: &Value) -> Json {
         Value::AttrStr(ref string) =>
             encode_attributed_string(string),
         Value::Str(ref string) =>
-            Json::String(string.to_string()),
+            json!(string),
         Value::Num(number) =>
-            Json::F64(number),
+            json!(number),
         Value::Bool(bool_value) =>
-            Json::Bool(bool_value),
+            json!(bool_value),
         Value::Null =>
-            Json::Null,
+            json!(null),
     }
 }
 
@@ -72,80 +71,80 @@ fn encode_array(array: &Array) -> Json {
 }
 
 fn encode_attributed_string(attrstr: &AttributedString) -> Json {
-    ObjectBuilder::new()
-        .insert("__TYPE__", Json::String("attrstr".to_string()))
-        .insert("text", Json::String(attrstr.to_string()))
-        .build()
+    json!({
+        "__TYPE__": "attrstr",
+        "text": attrstr.to_string()
+    })
 }
 
 fn encode_op_put(op: &Put, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("put".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("key", Json::String(op.key.clone()))
-        .insert("value", encode(&op.value))
-        .build()
+    json!({
+        "op": "put",
+        "pointer": pointer,
+        "key": op.key,
+        "value": encode(&op.value),
+    })
 }
 
 fn encode_op_delete(op: &Delete, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("delete".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("key", Json::String(op.key.clone()))
-        .build()
+    json!({
+        "op": "delete",
+        "pointer": pointer,
+        "key": op.key,
+    })
 }
 
 fn encode_op_insert_item(op: &InsertItem, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("insert_item".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("index", Json::U64(op.index as u64))
-        .insert("value", encode(&op.value))
-        .build()
+    json!({
+        "op": "insert_item",
+        "pointer": pointer,
+        "index": op.index,
+        "value": encode(&op.value),
+    })
 }
 
 fn encode_op_delete_item(op: &DeleteItem, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("delete_item".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("index", Json::U64(op.index as u64))
-        .build()
+    json!({
+        "op": "delete_item",
+        "pointer": pointer,
+        "index": op.index,
+    })
 }
 
 fn encode_op_insert_text(op: &InsertText, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("insert_text".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("index", Json::U64(op.index as u64))
-        .insert("text", Json::String(op.text.clone()))
-        .build()
+    json!({
+        "op": "insert_text",
+        "pointer": pointer,
+        "index": op.index,
+        "text": op.text,
+    })
 }
 
 fn encode_op_delete_text(op: &DeleteText, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("delete_text".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("index", Json::U64(op.index as u64))
-        .insert("len", Json::U64(op.len as u64))
-        .build()
+    json!({
+        "op": "delete_text",
+        "pointer": pointer,
+        "index": op.index,
+        "len": op.len,
+    })
 }
 
 fn encode_op_replace_text(op: &ReplaceText, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("replace_text".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("index", Json::U64(op.index as u64))
-        .insert("len", Json::U64(op.len as u64))
-        .insert("text", Json::String(op.text.clone()))
-        .build()
+    json!({
+        "op": "replace_text",
+        "pointer": pointer,
+        "index": op.index,
+        "len": op.len,
+        "text": op.text,
+    })
 }
 
 fn encode_op_increment_number(op: &IncrementNumber, pointer: &str) -> Json {
-    ObjectBuilder::new()
-        .insert("op", Json::String("increment_number".to_string()))
-        .insert("pointer", Json::String(pointer.to_string()))
-        .insert("amount", Json::F64(op.amount))
-        .build()
+    json!({
+        "op": "increment_number",
+        "pointer": pointer,
+        "amount": op.amount,
+    })
 }
 
 #[cfg(test)]

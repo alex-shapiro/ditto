@@ -20,12 +20,8 @@ pub fn decode(json: &Json) -> Result<Value, Error> {
             decode_json_array(vec),
         Json::String(ref string) =>
             Ok(Value::Str(string.to_string())),
-        Json::F64(number) =>
-            Ok(Value::Num(number)),
-        Json::U64(number) =>
-            Ok(Value::Num(number as f64)),
-        Json::I64(number) =>
-            Ok(Value::Num(number as f64)),
+        Json::Number(ref number) =>
+            Ok(Value::Num(number.as_f64().expect("Must decode as valid f64!"))),
         Json::Bool(bool_value) =>
             Ok(Value::Bool(bool_value)),
         Json::Null =>

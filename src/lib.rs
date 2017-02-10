@@ -4,7 +4,7 @@ extern crate num;
 extern crate rand;
 extern crate rustc_serialize;
 extern crate serde;
-extern crate serde_json;
+#[macro_use] extern crate serde_json;
 
 mod array;
 mod attributed_string;
