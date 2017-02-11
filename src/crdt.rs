@@ -24,9 +24,8 @@ impl CRDT {
     }
 
     pub fn load(compact: &str, site: u32, counter: u32) -> R<Self> {
-        let compact_json = try!(serde_json::from_str(compact));
         let replica = Replica::new(site, counter);
-        let value = try!(compact::decode(&compact_json));
+        let value: Value = serde_json::from_str(compact)?;
         Ok(CRDT{root_value: value, replica: replica})
     }
 
@@ -105,11 +104,6 @@ impl CRDT {
             .into_iter()
             .map(|op| NestedLocalOp{pointer: local_ptr.clone(), op: op})
             .collect())
-    }
-
-    pub fn execute_remote_json(&mut self, nested_op_json: &Json) -> R<Vec<NestedLocalOp>> {
-        let nested_op = try!(compact::decode_op(nested_op_json));
-        self.execute_remote(nested_op)
     }
 
     fn execute_local(&mut self, pointer: &str, op: LocalOp) -> R<NestedRemoteOp> {

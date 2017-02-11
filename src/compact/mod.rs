@@ -1,7 +1,6 @@
 pub mod decoder;
 pub mod encoder;
 
-pub use self::decoder::{decode, decode_op};
 pub use self::encoder::{encode, encode_op};
 
 #[cfg(test)]
@@ -132,8 +131,8 @@ mod tests {
         let pointer    = "hfas/fs,bar/bhsd".to_owned();
 
         let original = NestedRemoteOp{pointer: pointer, op: remote_op};
-        let encoded = encode_op(&original);
-        let decoded = decode_op(&encoded).unwrap();
+        let encoded  = serde_json::to_string(&original).unwrap();
+        let decoded: NestedRemoteOp = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
     }
 
@@ -146,8 +145,8 @@ mod tests {
         let pointer   = "/asdf/hjkl".to_owned();
 
         let original = NestedRemoteOp{pointer: pointer, op: remote_op};
-        let encoded = encode_op(&original);
-        let decoded = decode_op(&encoded).unwrap();
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: NestedRemoteOp = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
     }
 
@@ -160,8 +159,8 @@ mod tests {
         let pointer     = "/asdf/hjkl".to_owned();
 
         let original = NestedRemoteOp{pointer: pointer, op: remote_op};
-        let encoded = encode_op(&original);
-        let decoded = decode_op(&encoded).unwrap();
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: NestedRemoteOp = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
     }
 
@@ -172,8 +171,8 @@ mod tests {
         let pointer   = "/7nlhs/fhs04-baz/f7y2".to_owned();
 
         let original = NestedRemoteOp{pointer: pointer, op: remote_op};
-        let encoded = encode_op(&original);
-        let decoded = decode_op(&encoded).unwrap();
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: NestedRemoteOp = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
     }
 
