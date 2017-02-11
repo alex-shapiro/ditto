@@ -238,7 +238,7 @@ impl Deserialize for Value {
                 formatter.write_str("any valid encoded CRDT value")
             }
 
-            fn visit_none<E>(self) -> Result<Value, E> {
+            fn visit_unit<E>(self) -> Result<Value, E> {
                 Ok(Value::Null)
             }
 
@@ -275,7 +275,9 @@ impl Deserialize for Value {
                         Ok(Value::AttrStr(attrstr))
                     },
                     1 => {
-                        let elements: Vec<ArrayElement> = visitor.visit()?.ok_or(de::Error::missing_field("Array elements"))?;
+                        let mut elements: Vec<ArrayElement> = visitor.visit()?.ok_or(de::Error::missing_field("Array elements"))?;
+                        elements.insert(0, ArrayElement::start_marker());
+                        elements.push(ArrayElement::end_marker());
                         let array = Array::assemble(elements);
                         Ok(Value::Arr(array))
                     },
