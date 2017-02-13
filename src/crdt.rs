@@ -1,9 +1,7 @@
-use compact;
 use Error;
 use op::{self, NestedLocalOp, NestedRemoteOp, LocalOp};
-use raw;
+use raw::LocalValue;
 use Replica;
-use serde_json::Value as Json;
 use serde_json;
 use Value;
 
@@ -17,22 +15,19 @@ pub struct CRDT {
 
 impl CRDT {
     pub fn create(raw: &str) -> R<Self> {
-        let raw_json = serde_json::from_str(raw)?;
         let replica = Replica::new(1, 0);
-        let value = raw::decode(&raw_json, &replica)?;
+        let value = LocalValue::from_str(raw, &replica)?.value();
         Ok(CRDT{root_value: value, replica: replica})
     }
 
     pub fn load(compact: &str, site: u32, counter: u32) -> R<Self> {
-        let compact_json = try!(serde_json::from_str(compact));
         let replica = Replica::new(site, counter);
-        let value = try!(compact::decode(&compact_json));
+        let value: Value = serde_json::from_str(compact)?;
         Ok(CRDT{root_value: value, replica: replica})
     }
 
     pub fn dump(&self) -> String {
-        let json = compact::encode(&self.root_value);
-        serde_json::to_string(&json).unwrap()
+        serde_json::to_string(&self.root_value).unwrap()
     }
 
     pub fn site(&self) -> u32 {
@@ -47,13 +42,12 @@ impl CRDT {
         &self.root_value
     }
 
-    pub fn as_value(self) -> Value {
-        self.root_value
+    pub fn local_value(self) -> LocalValue {
+        LocalValue::new(self.root_value)
     }
 
     pub fn put(&mut self, pointer: &str, key: &str, value: &str) -> R<NestedRemoteOp> {
-        let value_json: Json = serde_json::from_str(value)?;
-        let value = raw::decode(&value_json, &self.replica)?;
+        let value = LocalValue::from_str(&value, &self.replica)?.value();
         let op = op::local::Put{key: key.to_owned(), value: value};
         self.execute_local(pointer, LocalOp::Put(op))
     }
@@ -64,8 +58,7 @@ impl CRDT {
     }
 
     pub fn insert_item(&mut self, pointer: &str, index: usize, item: &str) -> R<NestedRemoteOp> {
-        let item_json: Json = serde_json::from_str(item)?;
-        let item = raw::decode(&item_json, &self.replica)?;
+        let item = LocalValue::from_str(&item, &self.replica)?.value();
         let op = op::local::InsertItem{index: index, value: item};
         self.execute_local(pointer, LocalOp::InsertItem(op))
     }
@@ -105,11 +98,6 @@ impl CRDT {
             .into_iter()
             .map(|op| NestedLocalOp{pointer: local_ptr.clone(), op: op})
             .collect())
-    }
-
-    pub fn execute_remote_json(&mut self, nested_op_json: &Json) -> R<Vec<NestedLocalOp>> {
-        let nested_op = try!(compact::decode_op(nested_op_json));
-        self.execute_remote(nested_op)
     }
 
     fn execute_local(&mut self, pointer: &str, op: LocalOp) -> R<NestedRemoteOp> {
