@@ -91,7 +91,7 @@ impl Serialize for object::Object {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut seq = serializer.serialize_seq(Some(2))?;
         seq.serialize_element(&2)?;
-        seq.serialize_element(&self.elements())?;
+        seq.serialize_element(&self.elements_vec())?;
         seq.end()
     }
 }

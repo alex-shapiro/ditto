@@ -3,7 +3,6 @@ pub mod encoder;
 
 #[cfg(test)]
 mod tests {
-    use super::*;
     use array::Array;
     use attributed_string::AttributedString;
     use object::Object;
@@ -16,7 +15,7 @@ mod tests {
     #[test]
     fn test_null() {
         let original = Value::Null;
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(encoded == "null");
         assert!(original == decoded);
@@ -25,7 +24,7 @@ mod tests {
     #[test]
     fn test_bool_true() {
         let original = Value::Bool(true);
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value  = serde_json::from_str(&encoded).unwrap();
         assert!(encoded == "true");
         assert!(original == decoded);
@@ -34,7 +33,7 @@ mod tests {
     #[test]
     fn test_bool_false() {
         let original = Value::Bool(false);
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(encoded == "false");
         assert!(original == decoded);
@@ -43,7 +42,7 @@ mod tests {
     #[test]
     fn test_number() {
         let original = Value::Num(304.3);
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(encoded == "304.3");
         assert!(original == decoded);
@@ -52,7 +51,7 @@ mod tests {
     #[test]
     fn test_string() {
         let original = Value::Str("hi!".to_string());
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(encoded == "\"hi!\"");
         assert!(original == decoded);
@@ -68,7 +67,7 @@ mod tests {
         let _ = string.insert_text(26, "jumped".to_string(), &Replica::new(1, 5));
 
         let original = Value::AttrStr(string);
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
     }
@@ -83,7 +82,7 @@ mod tests {
         let _ = array.insert(4, Value::Bool(false), &Replica::new(1, 552));
 
         let original = Value::Arr(array);
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
 
         println!("original: {:?}", original);
@@ -102,7 +101,7 @@ mod tests {
         let _ = object.put("x/y", Value::Bool(false), &Replica::new(1, 552));
 
         let original = Value::Obj(object);
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
     }
@@ -115,7 +114,7 @@ mod tests {
         let _ = array.insert(2, Value::array(), &Replica::new(4782,4));
 
         let original = Value::Arr(array);
-        let encoded  = encode_str(&original);
+        let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
     }
@@ -172,10 +171,5 @@ mod tests {
         let encoded = serde_json::to_string(&original).unwrap();
         let decoded: NestedRemoteOp = serde_json::from_str(&encoded).unwrap();
         assert!(original == decoded);
-    }
-
-    fn encode_str(value: &Value) -> String {
-        let json = encode(value);
-        serde_json::to_string(&json).ok().unwrap()
     }
 }
