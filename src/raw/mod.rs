@@ -9,6 +9,7 @@ use serde::{Serialize, Serializer};
 use serde_json;
 use Value;
 
+#[derive(Debug, PartialEq, Clone)]
 pub struct LocalValue(Value);
 
 impl LocalValue {
