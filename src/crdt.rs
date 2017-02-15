@@ -42,6 +42,10 @@ impl CRDT {
         &self.root_value
     }
 
+    pub fn as_value(self) -> Value {
+        self.root_value
+    }
+
     pub fn local_value(self) -> LocalValue {
         LocalValue::new(self.root_value)
     }
