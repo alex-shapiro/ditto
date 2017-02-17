@@ -1,5 +1,6 @@
 use Value;
 
+#[derive(Serialize, Deserialize)]
 pub struct Put {
     pub key: String,
     pub value: Value,

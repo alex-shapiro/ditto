@@ -1,5 +1,6 @@
 use Value;
 
+#[derive(Serialize, Deserialize)]
 pub struct InsertItem {
     pub index: usize,
     pub value: Value,

@@ -1,3 +1,4 @@
+#[derive(Serialize, Deserialize)]
 pub struct ReplaceText {
     pub index: usize,
     pub len: usize,
