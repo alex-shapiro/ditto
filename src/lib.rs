@@ -12,7 +12,7 @@ mod attributed_string;
 mod compact;
 mod crdt;
 mod error;
-mod local;
+mod local_value;
 mod object;
 mod op;
 mod raw;

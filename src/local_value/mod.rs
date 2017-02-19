@@ -1,6 +1,14 @@
+//! LocalValue is a strongly-typed intermediate value between
+//! user-generated JSON and CRDT values.
+
+mod ser;
+mod de;
+
 use Replica;
 use Value;
-use serde::ser::{Serialize, Serializer, SerializeMap};
+use object::Object;
+use attributed_string::AttributedString;
+use array::Array;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
@@ -12,6 +20,40 @@ enum LocalValue {
     Num(f64),
     Bool(bool),
     Null,
+}
+
+impl LocalValue {
+    pub fn to_value(self, replica: &Replica) -> Value {
+        match self {
+            LocalValue::Obj(map) => {
+                let mut object = Object::new();
+                for (key, local_value) in map.into_iter() {
+                    object.put(&key, local_value.to_value(replica), replica);
+                }
+                Value::Obj(object)
+            },
+            LocalValue::AttrStr(string) => {
+                let mut attrstr = AttributedString::new();
+                let _ = attrstr.insert_text(0, string, replica);
+                Value::AttrStr(attrstr)
+            },
+            LocalValue::Arr(items) => {
+                let mut array = Array::new();
+                for (i, local_value) in items.into_iter().enumerate() {
+                    let _ = array.insert(i, local_value.to_value(replica), replica);
+                }
+                Value::Arr(array)
+            },
+            LocalValue::Str(string) =>
+                Value::Str(string),
+            LocalValue::Num(number) =>
+                Value::Num(number),
+            LocalValue::Bool(bool_value) =>
+                Value::Bool(bool_value),
+            LocalValue::Null =>
+                Value::Null,
+        }
+    }
 }
 
 impl From<Value> for LocalValue {
@@ -44,37 +86,6 @@ impl From<Value> for LocalValue {
                 LocalValue::Bool(bool_value),
             Value::Null =>
                 LocalValue::Null,
-        }
-    }
-}
-
-impl Serialize for LocalValue {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        match *self {
-            LocalValue::Obj(ref hashmap) => {
-                let mut obj = serializer.serialize_map(Some(hashmap.len()))?;
-                for (key, value) in hashmap {
-                    let encoded_key = key.replace("~","~0").replace("__TYPE__","~1");
-                    obj.serialize_entry(&encoded_key, value)?;
-                }
-                obj.end()
-            },
-            LocalValue::AttrStr(ref string) => {
-                let mut obj = serializer.serialize_map(Some(2))?;
-                obj.serialize_entry("__TYPE__", "attrstr")?;
-                obj.serialize_entry("text", string)?;
-                obj.end()
-            },
-            LocalValue::Arr(ref array) =>
-                serializer.serialize_some(array),
-            LocalValue::Str(ref string) =>
-                serializer.serialize_str(string),
-            LocalValue::Num(number) =>
-                serializer.serialize_f64(number),
-            LocalValue::Bool(bool_value) =>
-                serializer.serialize_bool(bool_value),
-            LocalValue::Null =>
-                serializer.serialize_unit(),
         }
     }
 }
