@@ -103,6 +103,13 @@ impl Array {
         let upper = self.len() + 1;
         &self.0[lower..upper]
     }
+
+    pub fn into_elements(self) -> Vec<Element> {
+        let mut elements = self.0;
+        elements.pop();
+        elements.remove(0);
+        elements
+    }
 }
 
 #[cfg(test)]

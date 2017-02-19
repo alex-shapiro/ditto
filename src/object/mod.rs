@@ -101,6 +101,10 @@ impl Object {
         &self.0
     }
 
+    pub fn into_elements(self) -> HashMap<String, Vec<Element>> {
+        self.0
+    }
+
     pub fn elements_vec<'a>(&'a self) -> Vec<&'a Element> {
         let mut vec = vec![];
         for (_, elements) in &self.0 {

@@ -6,7 +6,7 @@ pub use self::remote::RemoteOp;
 use raw;
 use serde;
 
-#[derive(Serialize, Deserialize)]
+#[derive(Deserialize)]
 pub struct NestedLocalOp {
     pub pointer: String,
     pub op: local::LocalOp,
