@@ -9,7 +9,6 @@ extern crate serde;
 
 mod array;
 mod attributed_string;
-mod compact;
 mod crdt;
 mod error;
 mod local_value;
@@ -17,6 +16,7 @@ mod object;
 mod op;
 mod replica;
 mod sequence;
+mod serializer;
 mod value;
 mod vlq;
 

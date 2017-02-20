@@ -80,8 +80,7 @@ impl Value {
         let mut remote_pointer = String::new();
 
         if !(pointer.is_empty() || pointer.starts_with("/")) { return Err(Error::InvalidPath) }
-        for escaped_key in pointer.split("/").skip(1) {
-            let key = escaped_key.replace("~1", "/").replace("~0", "~");
+        for key in pointer.split("/").skip(1) {
             value = match *value.unwrap() {
                 Value::Obj(ref mut object) => {
                     let mut element = object.get_by_key(&key)?;
