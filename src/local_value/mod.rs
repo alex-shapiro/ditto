@@ -89,3 +89,126 @@ impl From<Value> for LocalValue {
         }
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+
+    const REPLICA: Replica = Replica{site: 5, counter: 8};
+
+    #[test]
+    fn test_null() {
+        let original = LocalValue::Null;
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str(&encoded).unwrap();
+        assert!(encoded == "null");
+        assert!(decoded == original);
+
+        let value = decoded.to_value(&REPLICA);
+        assert!(value == Value::Null);
+
+        let from_value: LocalValue = value.into();
+        assert!(from_value == original);
+    }
+
+    #[test]
+    fn test_bool() {
+        let original = LocalValue::Bool(true);
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str(&encoded).unwrap();
+        assert!(encoded == "true");
+        assert!(decoded == original);
+
+        let value = decoded.to_value(&REPLICA);
+        assert!(value == Value::Bool(true));
+
+        let from_value: LocalValue = value.into();
+        assert!(from_value == original);
+    }
+
+    #[test]
+    fn test_number() {
+        let original = LocalValue::Num(843.0);
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str("843").unwrap();
+        assert!(encoded == "843.0");
+        assert!(decoded == original);
+
+        let value = decoded.to_value(&REPLICA);
+        assert!(value == Value::Num(843.0));
+
+        let from_value: LocalValue = value.into();
+        assert!(from_value == original);
+    }
+
+    #[test]
+    fn test_string() {
+        let original = LocalValue::Str("hi!".to_owned());
+        let encoded  = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str(&encoded).unwrap();
+        assert!(encoded == "\"hi!\"");
+        assert!(decoded == original);
+
+        let value = decoded.to_value(&REPLICA);
+        assert!(value == Value::Str("hi!".to_owned()));
+
+        let from_value: LocalValue = value.into();
+        assert!(from_value == original);
+    }
+
+    #[test]
+    fn test_attrstr() {
+        let original = LocalValue::AttrStr("The quick fox".to_owned());
+        let encoded  = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str(&encoded).unwrap();
+        assert!(encoded == r#"{"__TYPE__":"attrstr","text":"The quick fox"}"#);
+        assert!(decoded == original);
+
+        let value = decoded.to_value(&REPLICA);
+        let from_value: LocalValue = value.into();
+        assert!(from_value == original);
+    }
+
+    #[test]
+    fn test_array() {
+        let original = LocalValue::Arr(vec![LocalValue::Num(1.3), LocalValue::Num(2.4)]);
+        let encoded  = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str(&encoded).unwrap();
+        assert!(encoded == "[1.3,2.4]");
+        assert!(decoded == original);
+
+        let value = decoded.to_value(&REPLICA);
+        let from_value: LocalValue = value.into();
+        assert!(from_value == original);
+    }
+
+    #[test]
+    fn test_object() {
+        let mut map = HashMap::new();
+        map.insert("foo".to_owned(), LocalValue::Str("x".to_owned()));
+        map.insert("bar".to_owned(), LocalValue::Num(-483.8));
+        map.insert("baz".to_owned(), LocalValue::AttrStr("Hello!".to_owned()));
+
+        let original = LocalValue::Obj(map);
+        let encoded  = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str(&encoded).unwrap();
+
+        let encoded1: serde_json::Value = serde_json::from_str(&encoded).unwrap();
+        let encoded2: serde_json::Value = serde_json::from_str(r#"{"foo":"x","bar":-483.8,"baz":{"__TYPE__":"attrstr","text":"Hello!"}}"#).unwrap();
+
+        assert!(encoded1 == encoded2);
+        assert!(decoded == original);
+    }
+
+    #[test]
+    fn test_invalid_special_type() {
+        assert!(serde_json::from_str::<LocalValue>(r#"{"__TYPE__":"mytype"}"#).is_err());
+    }
+
+    #[test]
+    fn test_invalid_attrstr() {
+        assert!(serde_json::from_str::<LocalValue>(r#"{"__TYPE__":"attrstr"}"#).is_err());
+        assert!(serde_json::from_str::<LocalValue>(r#"{"__TYPE__":"attrstr","text": 3}"#).is_err());
+    }
+}
