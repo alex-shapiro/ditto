@@ -4,7 +4,6 @@ use object;
 use op::{NestedRemoteOp, RemoteOp};
 use serde::{Serialize, Serializer};
 use serde::ser::SerializeSeq;
-// use serde::ser::SerializeMap;
 use Value;
 
 impl Serialize for Value {

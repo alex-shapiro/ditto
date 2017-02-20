@@ -16,6 +16,8 @@ pub use self::insert_text::InsertText;
 pub use self::replace_text::ReplaceText;
 pub use self::increment_number::IncrementNumber;
 
+#[derive(Serialize,Deserialize)]
+#[serde(tag = "type")]
 pub enum LocalOp {
     Put(Put),
     Delete(Delete),

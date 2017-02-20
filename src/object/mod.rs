@@ -93,12 +93,16 @@ impl Object {
         } else {
             self.0.insert(op.key.clone(), new_key_elements);
             let element = self.get_by_key(&op.key).expect("key must have elements!");
-            LocalOp::Put(Put::new(op.key.to_owned(), element.value.clone()))
+            LocalOp::Put(Put::new(op.key.to_owned(), element.value.clone().into()))
         }
     }
 
     pub fn elements(&self) -> &HashMap<String,Vec<Element>> {
         &self.0
+    }
+
+    pub fn into_elements(self) -> HashMap<String, Vec<Element>> {
+        self.0
     }
 
     pub fn elements_vec<'a>(&'a self) -> Vec<&'a Element> {
@@ -117,6 +121,7 @@ mod tests {
     use op::remote::UpdateObject;
     use Replica;
     use Value;
+    use LocalValue;
 
     const REPLICA: Replica = Replica{site: 1, counter: 2};
 
@@ -170,7 +175,7 @@ mod tests {
         let local_op = object.execute_remote(&mut remote_op);
 
         assert!(local_op.put().unwrap().key == "baz".to_owned());
-        assert!(local_op.put().unwrap().value == Value::Num(1.0));
+        assert!(local_op.put().unwrap().value == LocalValue::Num(1.0));
         assert!(object.0.get("baz").unwrap().len() == 2);
         assert!(remote_op.deletes.is_empty());
     }
@@ -189,7 +194,7 @@ mod tests {
         assert!(object.get_by_key("foo").unwrap().value == Value::Bool(false));
         let local_op = object.execute_remote(&mut remote_op3);
         assert!(local_op.put().unwrap().key == "foo".to_owned());
-        assert!(local_op.put().unwrap().value == Value::Bool(true));
+        assert!(local_op.put().unwrap().value == LocalValue::Bool(true));
         assert!(remote_op3.deletes[0].value == Value::Bool(false));
     }
 }

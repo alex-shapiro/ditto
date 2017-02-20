@@ -1,3 +1,4 @@
+#[derive(Serialize, Deserialize)]
 pub struct IncrementNumber {
     pub amount: f64,
 }

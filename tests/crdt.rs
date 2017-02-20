@@ -9,7 +9,7 @@ fn create_load_dump_null() {
     let dump = crdt.dump();
     let loaded = CRDT::load(&dump, 5, 3).unwrap();
     assert!(crdt.site() == 1);
-    assert!(crdt.counter() == 0);
+    assert!(crdt.counter() == 1);
     assert!(loaded.site() == 5);
     assert!(loaded.counter() == 3);
     assert!(dump == loaded.dump());

@@ -88,7 +88,7 @@ impl Array {
             } else {
                 while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
                     let insert = insert_iter.next().unwrap().clone();
-                    let op = InsertItem::new(index - 1, insert.value.clone());
+                    let op = InsertItem::new(index - 1, insert.value.clone().into());
                     local_ops.push(LocalOp::InsertItem(op));
                     self.0.push(insert);
                 }
@@ -103,6 +103,13 @@ impl Array {
         let upper = self.len() + 1;
         &self.0[lower..upper]
     }
+
+    pub fn into_elements(self) -> Vec<Element> {
+        let mut elements = self.0;
+        elements.pop();
+        elements.remove(0);
+        elements
+    }
 }
 
 #[cfg(test)]
@@ -112,6 +119,7 @@ mod tests {
     use Error;
     use Replica;
     use Value;
+    use LocalValue;
 
     const REPLICA: Replica = Replica{site: 1, counter: 1};
 
@@ -173,7 +181,7 @@ mod tests {
 
         assert!(array1 == array2);
         assert!(local_ops.len() == 1);
-        assert!(local_ops[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops[0].insert_item().unwrap().value == LocalValue::Num(1.0));
         assert!(local_ops[0].insert_item().unwrap().index == 0);
     }
 
@@ -185,7 +193,7 @@ mod tests {
         let local_ops = array2.execute_remote(&mut remote_op);
         assert!(array1 == array2);
         assert!(local_ops.len() == 1);
-        assert!(local_ops[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops[0].insert_item().unwrap().value == LocalValue::Num(1.0));
         assert!(local_ops[0].insert_item().unwrap().index == 0);
     }
 
@@ -205,12 +213,12 @@ mod tests {
 
         // first (insert)
         assert!(local_ops1.len() == 1);
-        assert!(local_ops1[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops1[0].insert_item().unwrap().value == LocalValue::Num(1.0));
         assert!(local_ops1[0].insert_item().unwrap().index == 0);
 
         // second (insert)
         assert!(local_ops2.len() == 1);
-        assert!(local_ops2[0].insert_item().unwrap().value == Value::Num(2.0));
+        assert!(local_ops2[0].insert_item().unwrap().value == LocalValue::Num(2.0));
         assert!(local_ops2[0].insert_item().unwrap().index == 1);
 
         // third (delete)

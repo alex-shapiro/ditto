@@ -1,3 +1,4 @@
+#[derive(Serialize, Deserialize)]
 pub struct InsertText {
     pub index: usize,
     pub text: String,

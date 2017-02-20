@@ -5,7 +5,6 @@ authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
 
 [dev-dependencies]
 regex = "0.1"
-serde_derive = "0.9"
 
 [dependencies]
 char_fns = "0.1"
@@ -14,4 +13,5 @@ num = "0.1.36"
 rand = "0.3"
 rustc-serialize = "0.3"
 serde = "0.9"
+serde_derive = "0.9"
 serde_json = "0.9"
