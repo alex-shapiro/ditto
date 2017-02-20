@@ -34,4 +34,3 @@ fn example() {
     // after all operations are replicated at both sites, the sites are identical.
     assert!(crdt1.value() == crdt2.value());
 }
-

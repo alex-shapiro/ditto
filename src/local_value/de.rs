@@ -31,7 +31,7 @@ impl Deserialize for LocalValue {
             }
 
             fn visit_f64<E>(self, value: f64) -> Result<LocalValue, E> {
-                Ok(LocalValue::Num(value as f64))
+                Ok(LocalValue::Num(value))
             }
 
             fn visit_str<E>(self, value: &str) -> Result<LocalValue, E> where E: de::Error {

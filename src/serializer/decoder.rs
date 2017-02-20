@@ -94,7 +94,7 @@ impl Deserialize for Value {
             }
 
             fn visit_f64<E>(self, value: f64) -> Result<Value, E> {
-                Ok(Value::Num(value as f64))
+                Ok(Value::Num(value))
             }
 
             fn visit_str<E>(self, value: &str) -> Result<Value, E> where E: de::Error {
