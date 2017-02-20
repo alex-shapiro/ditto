@@ -12,7 +12,7 @@ use array::Array;
 use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Clone)]
-enum LocalValue {
+pub enum LocalValue {
     Obj(HashMap<String, LocalValue>),
     AttrStr(String),
     Arr(Vec<LocalValue>),

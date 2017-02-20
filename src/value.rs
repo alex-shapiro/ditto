@@ -84,14 +84,14 @@ impl Value {
             let key = escaped_key.replace("~1", "/").replace("~0", "~");
             value = match *value.unwrap() {
                 Value::Obj(ref mut object) => {
-                    let mut element = try!(object.get_by_key(&key));
+                    let mut element = object.get_by_key(&key)?;
                     remote_pointer.push('/');
                     remote_pointer.push_str(&element.uid.to_string());
                     Some(&mut element.value)
                 },
                 Value::Arr(ref mut array) => {
-                    let index = try!(usize::from_str(&key));
-                    let element = try!(array.get_by_index(index));
+                    let index = usize::from_str(&key)?;
+                    let element = array.get_by_index(index)?;
                     remote_pointer.push('/');
                     remote_pointer.push_str(&element.uid.to_string());
                     Some(&mut element.value)
@@ -111,15 +111,15 @@ impl Value {
         for encoded_uid in pointer.split("/").skip(1) {
             value = match *value.unwrap() {
                 Value::Obj(ref mut object) => {
-                    let uid = try!(object::UID::from_str(encoded_uid));
-                    let mut element = try!(object.get_by_uid(&uid));
+                    let uid = object::UID::from_str(encoded_uid)?;
+                    let mut element = object.get_by_uid(&uid)?;
                     local_pointer.push('/');
                     local_pointer.push_str(&uid.key);
                     Some(&mut element.value)
                 },
                 Value::Arr(ref mut array) => {
-                    let uid = try!(sequence::uid::UID::from_str(encoded_uid));
-                    let (mut element, index) = try!(array.get_by_uid(&uid));
+                    let uid = sequence::uid::UID::from_str(encoded_uid)?;
+                    let (mut element, index) = array.get_by_uid(&uid)?;
                     local_pointer.push_str(&format!("/{}", index));
                     Some(&mut element.value)
                 },
@@ -134,42 +134,42 @@ impl Value {
     pub fn execute_local(&mut self, op: LocalOp, replica: &Replica) -> Result<RemoteOp, Error> {
         match op {
             LocalOp::Put(op) => {
-                let mut object = try!(self.as_object());
-                let remote_op = object.put(&op.key, op.value, replica);
+                let mut object = self.as_object()?;
+                let remote_op = object.put(&op.key, op.value.to_value(replica), replica);
                 Ok(RemoteOp::UpdateObject(remote_op))
             },
             LocalOp::Delete(op) => {
-                let mut object = try!(self.as_object());
-                let remote_op = try!(object.delete(&op.key));
+                let mut object = self.as_object()?;
+                let remote_op = object.delete(&op.key)?;
                 Ok(RemoteOp::UpdateObject(remote_op))
             },
             LocalOp::InsertItem(op) => {
-                let mut array = try!(self.as_array());
-                let remote_op = try!(array.insert(op.index, op.value, replica));
+                let mut array = self.as_array()?;
+                let remote_op = array.insert(op.index, op.value.to_value(replica), replica)?;
                 Ok(RemoteOp::UpdateArray(remote_op))
             },
             LocalOp::DeleteItem(op) => {
-                let mut array = try!(self.as_array());
-                let remote_op = try!(array.delete(op.index));
+                let mut array = self.as_array()?;
+                let remote_op = array.delete(op.index)?;
                 Ok(RemoteOp::UpdateArray(remote_op))
             },
             LocalOp::InsertText(op) => {
-                let mut attrstr = try!(self.as_attributed_string());
-                let remote_op = try!(attrstr.insert_text(op.index, op.text, replica));
+                let mut attrstr = self.as_attributed_string()?;
+                let remote_op = attrstr.insert_text(op.index, op.text, replica)?;
                 Ok(RemoteOp::UpdateAttributedString(remote_op))
             },
             LocalOp::DeleteText(op) => {
-                let mut attrstr = try!(self.as_attributed_string());
-                let remote_op = try!(attrstr.delete_text(op.index, op.len, replica));
+                let mut attrstr = self.as_attributed_string()?;
+                let remote_op = attrstr.delete_text(op.index, op.len, replica)?;
                 Ok(RemoteOp::UpdateAttributedString(remote_op))
             },
             LocalOp::ReplaceText(op) => {
-                let mut attrstr = try!(self.as_attributed_string());
-                let remote_op = try!(attrstr.replace_text(op.index, op.len, op.text, replica));
+                let mut attrstr = self.as_attributed_string()?;
+                let remote_op = attrstr.replace_text(op.index, op.len, op.text, replica)?;
                 Ok(RemoteOp::UpdateAttributedString(remote_op))
             },
             LocalOp::IncrementNumber(op) => {
-                let remote_op = try!(self.increment(op.amount));
+                let remote_op = self.increment(op.amount)?;
                 Ok(RemoteOp::IncrementNumber(remote_op))
             },
         }
@@ -196,9 +196,9 @@ mod tests {
     use super::*;
     use array::Array;
     use object::Object;
-    use raw;
     use Replica;
-    use serde_json::{self, Value as Json};
+    use LocalValue;
+    use serde_json;
 
     const REPLICA: Replica = Replica{site: 1, counter: 1};
 
@@ -357,7 +357,7 @@ mod tests {
     }
 
     fn from_str(string: &str) -> Value {
-        let json: Json = serde_json::from_str(string).expect("invalid JSON!");
-        raw::decode(&json, &Replica::new(1,1)).unwrap()
+        let local_value: LocalValue = serde_json::from_str(string).expect("invalid JSON!");
+        local_value.into_value(&Replica::new(1,1))
     }
 }

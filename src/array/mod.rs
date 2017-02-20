@@ -88,7 +88,7 @@ impl Array {
             } else {
                 while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
                     let insert = insert_iter.next().unwrap().clone();
-                    let op = InsertItem::new(index - 1, insert.value.clone());
+                    let op = InsertItem::new(index - 1, insert.value.clone().into());
                     local_ops.push(LocalOp::InsertItem(op));
                     self.0.push(insert);
                 }

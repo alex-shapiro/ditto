@@ -1,13 +1,13 @@
-use Value;
+use LocalValue;
 
 #[derive(Serialize, Deserialize)]
 pub struct InsertItem {
     pub index: usize,
-    pub value: Value,
+    pub value: LocalValue,
 }
 
 impl InsertItem {
-    pub fn new(index: usize, value: Value) -> InsertItem {
+    pub fn new(index: usize, value: LocalValue) -> InsertItem {
         InsertItem{index: index, value: value}
     }
 }

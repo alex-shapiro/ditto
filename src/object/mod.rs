@@ -93,7 +93,7 @@ impl Object {
         } else {
             self.0.insert(op.key.clone(), new_key_elements);
             let element = self.get_by_key(&op.key).expect("key must have elements!");
-            LocalOp::Put(Put::new(op.key.to_owned(), element.value.clone()))
+            LocalOp::Put(Put::new(op.key.to_owned(), element.value.clone().into()))
         }
     }
 
