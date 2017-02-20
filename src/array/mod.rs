@@ -119,6 +119,7 @@ mod tests {
     use Error;
     use Replica;
     use Value;
+    use LocalValue;
 
     const REPLICA: Replica = Replica{site: 1, counter: 1};
 
@@ -180,7 +181,7 @@ mod tests {
 
         assert!(array1 == array2);
         assert!(local_ops.len() == 1);
-        assert!(local_ops[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops[0].insert_item().unwrap().value == LocalValue::Num(1.0));
         assert!(local_ops[0].insert_item().unwrap().index == 0);
     }
 
@@ -192,7 +193,7 @@ mod tests {
         let local_ops = array2.execute_remote(&mut remote_op);
         assert!(array1 == array2);
         assert!(local_ops.len() == 1);
-        assert!(local_ops[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops[0].insert_item().unwrap().value == LocalValue::Num(1.0));
         assert!(local_ops[0].insert_item().unwrap().index == 0);
     }
 
@@ -212,12 +213,12 @@ mod tests {
 
         // first (insert)
         assert!(local_ops1.len() == 1);
-        assert!(local_ops1[0].insert_item().unwrap().value == Value::Num(1.0));
+        assert!(local_ops1[0].insert_item().unwrap().value == LocalValue::Num(1.0));
         assert!(local_ops1[0].insert_item().unwrap().index == 0);
 
         // second (insert)
         assert!(local_ops2.len() == 1);
-        assert!(local_ops2[0].insert_item().unwrap().value == Value::Num(2.0));
+        assert!(local_ops2[0].insert_item().unwrap().value == LocalValue::Num(2.0));
         assert!(local_ops2[0].insert_item().unwrap().index == 1);
 
         // third (delete)

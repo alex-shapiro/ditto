@@ -358,6 +358,6 @@ mod tests {
 
     fn from_str(string: &str) -> Value {
         let local_value: LocalValue = serde_json::from_str(string).expect("invalid JSON!");
-        local_value.into_value(&Replica::new(1,1))
+        local_value.to_value(&Replica::new(1,1))
     }
 }
