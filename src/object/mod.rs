@@ -8,7 +8,6 @@ use op::local::{LocalOp, Put, Delete};
 use op::remote::UpdateObject;
 use Replica;
 use std::collections::HashMap;
-use std::mem;
 use Value;
 
 #[derive(Debug,Clone,PartialEq)]
@@ -31,67 +30,48 @@ impl Object {
     }
 
     pub fn delete(&mut self, key: &str) -> Result<UpdateObject, Error> {
-        let mut elements = &mut self.0;
-        let deleted_elts = elements.remove(key).unwrap_or(vec![]);
-        if deleted_elts.is_empty() {
-            Err(Error::Noop)
-        } else {
-            Ok(UpdateObject::new(key.to_string(), None, deleted_elts))
-        }
+        let deletes = self.0.remove(key).ok_or(Error::Noop)?;
+        Ok(UpdateObject::new(key.to_owned(), None, deletes))
     }
 
     pub fn get_by_key(&mut self, key: &str) -> Result<&mut Element, Error> {
-        let key_elements: Option<&mut Vec<Element>> = self.0.get_mut(key);
-        match key_elements {
-            None =>
-                Err(Error::KeyDoesNotExist),
-            Some(elements) => {
-                match elements.iter_mut().min_by_key(|e| e.uid.site) {
-                    Some(elt) => Ok(elt),
-                    None => Err(Error::KeyDoesNotExist),
-                }
-            }
-        }
+        let key_elements = self.0.get_mut(key).ok_or(Error::KeyDoesNotExist)?;
+        key_elements
+            .iter_mut()
+            .min_by_key(|e| e.uid.site)
+            .ok_or(Error::KeyDoesNotExist)
     }
 
     pub fn get_by_uid(&mut self, uid: &UID) -> Result<&mut Element, Error> {
-        let key_elements = self.0.get_mut(&uid.key);
-        match key_elements {
-            None =>
-                Err(Error::UIDDoesNotExist),
-            Some(key_elements) => {
-                match key_elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
-                    Ok(index) => Ok(&mut key_elements[index]),
-                    Err(_) => Err(Error::UIDDoesNotExist),
-                }
-            }
-        }
+        let key_elements = self.0.get_mut(&uid.key).ok_or(Error::UIDDoesNotExist)?;
+        let index =
+            key_elements
+            .binary_search_by(|e| e.uid.cmp(uid))
+            .map_err(|_| Error::UIDDoesNotExist)?;
+        Ok(&mut key_elements[index])
     }
 
     pub fn execute_remote(&mut self, op: &UpdateObject) -> LocalOp {
-        let key_elements = {
-            let mut empty_vec = Vec::new();
-            let key_elements_ref = self.0.get_mut(&op.key).unwrap_or(&mut empty_vec);
-            mem::replace(key_elements_ref, vec![])
+        let no_key_elements = {
+            let key_elements = self.0.entry(op.key.clone()).or_insert(vec![]);
+
+            for delete in &op.deletes {
+                let _ = key_elements
+                .binary_search_by(|e| e.uid.cmp(&delete.uid))
+                .and_then(|i| Ok(key_elements.remove(i)));
+            }
+
+            for insert in &op.inserts {
+                if !key_elements.contains(insert) { key_elements.push(insert.clone()) }
+            }
+
+            key_elements.is_empty()
         };
 
-        // remote op deletes
-        let mut new_key_elements: Vec<Element> =
-            key_elements
-                .into_iter()
-                .filter(|e| !op.deletes.contains(&e))
-                .collect();
-
-        // add op inserts
-        for element in &op.inserts {
-            new_key_elements.push(element.clone());
-        }
-
-        if new_key_elements.is_empty() {
+        if no_key_elements {
             self.0.remove(&op.key);
             LocalOp::Delete(Delete::new(op.key.to_owned()))
         } else {
-            self.0.insert(op.key.clone(), new_key_elements);
             let element = self.get_by_key(&op.key).expect("key must have elements!");
             LocalOp::Put(Put::new(op.key.to_owned(), element.value.clone().into()))
         }
@@ -178,6 +158,19 @@ mod tests {
         assert!(local_op.put().unwrap().value == LocalValue::Num(1.0));
         assert!(object.0.get("baz").unwrap().len() == 2);
         assert!(remote_op.deletes.is_empty());
+    }
+
+    #[test]
+    fn test_ignore_duplicate_remote_insert() {
+        let replica = Replica::new(2, 101);
+        let mut object = Object::new();
+        let remote_op = object.put("baz", Value::Num(1.0), &replica);
+        let local_op = object.execute_remote(&remote_op);
+
+        let elements = object.0.get("baz").unwrap();
+        assert!(elements.len() == 1);
+        assert!(elements[0].uid == remote_op.inserts[0].uid);
+        assert!(local_op.put().unwrap().value == LocalValue::Num(1.0));
     }
 
     #[test]
