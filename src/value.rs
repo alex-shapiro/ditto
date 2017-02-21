@@ -2,8 +2,7 @@ use array::Array;
 use attributed_string::AttributedString;
 use Error;
 use object::{self, Object};
-use op::remote::IncrementNumber;
-use op::{self, RemoteOp, LocalOp};
+use op::{RemoteOp, LocalOp};
 use Replica;
 use sequence;
 use std::str::FromStr;
@@ -50,28 +49,6 @@ impl Value {
         match *self {
             Value::AttrStr(ref mut string) => Ok(string),
             _ => Err(Error::ValueMismatch("attrstr")),
-        }
-    }
-
-    pub fn increment<'a>(&'a mut self, amount: f64) -> Result<IncrementNumber, Error> {
-        match *self {
-            Value::Num(ref mut n) => {
-                *n += amount;
-                Ok(IncrementNumber::new(amount))
-            },
-            _ => Err(Error::ValueMismatch("number")),
-        }
-    }
-
-    pub fn increment_remote<'a>(&'a mut self, amount: f64) -> Result<Vec<LocalOp>, Error> {
-        match *self {
-            Value::Num(ref mut n) => {
-                *n += amount;
-                let op = op::local::IncrementNumber::new(amount);
-                let op_wrapper = LocalOp::IncrementNumber(op);
-                Ok(vec![op_wrapper])
-            },
-            _ => Err(Error::InvalidRemoteOp),
         }
     }
 
@@ -167,10 +144,6 @@ impl Value {
                 let remote_op = attrstr.replace_text(op.index, op.len, op.text, replica)?;
                 Ok(RemoteOp::UpdateAttributedString(remote_op))
             },
-            LocalOp::IncrementNumber(op) => {
-                let remote_op = self.increment(op.amount)?;
-                Ok(RemoteOp::IncrementNumber(remote_op))
-            },
         }
     }
 
@@ -182,8 +155,6 @@ impl Value {
                 Ok(array.execute_remote(op)),
             (&mut Value::AttrStr(ref mut attrstr), &RemoteOp::UpdateAttributedString(ref op)) =>
                 Ok(attrstr.execute_remote(op)),
-            (ref mut value @ &mut Value::Num(_), &RemoteOp::IncrementNumber(ref op)) =>
-                value.increment_remote(op.amount),
             _ =>
                 Err(Error::InvalidRemoteOp),
         }

@@ -14,7 +14,7 @@ fn example() {
     // crdt1 executes some operations
     let op1 = crdt1.delete_item("", 1).unwrap();
     let op2 = crdt1.insert_item("", 1, "true").unwrap();
-    let op3 = crdt1.increment("/0", 32.0).unwrap();
+    let op3 = crdt1.insert_item("", 1, "32.0").unwrap();
 
     // crdt2 executes some operations concurrently with crdt1
     let op4 = crdt2.delete_item("", 1).unwrap();

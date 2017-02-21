@@ -18,7 +18,7 @@ let mut crdt2 = CRDT::load(crdt1_value, 2, 0).unwrap();
 // crdt1 executes some operations
 let op1 = crdt1.delete_item("", 1).unwrap();
 let op2 = crdt1.insert_item("", 1, "true").unwrap();
-let op3 = crdt1.increment("/0", "32.0").unwrap();
+let op3 = crdt1.insert_item("", 1, "32.0").unwrap();
 
 // crdt2 executes some operations concurrently with crdt1
 let op4 = crdt2.delete_item("", 1).unwrap();
@@ -45,15 +45,15 @@ assert!(crdt1 == crdt2);
 
 **Array**, a mutable vec-like data structure that can hold items of any supported type. It functions like a JSON array. Supported functions are `insert_item` and `delete_item`.
 
-**AttributedString**, a mutable string-like data structure. Supported functions are `insert_text`, `delete_text`, and `replace_text`. AttributedStrings are indexed by unicode character.
+**AttributedString** stores and efficiently edits large mutable strings. Indexed by unicode character. Supported functions are `insert_text`, `delete_text`, and `replace_text`.
 
-**String**, an immutable string. Strings, unlike AttributeStrings, do not support any functions.
+**String**, an immutable string.
 
-**Number**, a mutable 64-bit float. It supports one function, `increment`.
+**Number**, an immutable 64-bit float.
 
-**Boolean**, an immutable boolean value. Booleans do not support any functions.
+**Boolean**, an immutable boolean value.
 
-**Null** an immutable null value. Nulls do not support any functions.
+**Null** an immutable null value.
 
 ## Limitations
 

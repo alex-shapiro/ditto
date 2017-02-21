@@ -146,15 +146,6 @@ impl CRDT {
         self.do_execute_local(pointer, LocalOp::ReplaceText(op))
     }
 
-    /// Increments a number in the CRDT and returns a `NestedRemoteOp`
-    /// for replicating the operation at other sites. Note that the
-    /// increment can be any `f64`, positive or negative - increments
-    /// are not limited to integers or positive numbers.
-    pub fn increment(&mut self, pointer: &str, amount: f64) -> R<NestedRemoteOp> {
-        let op = op::local::IncrementNumber{amount: amount};
-        self.do_execute_local(pointer, LocalOp::IncrementNumber(op))
-    }
-
     /// Executes a `NestedRemoteOp`, replicating an operation that
     /// was generated at another site.
     pub fn execute_remote(&mut self, nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {

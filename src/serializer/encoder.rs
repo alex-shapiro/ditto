@@ -53,12 +53,6 @@ impl Serialize for NestedRemoteOp {
                 seq.serialize_element(&op.inserts)?;
                 seq.serialize_element(&op.deletes)?;
             },
-            // encode IncrementNumber as [6,pointer,amount]
-            RemoteOp::IncrementNumber(ref op) => {
-                seq.serialize_element(&6)?;
-                seq.serialize_element(&self.pointer)?;
-                seq.serialize_element(&op.amount)?;
-            },
         }
         seq.end()
     }

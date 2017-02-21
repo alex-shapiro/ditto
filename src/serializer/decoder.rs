@@ -6,7 +6,7 @@ use object::element::Element as ObjectElement;
 use object::Object;
 use object::uid::UID as ObjectUID;
 use op::{NestedRemoteOp, RemoteOp};
-use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString,IncrementNumber};
+use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString};
 use sequence::uid::UID as SequenceUID;
 use std::collections::HashMap;
 use std::str::FromStr;
@@ -49,11 +49,6 @@ impl Deserialize for NestedRemoteOp {
                         let deletes: Vec<AttrStrElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateAttrstr deletes"))?;
                         let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
                         RemoteOp::UpdateAttributedString(op)
-                    },
-                    6 => {
-                        let amount: f64 = visitor.visit()?.ok_or(de::Error::missing_field("IncrementNumber amount"))?;
-                        let op = IncrementNumber{amount: amount};
-                        RemoteOp::IncrementNumber(op)
                     },
                     _ => return Err(de::Error::missing_field("invalid NestedRemoteOp code")),
                 };
