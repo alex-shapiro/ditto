@@ -161,6 +161,19 @@ mod tests {
     }
 
     #[test]
+    fn test_ignore_duplicate_remote_insert() {
+        let replica = Replica::new(2, 101);
+        let mut object = Object::new();
+        let remote_op = object.put("baz", Value::Num(1.0), &replica);
+        let local_op = object.execute_remote(&remote_op);
+
+        let elements = object.0.get("baz").unwrap();
+        assert!(elements.len() == 1);
+        assert!(elements[0].uid == remote_op.inserts[0].uid);
+        assert!(local_op.put().unwrap().value == LocalValue::Num(1.0));
+    }
+
+    #[test]
     fn test_execute_remote_delete() {
         let mut object = Object::new();
         let elt1 = Element::new("foo", Value::Bool(false), & Replica::new(1,1));
