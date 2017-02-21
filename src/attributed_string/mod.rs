@@ -160,10 +160,12 @@ impl AttributedString {
         }
 
         for element in &op.inserts {
-            let _ = self.0.insert(element.clone());
-            let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
-            let op = InsertText::new(char_index, element.text.clone());
-            local_ops.push(LocalOp::InsertText(op));
+            if let None = self.0.get_index(&element.uid) {
+                let _ = self.0.insert(element.clone());
+                let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
+                let op = InsertText::new(char_index, element.text.clone());
+                local_ops.push(LocalOp::InsertText(op));
+            }
         }
 
         local_ops
@@ -459,14 +461,14 @@ mod tests {
     #[test]
     fn test_execute_remote() {
         let mut attrstr1 = AttributedString::new();
-        let mut op1 = attrstr1.insert_text(0, "the brown".to_owned(), &REPLICA1).unwrap();
-        let mut op2 = attrstr1.insert_text(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let mut op3 = attrstr1.replace_text(6, 1, "a".to_owned(), &REPLICA1).unwrap();
+        let op1 = attrstr1.insert_text(0, "the brown".to_owned(), &REPLICA1).unwrap();
+        let op2 = attrstr1.insert_text(4, "quick ".to_owned(), &REPLICA1).unwrap();
+        let op3 = attrstr1.replace_text(6, 1, "a".to_owned(), &REPLICA1).unwrap();
 
         let mut attrstr2 = AttributedString::new();
-        let lops1 = attrstr2.execute_remote(&mut op1);
-        let lops2 = attrstr2.execute_remote(&mut op2);
-        let lops3 = attrstr2.execute_remote(&mut op3);
+        let lops1 = attrstr2.execute_remote(&op1);
+        let lops2 = attrstr2.execute_remote(&op2);
+        let lops3 = attrstr2.execute_remote(&op3);
 
         assert!(attrstr1 == attrstr2);
         assert!(lops1.len() == 1);
@@ -492,6 +494,20 @@ mod tests {
         assert!(lop7.index == 4 && lop7.text == "qu");
         assert!(lop8.index == 6 && lop8.text == "a");
         assert!(lop9.index == 7 && lop9.text == "ck ");
+    }
+
+    #[test]
+    fn test_ignore_duplicate_inserts_and_deletes() {
+        let mut attrstr1 = AttributedString::new();
+        let mut attrstr2 = AttributedString::new();
+
+        let op = attrstr1.insert_text(0, "hi".to_owned(), &REPLICA1).unwrap();
+        let lops1 = attrstr2.execute_remote(&op);
+        let lops2 = attrstr2.execute_remote(&op);
+
+        assert!(attrstr1 == attrstr2);
+        assert!(lops1.len() == 1);
+        assert!(lops2.len() == 0);
     }
 
     #[test]
