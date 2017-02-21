@@ -70,15 +70,9 @@ impl Array {
         let mut delete_iter = op.deletes.iter().peekable();
         let mut local_ops = Vec::new();
 
-        let max_elt = Element::end_marker();
-
         for (index, elt) in elements.into_iter().enumerate() {
-            let should_delete_elt = {
-                let deleted_elt = *delete_iter.peek().unwrap_or(&&max_elt);
-                elt < max_elt && elt == *deleted_elt
-            };
             // if elt matches the next deleted UID, delete elt
-            if should_delete_elt {
+            if { if let Some(del) = delete_iter.peek() { **del == elt } else { false } } {
                 delete_iter.next();
                 let op = DeleteItem::new(index - 1);
                 local_ops.push(LocalOp::DeleteItem(op));
@@ -86,12 +80,16 @@ impl Array {
             // otherwise insert all new elements that come before elt,
             // then re-insert elt
             } else {
-                while *insert_iter.peek().unwrap_or(&&max_elt) < &elt {
+                while { if let Some(ins) = insert_iter.peek() { **ins < elt } else { false } } {
                     let insert = insert_iter.next().unwrap().clone();
                     let op = InsertItem::new(index - 1, insert.value.clone().into());
                     local_ops.push(LocalOp::InsertItem(op));
                     self.0.push(insert);
                 }
+                while { if let Some(ins) = insert_iter.peek() { **ins == elt } else { false } } {
+                    insert_iter.next();
+                }
+
                 self.0.push(elt);
             }
         }
@@ -224,5 +222,19 @@ mod tests {
         // third (delete)
         assert!(local_ops3.len() == 1);
         assert!(local_ops3[0].delete_item().unwrap().index == 1);
+    }
+
+    #[test]
+    fn text_ignore_duplicate_inserts() {
+        let mut array1 = Array::new();
+        let mut array2 = Array::new();
+
+        let op = array1.insert(0, Value::Bool(true), &Replica::new(1,1)).unwrap();
+        let lops1 = array2.execute_remote(&op);
+        let lops2 = array2.execute_remote(&op);
+
+        assert!(array1 == array2);
+        assert!(lops1.len() == 1);
+        assert!(lops2.len() == 0);
     }
 }
