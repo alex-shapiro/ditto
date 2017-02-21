@@ -7,7 +7,6 @@ mod tests {
     use attributed_string::AttributedString;
     use object::Object;
     use op::{NestedRemoteOp, RemoteOp};
-    use op::remote::IncrementNumber;
     use Replica;
     use serde_json;
     use Value;
@@ -154,18 +153,6 @@ mod tests {
         let op          = attrstr.insert_text(0, "hello".to_owned(), &replica).unwrap();
         let remote_op   = RemoteOp::UpdateAttributedString(op);
         let pointer     = "/asdf/hjkl".to_owned();
-
-        let original = NestedRemoteOp{pointer: pointer, op: remote_op};
-        let encoded = serde_json::to_string(&original).unwrap();
-        let decoded: NestedRemoteOp = serde_json::from_str(&encoded).unwrap();
-        assert!(original == decoded);
-    }
-
-    #[test]
-    fn test_increment_number() {
-        let op        = IncrementNumber{amount: 483.24};
-        let remote_op = RemoteOp::IncrementNumber(op);
-        let pointer   = "/7nlhs/fhs04-baz/f7y2".to_owned();
 
         let original = NestedRemoteOp{pointer: pointer, op: remote_op};
         let encoded = serde_json::to_string(&original).unwrap();
