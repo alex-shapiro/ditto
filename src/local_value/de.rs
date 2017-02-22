@@ -59,6 +59,12 @@ impl Deserialize for LocalValue {
                         } else {
                             return Err(de::Error::missing_field("AttrStr text"))
                         }
+                    } else if special_type == "counter" {
+                        if let Some(LocalValue::Num(number)) = map.remove("value") {
+                            return Ok(LocalValue::Counter(number))
+                        } else {
+                            return Err(de::Error::missing_field("Counter value"))
+                        }
                     } else {
                         return Err(de::Error::missing_field("invalid special type"))
                     }

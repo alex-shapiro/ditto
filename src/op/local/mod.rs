@@ -5,6 +5,7 @@ mod insert_item;
 mod delete_text;
 mod insert_text;
 mod replace_text;
+mod increment;
 
 pub use self::delete::Delete;
 pub use self::put::Put;
@@ -13,6 +14,7 @@ pub use self::insert_item::InsertItem;
 pub use self::delete_text::DeleteText;
 pub use self::insert_text::InsertText;
 pub use self::replace_text::ReplaceText;
+pub use self::increment::Increment;
 
 #[derive(Serialize,Deserialize)]
 #[serde(tag = "type")]
@@ -24,6 +26,7 @@ pub enum LocalOp {
     InsertText(InsertText),
     DeleteText(DeleteText),
     ReplaceText(ReplaceText),
+    Increment(Increment),
 }
 
 impl LocalOp {
@@ -71,6 +74,13 @@ impl LocalOp {
     pub fn replace_text(&self) -> Option<&ReplaceText> {
         match *self {
             LocalOp::ReplaceText(ref op) => Some(op),
+            _ => None,
+        }
+    }
+
+    pub fn increment(&self) -> Option<&Increment> {
+        match *self {
+            LocalOp::Increment(ref op) => Some(op),
             _ => None,
         }
     }

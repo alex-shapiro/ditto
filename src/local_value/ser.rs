@@ -17,6 +17,12 @@ impl Serialize for LocalValue {
                 obj.serialize_entry("text", string)?;
                 obj.end()
             },
+            LocalValue::Counter(ref value) => {
+                let mut obj = serializer.serialize_map(Some(2))?;
+                obj.serialize_entry("__TYPE__", "counter")?;
+                obj.serialize_entry("value", value)?;
+                obj.end()
+            },
             LocalValue::Arr(ref array) =>
                 serializer.serialize_some(array),
             LocalValue::Str(ref string) =>
