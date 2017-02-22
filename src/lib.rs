@@ -9,6 +9,7 @@ extern crate serde;
 
 mod array;
 mod attributed_string;
+mod counter;
 mod crdt;
 mod error;
 mod local_value;

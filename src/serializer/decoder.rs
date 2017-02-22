@@ -6,11 +6,12 @@ use object::element::Element as ObjectElement;
 use object::Object;
 use object::uid::UID as ObjectUID;
 use op::{NestedRemoteOp, RemoteOp};
-use op::remote::{UpdateObject,UpdateArray,UpdateAttributedString};
+use op::remote::{IncrementCounter,UpdateObject,UpdateArray,UpdateAttributedString};
 use sequence::uid::UID as SequenceUID;
 use std::collections::HashMap;
 use std::str::FromStr;
 use Value;
+use Replica;
 use serde::{Deserialize, Deserializer};
 use serde::de::{self, Visitor, SeqVisitor};
 use std::fmt;
@@ -31,20 +32,26 @@ impl Deserialize for NestedRemoteOp {
                 let pointer: String = visitor.visit()?.ok_or(de::Error::missing_field("pointer"))?;
 
                 let op = match code {
-                    3 => {
+                    5 => {
+                        let amount: f64 = visitor.visit()?.ok_or(de::Error::missing_field("IncrementCounter amount"))?;
+                        let replica: Replica = visitor.visit()?.ok_or(de::Error::missing_field("IncrementCounter replica"))?;
+                        let op = IncrementCounter{amount: amount, replica: replica};
+                        RemoteOp::IncrementCounter(op)
+                    },
+                    6 => {
                         let key: String = visitor.visit()?.ok_or(de::Error::missing_field("UpdateObject key"))?;
                         let inserts: Vec<ObjectElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateObject inserts"))?;
                         let deletes: Vec<ObjectElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateObject deletes"))?;
                         let op = UpdateObject{key: key, inserts: inserts, deletes: deletes};
                         RemoteOp::UpdateObject(op)
                     },
-                    4 => {
+                    7 => {
                         let inserts: Vec<ArrayElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateArray inserts"))?;
                         let deletes: Vec<ArrayElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateArray deletes"))?;
                         let op = UpdateArray{inserts: inserts, deletes: deletes};
                         RemoteOp::UpdateArray(op)
                     },
-                    5 => {
+                    8 => {
                         let inserts: Vec<AttrStrElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateAttrstr inserts"))?;
                         let deletes: Vec<AttrStrElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateAttrstr deletes"))?;
                         let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
@@ -202,5 +209,27 @@ impl Deserialize for ObjectElement {
         }
 
         deserializer.deserialize_seq(ObjectElementVisitor)
+    }
+}
+
+impl Deserialize for Replica {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer {
+        struct ReplicaVisitor;
+
+        impl Visitor for ReplicaVisitor {
+            type Value = Replica;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a valid Replica")
+            }
+
+            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqVisitor {
+                let site: u32 = visitor.visit()?.ok_or(de::Error::missing_field("Replica site"))?;
+                let counter: u32 = visitor.visit()?.ok_or(de::Error::missing_field("Replica counter"))?;
+                Ok(Replica::new(site, counter))
+            }
+        }
+
+        deserializer.deserialize_seq(ReplicaVisitor)
     }
 }

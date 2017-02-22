@@ -8,6 +8,7 @@ use Replica;
 use Value;
 use object::Object;
 use attributed_string::AttributedString;
+use counter::Counter;
 use array::Array;
 use std::collections::HashMap;
 
@@ -16,6 +17,7 @@ pub enum LocalValue {
     Obj(HashMap<String, LocalValue>),
     AttrStr(String),
     Arr(Vec<LocalValue>),
+    Counter(f64),
     Str(String),
     Num(f64),
     Bool(bool),
@@ -44,6 +46,8 @@ impl LocalValue {
                 }
                 Value::Arr(array)
             },
+            LocalValue::Counter(value) =>
+                Value::Counter(Counter::new(value)),
             LocalValue::Str(string) =>
                 Value::Str(string),
             LocalValue::Num(number) =>
@@ -78,6 +82,8 @@ impl From<Value> for LocalValue {
             },
             Value::AttrStr(attrstr) =>
                 LocalValue::AttrStr(attrstr.to_string()),
+            Value::Counter(counter) =>
+                LocalValue::Counter(counter.value),
             Value::Str(string) =>
                 LocalValue::Str(string),
             Value::Num(number) =>
@@ -199,6 +205,20 @@ mod tests {
 
         assert!(encoded1 == encoded2);
         assert!(decoded == original);
+    }
+
+    #[test]
+    fn test_counter() {
+        let original = LocalValue::Counter(843.5);
+        let encoded  = serde_json::to_string(&original).unwrap();
+        let decoded: LocalValue = serde_json::from_str(&encoded).unwrap();
+
+        assert!(encoded == r#"{"__TYPE__":"counter","value":843.5}"#);
+        assert!(decoded == original);
+
+        let value = decoded.to_value(&REPLICA);
+        let from_value: LocalValue = value.into();
+        assert!(from_value == original);
     }
 
     #[test]

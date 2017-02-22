@@ -1,5 +1,6 @@
 use array::Array;
 use attributed_string::AttributedString;
+use counter::Counter;
 use Error;
 use object::{self, Object};
 use op::{RemoteOp, LocalOp};
@@ -12,6 +13,7 @@ pub enum Value {
     Obj(Object),
     Arr(Array),
     AttrStr(AttributedString),
+    Counter(Counter),
     Str(String),
     Num(f64),
     Bool(bool),
@@ -49,6 +51,13 @@ impl Value {
         match *self {
             Value::AttrStr(ref mut string) => Ok(string),
             _ => Err(Error::ValueMismatch("attrstr")),
+        }
+    }
+
+    pub fn as_counter<'a>(&'a mut self) -> Result<&'a mut Counter, Error> {
+        match *self {
+            Value::Counter(ref mut counter) => Ok(counter),
+            _ => Err(Error::ValueMismatch("counter")),
         }
     }
 
@@ -143,6 +152,11 @@ impl Value {
                 let mut attrstr = self.as_attributed_string()?;
                 let remote_op = attrstr.replace_text(op.index, op.len, op.text, replica)?;
                 Ok(RemoteOp::UpdateAttributedString(remote_op))
+            },
+            LocalOp::Increment(op) => {
+                let mut counter = self.as_counter()?;
+                let remote_op = counter.increment(op.amount, replica);
+                Ok(RemoteOp::IncrementCounter(remote_op))
             },
         }
     }

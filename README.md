@@ -47,6 +47,8 @@ assert!(crdt1 == crdt2);
 
 **AttributedString** stores and efficiently edits large mutable strings. Indexed by unicode character. Supported functions are `insert_text`, `delete_text`, and `replace_text`.
 
+**Counter**, a mutable 64-bit float. Supports the `increment` function. Counters require more space than Numbers and should only be used when concurrent increments are required.
+
 **String**, an immutable string.
 
 **Number**, an immutable 64-bit float.

@@ -1,9 +1,11 @@
 use array;
 use attributed_string;
+use counter;
 use object;
 use op::{NestedRemoteOp, RemoteOp};
 use serde::{Serialize, Serializer};
 use serde::ser::SerializeSeq;
+use Replica;
 use Value;
 
 impl Serialize for Value {
@@ -15,6 +17,8 @@ impl Serialize for Value {
                 serializer.serialize_some(array),
             Value::AttrStr(ref attrstr) =>
                 serializer.serialize_some(attrstr),
+            Value::Counter(ref counter) =>
+                serializer.serialize_some(counter),
             Value::Str(ref string) =>
                 serializer.serialize_str(string),
             Value::Num(number) =>
@@ -31,24 +35,31 @@ impl Serialize for NestedRemoteOp {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
         let mut seq = serializer.serialize_seq(None)?;
         match self.op {
-            // encode UpdateObject op as [3,pointer,key,[ObjectElement],[ObjectElement]]
+            // encode IncrementCounter as [5,pointer,amount,Replica]
+            RemoteOp::IncrementCounter(ref op) => {
+                seq.serialize_element(&5)?;
+                seq.serialize_element(&self.pointer)?;
+                seq.serialize_element(&op.amount)?;
+                seq.serialize_element(&op.replica)?;
+            },
+            // encode UpdateObject op as [6,pointer,key,[ObjectElement],[ObjectElement]]
             RemoteOp::UpdateObject(ref op) => {
-                seq.serialize_element(&3)?;
+                seq.serialize_element(&6)?;
                 seq.serialize_element(&self.pointer)?;
                 seq.serialize_element(&op.key)?;
                 seq.serialize_element(&op.inserts)?;
                 seq.serialize_element(&op.deletes)?;
             },
-            // encode UpdateArray op as [4,pointer,[ArrayElement],[ArrayElement]]
+            // encode UpdateArray op as [7,pointer,[ArrayElement],[ArrayElement]]
             RemoteOp::UpdateArray(ref op) => {
-                seq.serialize_element(&4)?;
+                seq.serialize_element(&7)?;
                 seq.serialize_element(&self.pointer)?;
                 seq.serialize_element(&op.inserts)?;
                 seq.serialize_element(&op.deletes)?;
             },
-            // encode UpdateAttributedString as [5,pointer,[AttrStrElement],[AttrStrElement]]
+            // encode UpdateAttributedString as [8,pointer,[AttrStrElement],[AttrStrElement]]
             RemoteOp::UpdateAttributedString(ref op) => {
-                seq.serialize_element(&5)?;
+                seq.serialize_element(&8)?;
                 seq.serialize_element(&self.pointer)?;
                 seq.serialize_element(&op.inserts)?;
                 seq.serialize_element(&op.deletes)?;
@@ -89,6 +100,17 @@ impl Serialize for object::Object {
     }
 }
 
+// encode Counter as [3,value,[Replica]]
+impl Serialize for counter::Counter {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut seq = serializer.serialize_seq(Some(3))?;
+        seq.serialize_element(&3)?;
+        seq.serialize_element(&self.value)?;
+        seq.serialize_element(&self.site_counters)?;
+        seq.end()
+    }
+}
+
 // encode AttributedString element as [SequenceUID,text]
 impl Serialize for attributed_string::element::Element {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
@@ -115,6 +137,16 @@ impl Serialize for object::element::Element {
         let mut seq = serializer.serialize_seq(Some(2))?;
         seq.serialize_element(&self.uid.to_string())?;
         seq.serialize_element(&self.value)?;
+        seq.end()
+    }
+}
+
+// encode Replica as [site,counter]
+impl Serialize for Replica {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        let mut seq = serializer.serialize_seq(Some(2))?;
+        seq.serialize_element(&self.site)?;
+        seq.serialize_element(&self.counter)?;
         seq.end()
     }
 }
