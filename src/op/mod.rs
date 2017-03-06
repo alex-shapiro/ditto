@@ -17,6 +17,13 @@ pub struct NestedRemoteOp {
 }
 
 impl NestedRemoteOp {
+    /// Returns true if the NestedRemoteOp's inserts all use
+    /// the given site; otherwise returns false.
+    pub fn validate(&self, site: u32) -> bool {
+        self.op.validate(site)
+    }
+
+    /// Reverses the NestedRemoteOp's effect
     pub fn reverse(&self) -> Self {
         NestedRemoteOp{pointer: self.pointer.clone(), op: self.op.reverse()}
     }

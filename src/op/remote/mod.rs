@@ -17,6 +17,19 @@ pub enum RemoteOp {
 }
 
 impl RemoteOp {
+    pub fn validate(&self, site: u32) -> bool {
+        match *self {
+            RemoteOp::IncrementCounter(ref op) =>
+                op.validate(site),
+            RemoteOp::UpdateArray(ref op) =>
+                op.validate(site),
+            RemoteOp::UpdateAttributedString(ref op) =>
+                op.validate(site),
+            RemoteOp::UpdateObject(ref op) =>
+                op.validate(site),
+        }
+    }
+
     pub fn reverse(&self) -> Self {
         match *self {
             RemoteOp::IncrementCounter(ref op) =>
@@ -31,6 +44,7 @@ impl RemoteOp {
     }
 }
 
-pub trait Reverse {
+pub trait RemoteOpTrait {
+    fn validate(&self, site: u32) -> bool;
     fn reverse(&self) -> Self;
 }
