@@ -1,4 +1,4 @@
-use super::Reverse;
+use super::RemoteOpTrait;
 use attributed_string::element::Element;
 
 #[derive(Clone,Debug,PartialEq,Default)]
@@ -24,11 +24,48 @@ impl UpdateAttributedString {
     }
 }
 
-impl Reverse for UpdateAttributedString {
+impl RemoteOpTrait for UpdateAttributedString {
+    fn validate(&self, site: u32) -> bool {
+        for i in &self.inserts {
+            if i.uid.site != site { return false }
+        }
+        true
+    }
+
     fn reverse(&self) -> Self {
         UpdateAttributedString {
             inserts: self.deletes.clone(),
             deletes: self.inserts.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate() {
+        let op1 = UpdateAttributedString{
+            inserts: vec![element(83), element(83)],
+            deletes: vec![element(1), element(77)],
+        };
+
+        let op2 = UpdateAttributedString{
+            inserts: vec![element(83), element(77)],
+            deletes: vec![element(1), element(77)],
+        };
+
+        assert!(op1.validate(83));
+        assert!(!op1.validate(77));
+        assert!(!op2.validate(83));
+        assert!(!op2.validate(77));
+    }
+
+    fn element(site: u32) -> Element {
+        use replica::Replica;
+        use sequence::uid;
+        let uid = uid::UID::between(&uid::UID::min(), &uid::MAX, &Replica::new(site, 1));
+        Element::text(String::new(), uid)
     }
 }

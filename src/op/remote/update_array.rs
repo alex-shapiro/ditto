@@ -1,4 +1,4 @@
-use super::Reverse;
+use super::RemoteOpTrait;
 use array::element::Element;
 
 #[derive(Clone,Debug,PartialEq)]
@@ -24,11 +24,49 @@ impl UpdateArray {
     }
 }
 
-impl Reverse for UpdateArray {
+impl RemoteOpTrait for UpdateArray {
+    fn validate(&self, site: u32) -> bool {
+        for i in &self.inserts {
+            if i.uid.site != site { return false }
+        }
+        true
+    }
+
     fn reverse(&self) -> Self {
         UpdateArray {
             inserts: self.deletes.clone(),
             deletes: self.inserts.clone(),
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_validate() {
+        let op1 = UpdateArray{
+            inserts: vec![element(42), element(42)],
+            deletes: vec![element(1), element(32)],
+        };
+
+        let op2 = UpdateArray{
+            inserts: vec![element(42), element(32)],
+            deletes: vec![element(1), element(32)],
+        };
+
+        assert!(op1.validate(42));
+        assert!(!op1.validate(32));
+        assert!(!op2.validate(42));
+        assert!(!op2.validate(32));
+    }
+
+    fn element(site: u32) -> Element {
+        use replica::Replica;
+        use value::Value;
+        use sequence::uid;
+        let uid = uid::UID::between(&uid::UID::min(), &uid::MAX, &Replica::new(site, 1));
+        Element::new(Value::Num(1.0), uid)
     }
 }
