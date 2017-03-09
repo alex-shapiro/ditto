@@ -36,6 +36,14 @@ impl Counter {
             Some(Increment::new(op.amount))
         }
     }
+
+    pub fn replicas_vec(&self) -> Vec<Replica> {
+        let mut replicas = Vec::with_capacity(self.site_counters.len());
+        for (site, counter) in &self.site_counters {
+            replicas.push(Replica::new(*site, *counter))
+        }
+        replicas
+    }
 }
 
 #[cfg(test)]
