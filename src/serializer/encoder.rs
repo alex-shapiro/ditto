@@ -106,7 +106,7 @@ impl Serialize for counter::Counter {
         let mut seq = serializer.serialize_seq(Some(3))?;
         seq.serialize_element(&3)?;
         seq.serialize_element(&self.value)?;
-        seq.serialize_element(&self.site_counters)?;
+        seq.serialize_element(&self.replicas_vec())?;
         seq.end()
     }
 }

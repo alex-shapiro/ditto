@@ -6,6 +6,7 @@ mod tests {
     use array::Array;
     use attributed_string::AttributedString;
     use object::Object;
+    use counter::Counter;
     use op::{NestedRemoteOp, RemoteOp};
     use Replica;
     use serde_json;
@@ -53,6 +54,15 @@ mod tests {
         let encoded  = serde_json::to_string(&original).unwrap();
         let decoded: Value = serde_json::from_str(&encoded).unwrap();
         assert!(encoded == "\"hi!\"");
+        assert!(original == decoded);
+    }
+
+    #[test]
+    fn test_counter() {
+        let original = Value::Counter(Counter::new(123.0));
+        let encoded = serde_json::to_string(&original).unwrap();
+        let decoded: Value = serde_json::from_str(&encoded).unwrap();
+        assert!(encoded == "[3,123.0,[]]");
         assert!(original == decoded);
     }
 

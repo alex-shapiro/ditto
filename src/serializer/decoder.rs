@@ -2,6 +2,7 @@ use array::Array;
 use array::element::Element as ArrayElement;
 use attributed_string::AttributedString;
 use attributed_string::element::Element as AttrStrElement;
+use counter::Counter;
 use object::element::Element as ObjectElement;
 use object::Object;
 use object::uid::UID as ObjectUID;
@@ -133,6 +134,16 @@ impl Deserialize for Value {
 
                         let object = Object::assemble(map);
                         Ok(Value::Obj(object))
+                    },
+                    3 => {
+                        let value: f64 = visitor.visit()?.ok_or(de::Error::missing_field("Counter value"))?;
+                        let replicas: Vec<Replica> = visitor.visit()?.ok_or(de::Error::missing_field("Counter replicas"))?;
+                        let mut site_counters = HashMap::new();
+                        for replica in replicas {
+                            site_counters.insert(replica.site, replica.counter);
+                        }
+                        let counter = Counter{value: value, site_counters: site_counters};
+                        Ok(Value::Counter(counter))
                     }
                     _ => return Err(de::Error::missing_field("invalid Value code")),
                 }
