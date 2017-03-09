@@ -1,5 +1,5 @@
 use Replica;
-use op::local::Increment;
+use op::local::{LocalOp, Increment};
 use op::remote::IncrementCounter;
 use std::collections::HashMap;
 
@@ -21,7 +21,7 @@ impl Counter {
         IncrementCounter{amount: amount, replica: replica.clone()}
     }
 
-    pub fn execute_remote(&mut self, op: &IncrementCounter) -> Option<Increment> {
+    pub fn execute_remote(&mut self, op: &IncrementCounter) -> Option<LocalOp> {
         let is_duplicate =
             match self.site_counters.get(&op.replica.site) {
                 Some(counter) => *counter >= op.replica.counter,
@@ -33,7 +33,7 @@ impl Counter {
         } else {
             self.value += op.amount;
             self.site_counters.insert(op.replica.site, op.replica.counter);
-            Some(Increment::new(op.amount))
+            Some(LocalOp::Increment(Increment::new(op.amount)))
         }
     }
 
@@ -91,9 +91,9 @@ mod tests {
         let lop3 = counter2.execute_remote(&op3).unwrap();
 
         assert!(counter1 == counter2);
-        assert!(lop1.amount == 1.0);
-        assert!(lop2.amount == 5.0);
-        assert!(lop3.amount == 7.0);
+        assert!(lop1.increment().unwrap().amount == 1.0);
+        assert!(lop2.increment().unwrap().amount == 5.0);
+        assert!(lop3.increment().unwrap().amount == 7.0);
     }
 
     #[test]

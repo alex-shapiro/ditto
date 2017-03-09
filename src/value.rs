@@ -169,6 +169,8 @@ impl Value {
                 Ok(array.execute_remote(op)),
             (&mut Value::AttrStr(ref mut attrstr), &RemoteOp::UpdateAttributedString(ref op)) =>
                 Ok(attrstr.execute_remote(op)),
+            (&mut Value::Counter(ref mut counter), &RemoteOp::IncrementCounter(ref op)) =>
+                Ok(counter.execute_remote(op).map_or(vec![], |local_op| vec![local_op])),
             _ =>
                 Err(Error::InvalidRemoteOp),
         }
