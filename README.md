@@ -26,17 +26,17 @@ let op5 = crdt2.insert_item("", 1, "\"Hello!\"").unwrap();
 let op6 = crdt2.insert_item("", 2, "true").unwrap();
 
 // alice sends crdt2's operations to bob. He executes them on crdt1.
-crdt1.execute_remote(op4);
-crdt1.execute_remote(op5);
-crdt1.execute_remote(op6);
+crdt1.execute_remote(&op4);
+crdt1.execute_remote(&op5);
+crdt1.execute_remote(&op6);
 
 // bob sends crdt1's operations to alice. She executes them on crdt2.
-crdt2.execute_remote(op1);
-crdt2.execute_remote(op2);
-crdt2.execute_remote(op3);
+crdt2.execute_remote(&op1);
+crdt2.execute_remote(&op2);
+crdt2.execute_remote(&op3);
 
 // after all operations are replicated at both sites, the sites are identical.
-assert!(crdt1 == crdt2);
+assert!(crdt1.value() == crdt2.value());
 ```
 
 ## Supported Types

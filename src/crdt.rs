@@ -155,7 +155,7 @@ impl CRDT {
 
     /// Executes a `NestedRemoteOp`, replicating an operation that
     /// was generated at another site.
-    pub fn execute_remote(&mut self, nested_op: NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
+    pub fn execute_remote(&mut self, nested_op: &NestedRemoteOp) -> R<Vec<NestedLocalOp>> {
         let (mut value, local_ptr) = {
             let ref ptr = nested_op.pointer;
             self.root_value.get_nested_remote(ptr)?

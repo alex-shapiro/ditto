@@ -22,14 +22,14 @@ fn example() {
     let op6 = crdt2.insert_item("", 2, "true").unwrap();
 
     // alice sends crdt2's operations to bob. He executes them on crdt1.
-    let _ = crdt1.execute_remote(op4);
-    let _ = crdt1.execute_remote(op5);
-    let _ = crdt1.execute_remote(op6);
+    let _ = crdt1.execute_remote(&op4);
+    let _ = crdt1.execute_remote(&op5);
+    let _ = crdt1.execute_remote(&op6);
 
     // bob sends crdt1's operations to alice. She executes them on crdt2.
-    let _ = crdt2.execute_remote(op1);
-    let _ = crdt2.execute_remote(op2);
-    let _ = crdt2.execute_remote(op3);
+    let _ = crdt2.execute_remote(&op1);
+    let _ = crdt2.execute_remote(&op2);
+    let _ = crdt2.execute_remote(&op3);
 
     // after all operations are replicated at both sites, the sites are identical.
     assert!(crdt1.value() == crdt2.value());
