@@ -6,10 +6,10 @@ use ditto::CRDT;
 fn example() {
     // bob creates a CRDT and dumps its value
     let mut crdt1 = CRDT::create("[1, 2, 3]").unwrap();
-    let crdt1_value = crdt1.dump();
+    let crdt1_value = crdt1.dump_value();
 
     // bob sends crdt1_value to alice, who loads it into crdt2.
-    let mut crdt2 = CRDT::load(&crdt1_value, 2, 0).unwrap();
+    let mut crdt2 = CRDT::load_value(&crdt1_value, 2, 0).unwrap();
 
     // crdt1 executes some operations
     let op1 = crdt1.delete_item("", 1).unwrap();

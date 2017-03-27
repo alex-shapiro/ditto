@@ -3,6 +3,8 @@ use std::num::ParseIntError;
 
 #[derive(Clone,PartialEq,Debug)]
 pub enum Error {
+    AlreadyHasSite,
+    AwaitingSite,
     DecodeCompact,
     DeserializeObjectUID,
     DeserializeSequenceUID,
