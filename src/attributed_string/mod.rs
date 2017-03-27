@@ -171,6 +171,15 @@ impl AttributedString {
         local_ops
     }
 
+    pub fn update_site(&mut self, op: &UpdateAttributedString, site: u32) {
+        for insert in &op.inserts {
+            if let Some(mut e) = self.0.delete(&insert.uid) {
+                e.uid.site = site;
+                let _ = self.0.insert(e);
+            }
+        }
+    }
+
     fn delete_at(&mut self, index: usize) -> Result<(Element, usize), Error> {
         let (uid, offset) = {
             let (element, offset) = self.0.get_element(index)?;
@@ -188,6 +197,8 @@ impl AttributedString {
             Ok(prev)
         }
     }
+
+
 }
 
 #[cfg(test)]
@@ -516,6 +527,24 @@ mod tests {
         attrstr.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
         attrstr.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
         assert!(attrstr.to_string() == "the quick brown");
+    }
+
+    #[test]
+    fn test_update_site() {
+        let mut attrstr = AttributedString::new();
+        let op1 = attrstr.insert_text(0, "a".to_owned(), &Replica::new(0, 1)).unwrap();
+        let op2 = attrstr.insert_text(1, "b".to_owned(), &Replica::new(0, 2)).unwrap();
+
+        attrstr.update_site(&op1, 4);
+        attrstr.update_site(&op2, 8);
+
+        let (e1, _) = attrstr.0.get_element(0).unwrap();
+        assert!(e1.uid.site == 4);
+        assert!(e1.uid.counter == 1);
+
+        let (e2, _) = attrstr.0.get_element(1).unwrap();
+        assert!(e2.uid.site == 8);
+        assert!(e2.uid.counter == 2);
     }
 
     fn elt_at<'a>(string: &'a AttributedString, index: usize, text: &'static str) -> &'a Element {

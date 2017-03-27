@@ -92,6 +92,14 @@ impl Object {
         }
         vec
     }
+
+    pub fn update_site(&mut self, op: &UpdateObject, site: u32) {
+        if let Some(ref mut elements) = self.0.get_mut(&op.key) {
+            for e in elements.iter_mut() {
+                if e.uid.site == 0 { e.uid.site = site; }
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -189,5 +197,17 @@ mod tests {
         assert!(local_op.put().unwrap().key == "foo".to_owned());
         assert!(local_op.put().unwrap().value == LocalValue::Bool(true));
         assert!(remote_op3.deletes[0].value == Value::Bool(false));
+    }
+
+    #[test]
+    fn test_update_site() {
+        let mut object = Object::new();
+        let op1 = object.put("foo", Value::Bool(true), &Replica::new(0, 100));
+        let op2 = object.put("bar", Value::Bool(true), &Replica::new(0, 101));
+
+        object.update_site(&op1, 14);
+        object.update_site(&op2, 87);
+        assert!(object.0.get("foo").unwrap()[0].uid.site == 14);
+        assert!(object.0.get("bar").unwrap()[0].uid.site == 87);
     }
 }

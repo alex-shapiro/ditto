@@ -9,13 +9,13 @@ pub enum Error {
     DuplicateUID,
     InvalidIndex,
     InvalidJson,
+    InvalidLocalOp,
     InvalidPath,
     InvalidRemoteOp,
     KeyDoesNotExist,
     Noop,
     OutOfBounds,
     UIDDoesNotExist,
-    ValueMismatch(&'static str),
     VLQNoTerminatingByte,
 }
 

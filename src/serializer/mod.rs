@@ -118,9 +118,9 @@ mod tests {
     #[test]
     fn test_nested() {
         let mut array = Array::new();
-        let _ = array.insert(0, Value::object(), &Replica::new(34,2));
-        let _ = array.insert(1, Value::attrstr(), &Replica::new(392,12));
-        let _ = array.insert(2, Value::array(), &Replica::new(4782,4));
+        let _ = array.insert(0, Value::Obj(Object::new()), &Replica::new(34,2));
+        let _ = array.insert(1, Value::Arr(Array::new()), &Replica::new(392,12));
+        let _ = array.insert(2, Value::Arr(Array::new()), &Replica::new(4782,4));
 
         let original = Value::Arr(array);
         let encoded  = serde_json::to_string(&original).unwrap();
