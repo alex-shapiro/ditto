@@ -108,6 +108,15 @@ impl Array {
         elements.remove(0);
         elements
     }
+
+    pub fn update_site(&mut self, op: &UpdateArray, site: u32) {
+        for insert in &op.inserts {
+            let uid = &insert.uid;
+            if let Ok(index) = self.0.binary_search_by(|elt| elt.uid.cmp(uid)) {
+                self.0[index].uid.site = site;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -236,5 +245,18 @@ mod tests {
         assert!(array1 == array2);
         assert!(lops1.len() == 1);
         assert!(lops2.len() == 0);
+    }
+
+    #[test]
+    fn test_update_site() {
+        let mut array = Array::new();
+        let _  = array.insert(0, Value::Num(1.0), &Replica::new(0,42));
+        let op = array.insert(1, Value::Num(1.0), &Replica::new(0,43)).unwrap();
+        let _  = array.insert(2, Value::Num(1.0), &Replica::new(0,434));
+
+        array.update_site(&op, 4);
+        assert!(array.0[1].uid.site == 0);
+        assert!(array.0[2].uid.site == 4 && array.0[2].uid.counter == 43);
+        assert!(array.0[3].uid.site == 0);
     }
 }

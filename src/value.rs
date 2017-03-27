@@ -21,46 +21,6 @@ pub enum Value {
 }
 
 impl Value {
-    pub fn object() -> Self {
-        Value::Obj(Object::new())
-    }
-
-    pub fn array() -> Self {
-        Value::Arr(Array::new())
-    }
-
-    pub fn attrstr() -> Self {
-        Value::AttrStr(AttributedString::new())
-    }
-
-    pub fn as_object<'a>(&'a mut self) -> Result<&'a mut Object, Error> {
-        match *self {
-            Value::Obj(ref mut object) => Ok(object),
-            _ => Err(Error::ValueMismatch("object")),
-        }
-    }
-
-    pub fn as_array<'a>(&'a mut self) -> Result<&'a mut Array, Error> {
-        match *self {
-            Value::Arr(ref mut array) => Ok(array),
-            _ => Err(Error::ValueMismatch("array")),
-        }
-    }
-
-    pub fn as_attributed_string<'a>(&'a mut self) -> Result<&'a mut AttributedString, Error> {
-        match *self {
-            Value::AttrStr(ref mut string) => Ok(string),
-            _ => Err(Error::ValueMismatch("attrstr")),
-        }
-    }
-
-    pub fn as_counter<'a>(&'a mut self) -> Result<&'a mut Counter, Error> {
-        match *self {
-            Value::Counter(ref mut counter) => Ok(counter),
-            _ => Err(Error::ValueMismatch("counter")),
-        }
-    }
-
     pub fn get_nested_local(&mut self, pointer: &str) -> Result<(&mut Value, String), Error> {
         let mut value = Some(self);
         let mut remote_pointer = String::new();
@@ -82,7 +42,7 @@ impl Value {
                     Some(&mut element.value)
                 },
                 _ =>
-                    return Err(Error::ValueMismatch("pointer")),
+                    return Err(Error::InvalidPath),
             }
         }
         Ok((value.unwrap(), remote_pointer))
@@ -109,55 +69,23 @@ impl Value {
                     Some(&mut element.value)
                 },
                 _ => {
-                    return Err(Error::ValueMismatch("pointer"))
+                    return Err(Error::InvalidPath)
                 }
             }
         }
         Ok((value.unwrap(), local_pointer))
     }
 
-    pub fn execute_local(&mut self, op: LocalOp, replica: &Replica) -> Result<RemoteOp, Error> {
-        match op {
-            LocalOp::Put(op) => {
-                let mut object = self.as_object()?;
-                let remote_op = object.put(&op.key, op.value.to_value(replica), replica);
-                Ok(RemoteOp::UpdateObject(remote_op))
-            },
-            LocalOp::Delete(op) => {
-                let mut object = self.as_object()?;
-                let remote_op = object.delete(&op.key)?;
-                Ok(RemoteOp::UpdateObject(remote_op))
-            },
-            LocalOp::InsertItem(op) => {
-                let mut array = self.as_array()?;
-                let remote_op = array.insert(op.index, op.value.to_value(replica), replica)?;
-                Ok(RemoteOp::UpdateArray(remote_op))
-            },
-            LocalOp::DeleteItem(op) => {
-                let mut array = self.as_array()?;
-                let remote_op = array.delete(op.index)?;
-                Ok(RemoteOp::UpdateArray(remote_op))
-            },
-            LocalOp::InsertText(op) => {
-                let mut attrstr = self.as_attributed_string()?;
-                let remote_op = attrstr.insert_text(op.index, op.text, replica)?;
-                Ok(RemoteOp::UpdateAttributedString(remote_op))
-            },
-            LocalOp::DeleteText(op) => {
-                let mut attrstr = self.as_attributed_string()?;
-                let remote_op = attrstr.delete_text(op.index, op.len, replica)?;
-                Ok(RemoteOp::UpdateAttributedString(remote_op))
-            },
-            LocalOp::ReplaceText(op) => {
-                let mut attrstr = self.as_attributed_string()?;
-                let remote_op = attrstr.replace_text(op.index, op.len, op.text, replica)?;
-                Ok(RemoteOp::UpdateAttributedString(remote_op))
-            },
-            LocalOp::Increment(op) => {
-                let mut counter = self.as_counter()?;
-                let remote_op = counter.increment(op.amount, replica);
-                Ok(RemoteOp::IncrementCounter(remote_op))
-            },
+    pub fn execute_local(&mut self, local_op: LocalOp, replica: &Replica) -> Result<RemoteOp, Error> {
+        match local_op {
+            LocalOp::Put(op)         => self.put(&op.key, op.value.to_value(replica), replica),
+            LocalOp::Delete(op)      => self.delete(&op.key),
+            LocalOp::InsertItem(op)  => self.insert_item(op.index, op.value.to_value(replica), replica),
+            LocalOp::DeleteItem(op)  => self.delete_item(op.index),
+            LocalOp::InsertText(op)  => self.insert_text(op.index, op.text, replica),
+            LocalOp::DeleteText(op)  => self.delete_text(op.index, op.len, replica),
+            LocalOp::ReplaceText(op) => self.replace_text(op.index, op.len, op.text, replica),
+            LocalOp::Increment(op)   => self.increment(op.amount, replica),
         }
     }
 
@@ -173,6 +101,81 @@ impl Value {
                 Ok(counter.execute_remote(op).map_or(vec![], |local_op| vec![local_op])),
             _ =>
                 Err(Error::InvalidRemoteOp),
+        }
+    }
+
+    pub fn update_site(&mut self, remote_op: &RemoteOp, site: u32) -> Result<(), Error> {
+        match (self, remote_op) {
+            (&mut Value::Obj(ref mut object), &RemoteOp::UpdateObject(ref op)) =>
+                Ok(object.update_site(op, site)),
+
+            (&mut Value::Arr(ref mut array), &RemoteOp::UpdateArray(ref op)) =>
+                Ok(array.update_site(op, site)),
+
+            (&mut Value::AttrStr(ref mut attrstr), &RemoteOp::UpdateAttributedString(ref op)) =>
+                Ok(attrstr.update_site(op, site)),
+
+            (&mut Value::Counter(ref mut counter), &RemoteOp::IncrementCounter(ref op)) =>
+                Ok(counter.update_site(op, site)),
+
+            _ =>
+                Err(Error::InvalidPath),
+        }
+    }
+
+    fn put(&mut self, key: &str, value: Self, replica: &Replica) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::Obj(ref mut o) => Ok(RemoteOp::UpdateObject(o.put(key, value, replica))),
+            _ => Err(Error::InvalidLocalOp),
+        }
+    }
+
+    fn delete(&mut self, key: &str) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::Obj(ref mut o) => Ok(RemoteOp::UpdateObject(o.delete(key)?)),
+            _ => Err(Error::InvalidLocalOp),
+        }
+    }
+
+    fn insert_item(&mut self, index: usize, value: Self, replica: &Replica) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::Arr(ref mut a) => Ok(RemoteOp::UpdateArray(a.insert(index, value, replica)?)),
+            _ => Err(Error::InvalidLocalOp)
+        }
+    }
+
+    fn delete_item(&mut self, index: usize) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::Arr(ref mut a) => Ok(RemoteOp::UpdateArray(a.delete(index)?)),
+            _ => Err(Error::InvalidLocalOp)
+        }
+    }
+
+    fn insert_text(&mut self, index: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::AttrStr(ref mut s) => Ok(RemoteOp::UpdateAttributedString(s.insert_text(index, text, replica)?)),
+            _ => Err(Error::InvalidLocalOp)
+        }
+    }
+
+    fn delete_text(&mut self, index: usize, len: usize, replica: &Replica) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::AttrStr(ref mut s) => Ok(RemoteOp::UpdateAttributedString(s.delete_text(index, len, replica)?)),
+            _ => Err(Error::InvalidLocalOp)
+        }
+    }
+
+    fn replace_text(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::AttrStr(ref mut s) => Ok(RemoteOp::UpdateAttributedString(s.replace_text(index, len, text, replica)?)),
+            _ => Err(Error::InvalidLocalOp)
+        }
+    }
+
+    fn increment(&mut self, amount: f64, replica: &Replica) -> Result<RemoteOp, Error> {
+        match *self {
+            Value::Counter(ref mut c) => Ok(RemoteOp::IncrementCounter(c.increment(amount, replica))),
+            _ => Err(Error::InvalidLocalOp)
         }
     }
 }
@@ -255,7 +258,7 @@ mod tests {
 
     #[test]
     fn test_get_nested_local_invalid_path() {
-        let mut root = Value::array();
+        let mut root = Value::Arr(Array::new());
         assert!(root.get_nested_local("x/0") == Err(Error::InvalidPath));
     }
 
@@ -326,7 +329,7 @@ mod tests {
 
     #[test]
     fn test_get_nested_remote_invalid_path() {
-        let mut root = Value::array();
+        let mut root = Value::Arr(Array::new());
         assert!(root.get_nested_remote("x/x") == Err(Error::InvalidPath));
     }
 

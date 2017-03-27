@@ -12,6 +12,10 @@ impl RemoteOpTrait for IncrementCounter {
         self.replica.site == site
     }
 
+    fn update_site(&mut self, site: u32) {
+        self.replica.site = site;
+    }
+
     fn reverse(&self) -> Self {
         IncrementCounter {
             amount: -self.amount,
@@ -29,6 +33,13 @@ mod tests {
         let op = IncrementCounter{amount: 1.0, replica: Replica::new(1,1)};
         assert!(op.validate(1));
         assert!(!op.validate(2));
+    }
+
+    #[test]
+    fn test_update_site() {
+        let mut op = IncrementCounter{amount: 1.0, replica: Replica::new(0, 3)};
+        op.update_site(132);
+        assert!(op.replica.site == 132);
     }
 
     #[test]

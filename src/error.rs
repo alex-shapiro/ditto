@@ -3,19 +3,21 @@ use std::num::ParseIntError;
 
 #[derive(Clone,PartialEq,Debug)]
 pub enum Error {
+    AlreadyHasSite,
+    AwaitingSite,
     DecodeCompact,
     DeserializeObjectUID,
     DeserializeSequenceUID,
     DuplicateUID,
     InvalidIndex,
     InvalidJson,
+    InvalidLocalOp,
     InvalidPath,
     InvalidRemoteOp,
     KeyDoesNotExist,
     Noop,
     OutOfBounds,
     UIDDoesNotExist,
-    ValueMismatch(&'static str),
     VLQNoTerminatingByte,
 }
 

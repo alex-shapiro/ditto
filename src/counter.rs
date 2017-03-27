@@ -44,6 +44,12 @@ impl Counter {
         }
         replicas
     }
+
+    pub fn update_site(&mut self, _: &IncrementCounter, site: u32) {
+        if let Some(counter) = self.site_counters.remove(&0) {
+            self.site_counters.insert(site, counter);
+        }
+    }
 }
 
 #[cfg(test)]
@@ -105,5 +111,15 @@ mod tests {
         assert!(counter.execute_remote(&op1).is_none());
         assert!(counter.execute_remote(&op2).is_none());
         assert!(counter.value == 7.0);
+    }
+
+    #[test]
+    fn test_update_site() {
+        let mut counter = Counter::new(0.0);
+        let op = counter.increment(1.0, &Replica::new(0, 84));
+        let _  = counter.increment(1.0, &Replica::new(0, 85));
+
+        counter.update_site(&op, 111);
+        assert!(counter.site_counters.get(&111) == Some(&85));
     }
 }
