@@ -79,7 +79,6 @@ mod tests {
         assert!(op.deletes[1].uid.site == 123);
     }
 
-
     fn element(site: u32) -> Element {
         use replica::Replica;
         use sequence::uid;

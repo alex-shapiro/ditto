@@ -49,15 +49,15 @@ impl CRDT {
     }
 
     /// Dumps the CRDT to a CRDT dump string. Use this function
-    /// to persist CRDTs locally. To dump a CRDT value from the
-    /// network, use `load_value`.
+    /// to persist CRDTs locally. To dump a CRDT value for remote
+    /// replication, use `dump_value`.
     pub fn dump(&self) -> String {
         serde_json::to_string(&self).unwrap()
     }
 
-    /// Constructs a CRDT from a CRDT value dump, a site,
-    /// and a counter. Use this function to load CRDT values
-    /// from the network. To load CRDTs locally, use `load`.
+    /// Constructs a CRDT from a CRDT value dump. Use this
+    /// function to load CRDT values from the network. To
+    /// load CRDTs locally, use `load`.
     pub fn load_value(value_str: &str) -> R<Self> {
         Ok(CRDT{
             root_value: serde_json::from_str(value_str)?,

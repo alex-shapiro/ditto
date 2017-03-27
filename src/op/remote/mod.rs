@@ -55,9 +55,6 @@ impl RemoteOp {
                 RemoteOp::UpdateObject(op.reverse()),
         }
     }
-
-
-
 }
 
 pub trait RemoteOpTrait {

@@ -197,8 +197,6 @@ impl AttributedString {
             Ok(prev)
         }
     }
-
-
 }
 
 #[cfg(test)]
