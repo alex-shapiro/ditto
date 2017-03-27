@@ -58,10 +58,12 @@ impl CRDT {
     /// Constructs a CRDT from a CRDT value dump, a site,
     /// and a counter. Use this function to load CRDT values
     /// from the network. To load CRDTs locally, use `load`.
-    pub fn load_value(value_str: &str, site: u32, counter: u32) -> R<Self> {
-        let replica = Replica::new(site, counter);
-        let value: Value = serde_json::from_str(value_str)?;
-        Ok(CRDT{root_value: value, replica: replica, awaiting_site: vec![]})
+    pub fn load_value(value_str: &str) -> R<Self> {
+        Ok(CRDT{
+            root_value: serde_json::from_str(value_str)?,
+            replica: Replica::new(0, 0),
+            awaiting_site: vec![]
+        })
     }
 
     /// Dumps the CRDT value to a CRDT value dump string. Use

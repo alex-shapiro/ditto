@@ -9,7 +9,8 @@ fn example() {
     let crdt1_value = crdt1.dump_value();
 
     // bob sends crdt1_value to alice, who loads it into crdt2.
-    let mut crdt2 = CRDT::load_value(&crdt1_value, 2, 0).unwrap();
+    let mut crdt2 = CRDT::load_value(&crdt1_value).unwrap();
+    let _ = crdt2.update_site(2).unwrap();
 
     // crdt1 executes some operations
     let op1 = crdt1.delete_item("", 1).unwrap();
