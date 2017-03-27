@@ -26,10 +26,13 @@ impl UpdateAttributedString {
 
 impl RemoteOpTrait for UpdateAttributedString {
     fn validate(&self, site: u32) -> bool {
-        for i in &self.inserts {
-            if i.uid.site != site { return false }
-        }
+        for i in &self.inserts { if i.uid.site != site { return false } }
         true
+    }
+
+    fn update_site(&mut self, site: u32) {
+        for i in &mut self.inserts { i.uid.site = site; }
+        for d in &mut self.deletes { if d.uid.site == 0 { d.uid.site = site; } }
     }
 
     fn reverse(&self) -> Self {
@@ -61,6 +64,21 @@ mod tests {
         assert!(!op2.validate(83));
         assert!(!op2.validate(77));
     }
+
+    #[test]
+    fn test_update_site() {
+        let mut op = UpdateAttributedString{
+            inserts: vec![element(0), element(0)],
+            deletes: vec![element(32), element(0)],
+        };
+
+        op.update_site(123);
+        assert!(op.inserts[0].uid.site == 123);
+        assert!(op.inserts[1].uid.site == 123);
+        assert!(op.deletes[0].uid.site == 32);
+        assert!(op.deletes[1].uid.site == 123);
+    }
+
 
     fn element(site: u32) -> Element {
         use replica::Replica;

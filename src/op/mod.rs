@@ -23,6 +23,11 @@ impl NestedRemoteOp {
         self.op.validate(site)
     }
 
+    /// Updates the NestedRemoteOp's site
+    pub fn update_site(&mut self, site: u32) {
+        self.op.update_site(site)
+    }
+
     /// Reverses the NestedRemoteOp's effect
     pub fn reverse(&self) -> Self {
         NestedRemoteOp{pointer: self.pointer.clone(), op: self.op.reverse()}

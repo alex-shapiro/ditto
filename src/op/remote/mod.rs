@@ -30,6 +30,19 @@ impl RemoteOp {
         }
     }
 
+    pub fn update_site(&mut self, site: u32) {
+        match *self {
+            RemoteOp::IncrementCounter(ref mut op) =>
+                op.update_site(site),
+            RemoteOp::UpdateArray(ref mut op) =>
+                op.update_site(site),
+            RemoteOp::UpdateAttributedString(ref mut op) =>
+                op.update_site(site),
+            RemoteOp::UpdateObject(ref mut op) =>
+                op.update_site(site),
+        }
+    }
+
     pub fn reverse(&self) -> Self {
         match *self {
             RemoteOp::IncrementCounter(ref op) =>
@@ -42,9 +55,13 @@ impl RemoteOp {
                 RemoteOp::UpdateObject(op.reverse()),
         }
     }
+
+
+
 }
 
 pub trait RemoteOpTrait {
     fn validate(&self, site: u32) -> bool;
+    fn update_site(&mut self, site: u32);
     fn reverse(&self) -> Self;
 }
