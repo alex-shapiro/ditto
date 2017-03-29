@@ -24,6 +24,7 @@ mod vlq;
 pub use crdt::CRDT;
 pub use error::Error;
 pub use replica::Replica;
+pub use value::IntoValue;
 pub use value::Value;
 pub use local_value::LocalValue;
 pub use op::NestedLocalOp;

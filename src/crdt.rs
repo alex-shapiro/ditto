@@ -1,5 +1,6 @@
 use Error;
 use op::{self, NestedLocalOp, NestedRemoteOp, LocalOp};
+use IntoValue;
 use LocalValue;
 use Replica;
 use serde_json;
@@ -55,12 +56,12 @@ impl CRDT {
         serde_json::to_string(&self).unwrap()
     }
 
-    /// Constructs a CRDT from a CRDT value dump. Use this
+    /// Constructs a CRDT from a CRDT value or value string. Use this
     /// function to load CRDT values from the network. To
     /// load CRDTs locally, use `load`.
-    pub fn load_value(value_str: &str) -> R<Self> {
+    pub fn load_value<T: IntoValue>(value: T) -> R<Self> {
         Ok(CRDT{
-            root_value: serde_json::from_str(value_str)?,
+            root_value: value.into_value()?,
             replica: Replica::new(0, 0),
             awaiting_site: vec![]
         })

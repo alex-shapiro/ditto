@@ -7,6 +7,7 @@ use op::{RemoteOp, LocalOp};
 use Replica;
 use sequence;
 use std::str::FromStr;
+use serde_json;
 
 #[derive(Debug,PartialEq,Clone)]
 pub enum Value {
@@ -18,6 +19,10 @@ pub enum Value {
     Num(f64),
     Bool(bool),
     Null,
+}
+
+pub trait IntoValue {
+    fn into_value(self) -> Result<Value, Error>;
 }
 
 impl Value {
@@ -177,6 +182,22 @@ impl Value {
             Value::Counter(ref mut c) => Ok(RemoteOp::IncrementCounter(c.increment(amount, replica))),
             _ => Err(Error::InvalidLocalOp)
         }
+    }
+}
+
+impl IntoValue for Value {
+    fn into_value(self) -> Result<Value, Error> { Ok(self) }
+}
+
+impl<'a> IntoValue for &'a str {
+    fn into_value(self) -> Result<Value, Error> {
+        Ok(serde_json::from_str(self)?)
+    }
+}
+
+impl<'a> IntoValue for &'a String {
+    fn into_value(self) -> Result<Value, Error> {
+        Ok(serde_json::from_str(self)?)
     }
 }
 
