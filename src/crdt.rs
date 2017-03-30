@@ -22,7 +22,7 @@ type R<T> = Result<T, Error>;
 /// JSON serialization. Network operations, namely unique site allocation
 /// and `NestedRemoteOp` syncing, are left to the user.
 ///
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CRDT {
     root_value: Value,
     replica: Replica,
