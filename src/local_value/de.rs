@@ -1,13 +1,13 @@
 use super::LocalValue;
-use serde::de::{self, Deserialize, Deserializer, Visitor, SeqVisitor, MapVisitor};
+use serde::de::{self, Deserialize, Deserializer, Visitor, SeqAccess, MapAccess};
 use std::collections::HashMap;
 use std::fmt;
 
-impl Deserialize for LocalValue {
-    fn deserialize<D>(deserializer: D) -> Result<LocalValue, D::Error> where D: Deserializer {
+impl<'de> Deserialize<'de> for LocalValue {
+    fn deserialize<D>(deserializer: D) -> Result<LocalValue, D::Error> where D: Deserializer<'de> {
         struct LocalValueVisitor;
 
-        impl Visitor for LocalValueVisitor {
+        impl<'de> Visitor<'de> for LocalValueVisitor {
             type Value = LocalValue;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -42,15 +42,15 @@ impl Deserialize for LocalValue {
                 Ok(LocalValue::Str(value))
             }
 
-            fn visit_seq<V>(self, mut visitor: V) -> Result<LocalValue, V::Error> where V: SeqVisitor {
+            fn visit_seq<V>(self, mut visitor: V) -> Result<LocalValue, V::Error> where V: SeqAccess<'de> {
                 let mut items: Vec<LocalValue> = vec![];
-                while let Some(value) = visitor.visit()? { items.push(value) }
+                while let Some(value) = visitor.next_element()? { items.push(value) }
                 Ok(LocalValue::Arr(items))
             }
 
-            fn visit_map<M>(self, mut visitor: M) -> Result<LocalValue, M::Error> where M: MapVisitor {
+            fn visit_map<M>(self, mut visitor: M) -> Result<LocalValue, M::Error> where M: MapAccess<'de> {
                 let mut map: HashMap<String, LocalValue> = HashMap::new();
-                while let Some((key, value)) = visitor.visit()? { map.insert(key, value); }
+                while let Some((key, value)) = visitor.next_entry()? { map.insert(key, value); }
 
                 if let Some(LocalValue::Str(special_type)) = map.remove("__TYPE__") {
                     if special_type == "attrstr" {
@@ -74,6 +74,6 @@ impl Deserialize for LocalValue {
             }
         }
 
-        deserializer.deserialize(LocalValueVisitor)
+        deserializer.deserialize_any(LocalValueVisitor)
     }
 }

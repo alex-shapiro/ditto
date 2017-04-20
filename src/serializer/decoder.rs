@@ -14,47 +14,47 @@ use std::str::FromStr;
 use Value;
 use Replica;
 use serde::{Deserialize, Deserializer};
-use serde::de::{self, Visitor, SeqVisitor};
+use serde::de::{self, Visitor, SeqAccess};
 use std::fmt;
 
-impl Deserialize for NestedRemoteOp {
-    fn deserialize<D>(deserializer: D) -> Result<NestedRemoteOp, D::Error> where D: Deserializer {
+impl<'de> Deserialize<'de> for NestedRemoteOp {
+    fn deserialize<D>(deserializer: D) -> Result<NestedRemoteOp, D::Error> where D: Deserializer<'de> {
         struct NestedRemoteOpVisitor;
 
-        impl Visitor for NestedRemoteOpVisitor {
+        impl<'de> Visitor<'de> for NestedRemoteOpVisitor {
             type Value = NestedRemoteOp;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("any valid NestedRemoteOp")
             }
 
-            fn visit_seq<V>(self, mut visitor: V) -> Result<NestedRemoteOp, V::Error> where V: SeqVisitor {
-                let code: u8 = visitor.visit()?.ok_or(de::Error::missing_field("opcode"))?;
-                let pointer: String = visitor.visit()?.ok_or(de::Error::missing_field("pointer"))?;
+            fn visit_seq<V>(self, mut visitor: V) -> Result<NestedRemoteOp, V::Error> where V: SeqAccess<'de> {
+                let code: u8 = visitor.next_element()?.ok_or(de::Error::missing_field("opcode"))?;
+                let pointer: String = visitor.next_element()?.ok_or(de::Error::missing_field("pointer"))?;
 
                 let op = match code {
                     5 => {
-                        let amount: f64 = visitor.visit()?.ok_or(de::Error::missing_field("IncrementCounter amount"))?;
-                        let replica: Replica = visitor.visit()?.ok_or(de::Error::missing_field("IncrementCounter replica"))?;
+                        let amount: f64 = visitor.next_element()?.ok_or(de::Error::missing_field("IncrementCounter amount"))?;
+                        let replica: Replica = visitor.next_element()?.ok_or(de::Error::missing_field("IncrementCounter replica"))?;
                         let op = IncrementCounter{amount: amount, replica: replica};
                         RemoteOp::IncrementCounter(op)
                     },
                     6 => {
-                        let key: String = visitor.visit()?.ok_or(de::Error::missing_field("UpdateObject key"))?;
-                        let inserts: Vec<ObjectElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateObject inserts"))?;
-                        let deletes: Vec<ObjectElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateObject deletes"))?;
+                        let key: String = visitor.next_element()?.ok_or(de::Error::missing_field("UpdateObject key"))?;
+                        let inserts: Vec<ObjectElement> = visitor.next_element()?.ok_or(de::Error::missing_field("UpdateObject inserts"))?;
+                        let deletes: Vec<ObjectElement> = visitor.next_element()?.ok_or(de::Error::missing_field("UpdateObject deletes"))?;
                         let op = UpdateObject{key: key, inserts: inserts, deletes: deletes};
                         RemoteOp::UpdateObject(op)
                     },
                     7 => {
-                        let inserts: Vec<ArrayElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateArray inserts"))?;
-                        let deletes: Vec<ArrayElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateArray deletes"))?;
+                        let inserts: Vec<ArrayElement> = visitor.next_element()?.ok_or(de::Error::missing_field("UpdateArray inserts"))?;
+                        let deletes: Vec<ArrayElement> = visitor.next_element()?.ok_or(de::Error::missing_field("UpdateArray deletes"))?;
                         let op = UpdateArray{inserts: inserts, deletes: deletes};
                         RemoteOp::UpdateArray(op)
                     },
                     8 => {
-                        let inserts: Vec<AttrStrElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateAttrstr inserts"))?;
-                        let deletes: Vec<AttrStrElement> = visitor.visit()?.ok_or(de::Error::missing_field("UpdateAttrstr deletes"))?;
+                        let inserts: Vec<AttrStrElement> = visitor.next_element()?.ok_or(de::Error::missing_field("UpdateAttrstr inserts"))?;
+                        let deletes: Vec<AttrStrElement> = visitor.next_element()?.ok_or(de::Error::missing_field("UpdateAttrstr deletes"))?;
                         let op = UpdateAttributedString{inserts: inserts, deletes: deletes};
                         RemoteOp::UpdateAttributedString(op)
                     },
@@ -65,15 +65,15 @@ impl Deserialize for NestedRemoteOp {
             }
         }
 
-        deserializer.deserialize(NestedRemoteOpVisitor)
+        deserializer.deserialize_any(NestedRemoteOpVisitor)
     }
 }
 
-impl Deserialize for Value {
-    fn deserialize<D>(deserializer: D) -> Result<Value, D::Error> where D: Deserializer {
+impl<'de> Deserialize<'de> for Value {
+    fn deserialize<D>(deserializer: D) -> Result<Value, D::Error> where D: Deserializer<'de> {
         struct ValueVisitor;
 
-        impl Visitor for ValueVisitor {
+        impl<'de> Visitor<'de> for ValueVisitor {
             type Value = Value;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
@@ -108,16 +108,16 @@ impl Deserialize for Value {
                 Ok(Value::Str(value))
             }
 
-            fn visit_seq<V>(self, mut visitor: V) -> Result<Value, V::Error> where V: SeqVisitor {
-                let code: u8 = visitor.visit()?.ok_or(de::Error::missing_field("opcode"))?;
+            fn visit_seq<V>(self, mut visitor: V) -> Result<Value, V::Error> where V: SeqAccess<'de> {
+                let code: u8 = visitor.next_element()?.ok_or(de::Error::missing_field("opcode"))?;
                 match code {
                     0 => {
-                        let elements: Vec<AttrStrElement> = visitor.visit()?.ok_or(de::Error::missing_field("AttrStr elements"))?;
+                        let elements: Vec<AttrStrElement> = visitor.next_element()?.ok_or(de::Error::missing_field("AttrStr elements"))?;
                         let attrstr = AttributedString::assemble(elements);
                         Ok(Value::AttrStr(attrstr))
                     },
                     1 => {
-                        let mut elements: Vec<ArrayElement> = visitor.visit()?.ok_or(de::Error::missing_field("Array elements"))?;
+                        let mut elements: Vec<ArrayElement> = visitor.next_element()?.ok_or(de::Error::missing_field("Array elements"))?;
                         elements.insert(0, ArrayElement::start_marker());
                         elements.push(ArrayElement::end_marker());
                         let array = Array::assemble(elements);
@@ -125,7 +125,7 @@ impl Deserialize for Value {
                     },
                     2 => {
                         let mut map: HashMap<String,Vec<ObjectElement>> = HashMap::new();
-                        let elements: Vec<ObjectElement> = visitor.visit()?.ok_or(de::Error::missing_field("Object elements"))?;
+                        let elements: Vec<ObjectElement> = visitor.next_element()?.ok_or(de::Error::missing_field("Object elements"))?;
 
                         for element in elements {
                             let key = element.uid.key.clone();
@@ -136,8 +136,8 @@ impl Deserialize for Value {
                         Ok(Value::Obj(object))
                     },
                     3 => {
-                        let value: f64 = visitor.visit()?.ok_or(de::Error::missing_field("Counter value"))?;
-                        let replicas: Vec<Replica> = visitor.visit()?.ok_or(de::Error::missing_field("Counter replicas"))?;
+                        let value: f64 = visitor.next_element()?.ok_or(de::Error::missing_field("Counter value"))?;
+                        let replicas: Vec<Replica> = visitor.next_element()?.ok_or(de::Error::missing_field("Counter replicas"))?;
                         let mut site_counters = HashMap::new();
                         for replica in replicas {
                             site_counters.insert(replica.site, replica.counter);
@@ -150,24 +150,24 @@ impl Deserialize for Value {
             }
         }
 
-        deserializer.deserialize(ValueVisitor)
+        deserializer.deserialize_any(ValueVisitor)
     }
 }
 
-impl Deserialize for AttrStrElement {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer {
+impl<'de> Deserialize<'de> for AttrStrElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
         struct AttrStrElementVisitor;
 
-        impl Visitor for AttrStrElementVisitor {
+        impl<'de> Visitor<'de> for AttrStrElementVisitor {
             type Value = AttrStrElement;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a valid AttrStrElement")
             }
 
-            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqVisitor {
-                let encoded_uid: String = visitor.visit()?.ok_or(de::Error::missing_field("AttrStrElement uid"))?;
-                let text: String = visitor.visit()?.ok_or(de::Error::missing_field("AttrStrElement text"))?;
+            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqAccess<'de> {
+                let encoded_uid: String = visitor.next_element()?.ok_or(de::Error::missing_field("AttrStrElement uid"))?;
+                let text: String = visitor.next_element()?.ok_or(de::Error::missing_field("AttrStrElement text"))?;
                 let uid = SequenceUID::from_str(&encoded_uid).map_err(|_| de::Error::missing_field("AttrStrElement uid"))?;
                 Ok(AttrStrElement::text(text.to_string(), uid))
             }
@@ -177,20 +177,20 @@ impl Deserialize for AttrStrElement {
     }
 }
 
-impl Deserialize for ArrayElement {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer {
+impl<'de> Deserialize<'de> for ArrayElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
         struct ArrayElementVisitor;
 
-        impl Visitor for ArrayElementVisitor {
+        impl<'de> Visitor<'de> for ArrayElementVisitor {
             type Value = ArrayElement;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a valid ArrayElement")
             }
 
-            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqVisitor {
-                let encoded_uid: String = visitor.visit()?.ok_or(de::Error::missing_field("ArrayElement uid"))?;
-                let value: ::Value = visitor.visit()?.ok_or(de::Error::missing_field("ArrayElement value"))?;
+            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqAccess<'de> {
+                let encoded_uid: String = visitor.next_element()?.ok_or(de::Error::missing_field("ArrayElement uid"))?;
+                let value: ::Value = visitor.next_element()?.ok_or(de::Error::missing_field("ArrayElement value"))?;
                 let uid = SequenceUID::from_str(&encoded_uid).map_err(|_| de::Error::missing_field("ArrayElement uid"))?;
                 Ok(ArrayElement::new(value, uid))
             }
@@ -200,20 +200,20 @@ impl Deserialize for ArrayElement {
     }
 }
 
-impl Deserialize for ObjectElement {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer {
+impl<'de> Deserialize<'de> for ObjectElement {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
         struct ObjectElementVisitor;
 
-        impl Visitor for ObjectElementVisitor {
+        impl<'de> Visitor<'de> for ObjectElementVisitor {
             type Value = ObjectElement;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a valid ObjectElement")
             }
 
-            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqVisitor {
-                let encoded_uid: String = visitor.visit()?.ok_or(de::Error::missing_field("ObjectElement uid"))?;
-                let value: ::Value = visitor.visit()?.ok_or(de::Error::missing_field("ObjectElement value"))?;
+            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqAccess<'de> {
+                let encoded_uid: String = visitor.next_element()?.ok_or(de::Error::missing_field("ObjectElement uid"))?;
+                let value: ::Value = visitor.next_element()?.ok_or(de::Error::missing_field("ObjectElement value"))?;
                 let uid = ObjectUID::from_str(&encoded_uid).map_err(|_| de::Error::missing_field("ObjectElement uid"))?;
                 Ok(ObjectElement{uid: uid, value: value})
             }
@@ -223,20 +223,20 @@ impl Deserialize for ObjectElement {
     }
 }
 
-impl Deserialize for Replica {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer {
+impl<'de> Deserialize<'de> for Replica {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
         struct ReplicaVisitor;
 
-        impl Visitor for ReplicaVisitor {
+        impl<'de> Visitor<'de> for ReplicaVisitor {
             type Value = Replica;
 
             fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
                 formatter.write_str("a valid Replica")
             }
 
-            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqVisitor {
-                let site: u32 = visitor.visit()?.ok_or(de::Error::missing_field("Replica site"))?;
-                let counter: u32 = visitor.visit()?.ok_or(de::Error::missing_field("Replica counter"))?;
+            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqAccess<'de> {
+                let site: u32 = visitor.next_element()?.ok_or(de::Error::missing_field("Replica site"))?;
+                let counter: u32 = visitor.next_element()?.ok_or(de::Error::missing_field("Replica counter"))?;
                 Ok(Replica::new(site, counter))
             }
         }
