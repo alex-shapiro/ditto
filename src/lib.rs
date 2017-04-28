@@ -8,6 +8,7 @@ extern crate serde;
 extern crate serde_json;
 
 mod array;
+mod atom;
 mod attributed_string;
 mod counter;
 mod crdt;
@@ -21,6 +22,7 @@ mod serializer;
 mod value;
 mod vlq;
 
+pub use atom::Atom;
 pub use crdt::CRDT;
 pub use error::Error;
 pub use replica::Replica;
