@@ -97,15 +97,43 @@ mod tests {
     fn test_execute_remote() {
         let mut atom1: Atom<&'static str> = Atom::new("a");
         let mut atom2: Atom<&'static str> = Atom::new("a");
+
+        let remote_op = atom1.update("b", &Replica{site: 1, counter: 0});
+        let local_op = atom2.execute_remote(&remote_op);
+
+        assert!(atom2.value().clone() == "b");
+        assert!(atom2.0.len() == 1);
+        assert!(local_op.value.clone() == "b");
+    }
+
+    #[test]
+    fn test_execute_remote_concurrent() {
+        let mut atom1: Atom<&'static str> = Atom::new("a");
+        let mut atom2: Atom<&'static str> = Atom::new("a");
         let mut atom3: Atom<&'static str> = Atom::new("a");
 
-        let remote_op1 = atom1.update("b", &Replica{site: 2, counter: 0});
-        let remote_op2 = atom2.update("c", &Replica{site: 3, counter: 0});
+        let remote_op1 = atom1.update("b", &Replica{site: 1, counter: 1});
+        let remote_op2 = atom2.update("c", &Replica{site: 2, counter: 0});
         let local_op1 = atom3.execute_remote(&remote_op1);
         let local_op2 = atom3.execute_remote(&remote_op2);
 
         assert!(atom3.value().clone() == "b");
         assert!(atom3.0.len() == 2);
+        assert!(local_op1.value.clone() == "b");
+        assert!(local_op2.value.clone() == "b");
+    }
+
+    #[test]
+    fn test_execute_remote_dupe() {
+        let mut atom1: Atom<&'static str> = Atom::new("a");
+        let mut atom2: Atom<&'static str> = Atom::new("a");
+
+        let remote_op = atom1.update("b", &Replica{site: 1, counter: 0});
+        let local_op1 = atom2.execute_remote(&remote_op);
+        let local_op2 = atom2.execute_remote(&remote_op);
+
+        assert!(atom2.value().clone() == "b");
+        assert!(atom2.0.len() == 1);
         assert!(local_op1.value.clone() == "b");
         assert!(local_op2.value.clone() == "b");
     }
