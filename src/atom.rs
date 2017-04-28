@@ -13,37 +13,40 @@ pub struct RemoteOp<T> {
 }
 
 pub struct LocalOp<T> {
-    value: T,
+    pub value: T,
 }
 
 type Element<T> = (Replica, T);
 
 impl<T> Atom<T> where T: Debug + Clone  {
-    /// Returns a newly-constructed Atom
+    /// Returns a newly-constructed atom.
     pub fn new(value: T) -> Self {
         let replica = Replica{site: 1, counter: 0};
         let element = (replica, value);
         Atom(vec![element])
     }
 
-    /// Returns the atom's value
+    /// Returns the atom's value.
     pub fn value(&self) -> &T {
         &self.0[0].1
     }
 
-    /// Consumes the atom and returns its value
+    /// Consumes the atom and returns its value.
     pub fn into(self) -> T {
         let mut vec = self.0;
         vec.swap_remove(0).1
     }
 
-    /// Executes a remote op to update the atom's value.
+    /// Updates the atom's value and returns a remote op
+    /// that can be sent to remote sites for replication.
     pub fn update(&mut self, new_value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
         let insert = (replica.clone(), new_value);
         let deletes = mem::replace(&mut self.0, vec![insert.clone()]);
         Ok(RemoteOp{ deletes, insert })
     }
 
+    /// Updates the atom with a remote op and returns a
+    /// local op with the new value.
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Result<LocalOp<T>, Error> {
         for delete in &op.deletes {
             if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&delete.0)) {
