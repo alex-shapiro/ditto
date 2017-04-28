@@ -1,4 +1,3 @@
-use Error;
 use Replica;
 
 use std::fmt::Debug;
@@ -39,15 +38,15 @@ impl<T> Atom<T> where T: Debug + Clone  {
 
     /// Updates the atom's value and returns a remote op
     /// that can be sent to remote sites for replication.
-    pub fn update(&mut self, new_value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
+    pub fn update(&mut self, new_value: T, replica: &Replica) -> RemoteOp<T> {
         let insert = (replica.clone(), new_value);
         let deletes = mem::replace(&mut self.0, vec![insert.clone()]);
-        Ok(RemoteOp{ deletes, insert })
+        RemoteOp{ deletes, insert }
     }
 
     /// Updates the atom with a remote op and returns a
     /// local op with the new value.
-    pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Result<LocalOp<T>, Error> {
+    pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> LocalOp<T> {
         for delete in &op.deletes {
             if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&delete.0)) {
                 let _ = self.0.remove(index);
@@ -58,7 +57,7 @@ impl<T> Atom<T> where T: Debug + Clone  {
             let _ = self.0.insert(index, op.insert.clone());
         }
 
-        Ok(LocalOp{value: self.0[0].1.clone()})
+        LocalOp{value: self.0[0].1.clone()}
     }
 }
 
@@ -84,7 +83,7 @@ mod tests {
     #[test]
     fn test_update() {
         let mut atom: Atom<i64> = Atom::new(8142);
-        let op = atom.update(42, &Replica{site: 1, counter: 1}).unwrap();
+        let op = atom.update(42, &Replica{site: 1, counter: 1});
 
         assert!(atom.value().clone() == 42);
         assert!(op.deletes.len() == 1);
@@ -100,10 +99,10 @@ mod tests {
         let mut atom2: Atom<&'static str> = Atom::new("a");
         let mut atom3: Atom<&'static str> = Atom::new("a");
 
-        let remote_op1 = atom1.update("b", &Replica{site: 2, counter: 0}).unwrap();
-        let remote_op2 = atom2.update("c", &Replica{site: 3, counter: 0}).unwrap();
-        let local_op1 = atom3.execute_remote(&remote_op1).unwrap();
-        let local_op2 = atom3.execute_remote(&remote_op2).unwrap();
+        let remote_op1 = atom1.update("b", &Replica{site: 2, counter: 0});
+        let remote_op2 = atom2.update("c", &Replica{site: 3, counter: 0});
+        let local_op1 = atom3.execute_remote(&remote_op1);
+        let local_op2 = atom3.execute_remote(&remote_op2);
 
         assert!(atom3.value().clone() == "b");
         assert!(atom3.0.len() == 2);
