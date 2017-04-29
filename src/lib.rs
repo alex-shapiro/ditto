@@ -12,6 +12,7 @@ mod atom;
 mod attributed_string;
 mod counter;
 mod crdt;
+mod crdt_trait;
 mod error;
 mod list;
 mod local_value;
