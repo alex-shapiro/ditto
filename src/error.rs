@@ -8,6 +8,7 @@ pub enum Error {
     DecodeCompact,
     DeserializeObjectUID,
     DeserializeSequenceUID,
+    DoesNotExist,
     DuplicateUID,
     InvalidIndex,
     InvalidJson,

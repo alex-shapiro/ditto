@@ -19,6 +19,7 @@ mod op;
 mod replica;
 mod sequence;
 mod serializer;
+mod set;
 mod value;
 mod vlq;
 
@@ -31,3 +32,4 @@ pub use value::Value;
 pub use local_value::LocalValue;
 pub use op::NestedLocalOp;
 pub use op::NestedRemoteOp;
+pub use set::Set;
