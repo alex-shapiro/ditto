@@ -13,6 +13,7 @@ mod attributed_string;
 mod counter;
 mod crdt;
 mod error;
+mod list;
 mod local_value;
 mod map;
 mod object;
@@ -34,5 +35,6 @@ pub use op::NestedLocalOp;
 pub use op::NestedRemoteOp;
 
 pub use atom::Atom;
+pub use list::List;
 pub use map::Map;
 pub use set::Set;

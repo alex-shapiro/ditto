@@ -40,6 +40,7 @@ pub struct UID {
 }
 
 lazy_static! {
+    pub static ref MIN: UID = UID::min();
     pub static ref MAX: UID = UID::max();
 }
 
