@@ -23,12 +23,12 @@ type Element<T> = (UID, T);
 
 impl<T> List<T> where T: Debug + Clone {
 
-    /// Constructs and returns a new list
+    /// Constructs and returns a new list.
     pub fn new() -> Self {
         List(vec![])
     }
 
-    /// Returns the number of elements in the list
+    /// Returns the number of elements in the list.
     pub fn len(&self) -> usize {
         self.0.len()
     }
