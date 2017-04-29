@@ -77,8 +77,8 @@ impl<T> Set<T> where T: Debug + Clone + Eq + Hash {
             }
 
             if let Some(ref insert) = op.insert {
-                if !replicas.contains(insert) {
-                    replicas.push(insert.clone());
+                if let Err(index) = replicas.binary_search_by(|r| r.cmp(insert)) {
+                    replicas.insert(index, insert.clone());
                 }
             }
 

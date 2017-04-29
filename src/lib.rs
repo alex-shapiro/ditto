@@ -14,6 +14,7 @@ mod counter;
 mod crdt;
 mod error;
 mod local_value;
+mod map;
 mod object;
 mod op;
 mod replica;
@@ -23,7 +24,6 @@ mod set;
 mod value;
 mod vlq;
 
-pub use atom::Atom;
 pub use crdt::CRDT;
 pub use error::Error;
 pub use replica::Replica;
@@ -32,4 +32,7 @@ pub use value::Value;
 pub use local_value::LocalValue;
 pub use op::NestedLocalOp;
 pub use op::NestedRemoteOp;
+
+pub use atom::Atom;
+pub use map::Map;
 pub use set::Set;
