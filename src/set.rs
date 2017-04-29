@@ -34,7 +34,7 @@ impl<T> Set<T> where T: Debug + Clone + Eq + Hash {
         self.0.contains_key(value)
     }
 
-    /// Consumes the Set and returns a HashSet of its values.
+    /// Consumes the set and returns a HashSet of its values.
     pub fn into(self) -> HashSet<T> {
         let mut hash_set: HashSet<T> = HashSet::new();
         for (key,_) in self.0.into_iter() {
@@ -46,7 +46,7 @@ impl<T> Set<T> where T: Debug + Clone + Eq + Hash {
     /// Inserts a value into the set and returns an op that can
     /// be sent to remote sites for replication. If the set
     /// already contains the value, nothing changes except for
-    /// the Crdt metadta.
+    /// the CRDT metadta.
     pub fn insert<V: Into<T>>(&mut self, value: V, replica: &Replica) -> RemoteOp<T> {
         let value = value.into();
         let replicas = self.0.entry(value.clone()).or_insert(vec![]);
@@ -65,8 +65,7 @@ impl<T> Set<T> where T: Debug + Clone + Eq + Hash {
         Ok(RemoteOp{value, remove, insert: None})
     }
 
-    /// Updates the set with a remote op and returns a local op with
-    /// the new value.
+    /// Updates the set and returns the equivalent local op.
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> LocalOp<T> {
         let value_should_be_removed = {
             let replicas = self.0.entry(op.value.clone()).or_insert(vec![]);
