@@ -37,5 +37,5 @@ pub use op::NestedRemoteOp;
 
 pub use list::List;
 pub use map::Map;
-pub use register::Register;
+pub use register::{Register, RegisterValue};
 pub use set::Set;

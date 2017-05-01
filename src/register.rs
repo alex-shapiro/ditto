@@ -25,7 +25,7 @@ pub struct RemoteOp<T: Debug + Clone> {
 }
 
 #[derive(Debug, Serialize, Deserialize)]
-pub struct LocalOp<T: Debug + Clone> {
+pub struct LocalOp<T> {
     pub new_value: T,
 }
 
