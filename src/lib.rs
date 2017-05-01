@@ -12,7 +12,6 @@ mod atom;
 mod attributed_string;
 mod counter;
 mod crdt;
-mod crdt_trait;
 mod error;
 mod list;
 mod local_value;
@@ -23,6 +22,7 @@ mod replica;
 mod sequence;
 mod serializer;
 mod set;
+mod traits;
 mod value;
 mod vlq;
 

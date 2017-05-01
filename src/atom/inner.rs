@@ -1,39 +1,35 @@
 use Replica;
 
+use traits::{CrdtValue, CrdtRemoteOp};
 use std::fmt::Debug;
 use std::mem;
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Atom<T>(Vec<Element<T>>);
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct RemoteOp<T> {
     deletes: Vec<Element<T>>,
     insert: Element<T>,
 }
 
+#[derive(Debug, Serialize, Deserialize)]
 pub struct LocalOp<T> {
     pub value: T,
 }
 
 type Element<T> = (Replica, T);
 
-impl<T> Atom<T> where T: Debug + Clone  {
+impl<T: Debug + Clone> Atom<T>  {
     /// Returns a newly-constructed atom.
-    pub fn new(value: T) -> Self {
-        let replica = Replica{site: 1, counter: 0};
-        let element = (replica, value);
+    pub fn new(value: T, replica: &Replica) -> Self {
+        let element = (replica.clone(), value);
         Atom(vec![element])
     }
 
     /// Returns the atom's value.
     pub fn value(&self) -> &T {
         &self.0[0].1
-    }
-
-    /// Consumes the atom and returns its value.
-    pub fn into(self) -> T {
-        let mut vec = self.0;
-        vec.swap_remove(0).1
     }
 
     /// Updates the atom's value and returns a remote op
@@ -61,6 +57,35 @@ impl<T> Atom<T> where T: Debug + Clone  {
     }
 }
 
+impl<T> CrdtValue for Atom<T> {
+    type LocalValue = T;
+    type RemoteOp = RemoteOp<T>;
+    type LocalOp = LocalOp<T>;
+
+    fn into_local(self) -> T {
+        self.0.into_iter().next().unwrap().1
+    }
+
+    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
+        if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)) {
+            self.0[index].0.site = site;
+        }
+    }
+}
+
+impl<T> CrdtRemoteOp for RemoteOp<T> {
+    fn add_site(&mut self, site: u32) {
+        for element in &mut self.deletes {
+            if element.0.site == 0 {
+                element.0.site = site;
+            }
+        }
+        if self.insert.0.site == 0 {
+            self.insert.0.site = site;
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -72,12 +97,6 @@ mod tests {
         assert!(atom.0.len() == 1);
         assert!(atom.0[0].0 == Replica{site: 1, counter: 0});
         assert!(atom.0[0].1.clone() == 8142);
-    }
-
-    #[test]
-    fn test_into() {
-        let atom: Atom<i64> = Atom::new(789);
-        assert!(atom.into() == 789);
     }
 
     #[test]
