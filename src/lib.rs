@@ -8,7 +8,6 @@ extern crate serde;
 extern crate serde_json;
 
 mod array;
-mod atom;
 mod attributed_string;
 mod counter;
 mod crdt;
@@ -18,6 +17,7 @@ mod local_value;
 mod map;
 mod object;
 mod op;
+mod register;
 mod replica;
 mod sequence;
 mod serializer;
@@ -35,7 +35,7 @@ pub use local_value::LocalValue;
 pub use op::NestedLocalOp;
 pub use op::NestedRemoteOp;
 
-pub use atom::Atom;
 pub use list::List;
 pub use map::Map;
+pub use register::Register;
 pub use set::Set;
