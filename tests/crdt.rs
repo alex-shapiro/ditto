@@ -12,7 +12,7 @@ fn create_load_dump_null() {
     assert!(crdt.counter() == 1);
     assert!(loaded.site() == 1);
     assert!(loaded.counter() == 1);
-    assert!(dump == r#"{"root_value":null,"replica":[1,1],"awaiting_site":[]}"#);
+    assert!(dump == r#"{"root_value":null,"replica":{"site":1,"counter":1},"awaiting_site":[]}"#);
 }
 
 #[test]
@@ -21,7 +21,7 @@ fn create_load_dump_bool() {
     let dump = crdt.dump();
     let loaded = CRDT::load(&dump).unwrap();
     assert!(dump == loaded.dump());
-    assert!(dump == r#"{"root_value":false,"replica":[1,1],"awaiting_site":[]}"#);
+    assert!(dump == r#"{"root_value":false,"replica":{"site":1,"counter":1},"awaiting_site":[]}"#);
 }
 
 #[test]
