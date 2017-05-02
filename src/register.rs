@@ -10,11 +10,8 @@ use std::mem;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Register<T: Debug + Clone> {
-    #[serde(rename="v")]
     value: RegisterValue<T>,
-    #[serde(rename="r")]
     replica: Replica,
-    #[serde(rename="a")]
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
