@@ -7,6 +7,9 @@ extern crate serde;
 #[macro_use] extern crate serde_derive;
 extern crate serde_json;
 
+#[macro_use]
+mod macros;
+
 mod array;
 mod attributed_string;
 mod counter;
