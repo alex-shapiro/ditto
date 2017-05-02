@@ -222,25 +222,3 @@ impl<'de> Deserialize<'de> for ObjectElement {
         deserializer.deserialize_seq(ObjectElementVisitor)
     }
 }
-
-impl<'de> Deserialize<'de> for Replica {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        struct ReplicaVisitor;
-
-        impl<'de> Visitor<'de> for ReplicaVisitor {
-            type Value = Replica;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a valid Replica")
-            }
-
-            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqAccess<'de> {
-                let site: u32 = visitor.next_element()?.ok_or(de::Error::missing_field("Replica site"))?;
-                let counter: u32 = visitor.next_element()?.ok_or(de::Error::missing_field("Replica counter"))?;
-                Ok(Replica::new(site, counter))
-            }
-        }
-
-        deserializer.deserialize_seq(ReplicaVisitor)
-    }
-}

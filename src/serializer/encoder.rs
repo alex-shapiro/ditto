@@ -5,7 +5,6 @@ use object;
 use op::{NestedRemoteOp, RemoteOp};
 use serde::{Serialize, Serializer};
 use serde::ser::SerializeSeq;
-use Replica;
 use Value;
 
 impl Serialize for Value {
@@ -137,16 +136,6 @@ impl Serialize for object::element::Element {
         let mut seq = serializer.serialize_seq(Some(2))?;
         seq.serialize_element(&self.uid.to_string())?;
         seq.serialize_element(&self.value)?;
-        seq.end()
-    }
-}
-
-// encode Replica as [site,counter]
-impl Serialize for Replica {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        let mut seq = serializer.serialize_seq(Some(2))?;
-        seq.serialize_element(&self.site)?;
-        seq.serialize_element(&self.counter)?;
         seq.end()
     }
 }
