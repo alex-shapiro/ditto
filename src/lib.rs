@@ -32,6 +32,7 @@ mod sequence;
 mod serializer;
 pub mod set;
 mod traits;
+mod util;
 mod value;
 mod vlq;
 
