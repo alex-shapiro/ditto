@@ -7,49 +7,48 @@ use map_tuple_vec;
 use traits::*;
 use util::remove_elements;
 
-use serde::Serialize;
+use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
-use std::cmp::Ordering;
 use std::collections::HashMap;
-use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
 
-pub trait Key: Debug + Clone + Eq + Hash + Serialize + DeserializeOwned {}
-impl<T: Debug + Clone + Eq + Hash + Serialize + DeserializeOwned> Key for T {}
+pub trait Key: Clone + Eq + Hash + Serialize + DeserializeOwned {}
+impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> Key for T {}
 
-pub trait Value: Debug + Clone + PartialEq + Eq + PartialOrd + Ord + Serialize + DeserializeOwned {}
-impl<T: Debug + Clone + PartialEq + Eq + PartialOrd + Ord + Serialize + DeserializeOwned> Value for T {}
+pub trait Value: Clone + Eq + Ord + Serialize + DeserializeOwned {}
+impl<T: Clone + Eq + Ord + Serialize + DeserializeOwned> Value for T {}
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Map<K: Key, V: Value> {
+    #[serde(bound(deserialize = "K: Key, V: Value"))]
     value: MapValue<K, V>,
     replica: Replica,
+    #[serde(bound(deserialize = "K: Key, V: Value"))]
     awaiting_site: Vec<RemoteOp<K, V>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MapValue<K: Key, V: Value> {
-    // #[serde(with = "map_tuple_vec")]
+    #[serde(with = "map_tuple_vec")]
     inner: HashMap<K, Vec<Element<V>>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum RemoteOp<K: Key, V: Value> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum RemoteOp<K, V> {
     Insert{key: K, element: Element<V>, removed: Vec<Element<V>>},
     Remove{key: K, removed: Vec<Element<V>>},
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub enum LocalOp<K: Key, V: Value> {
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub enum LocalOp<K, V> {
     Insert(K, V),
     Remove(K),
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Element<V: Value + DeserializeOwned>(Replica, V);
+pub type Element<V> = (Replica, V);
 
-impl<K,V> Map<K, V> where K: Key, V: Value {
+impl<K: Key, V: Value> Map<K, V> {
 
     /// Constructs and returns a new map.
     /// Th map has site 1 and counter 0.
@@ -94,7 +93,7 @@ impl<K,V> Map<K, V> where K: Key, V: Value {
     }
 }
 
-impl<K, V> Crdt for Map<K,V> where K: Key, V: Value {
+impl<K: Key, V: Value> Crdt for Map<K,V> {
     type Value = MapValue<K,V>;
 
     fn site(&self) -> u32 {
@@ -129,7 +128,7 @@ impl<K, V> Crdt for Map<K,V> where K: Key, V: Value {
     }
 }
 
-impl<K, V> MapValue<K, V> where K: Key, V: Value {
+impl<K: Key, V: Value> MapValue<K, V> {
 
     /// Constructs and returns a new map value.
     pub fn new() -> Self {
@@ -146,7 +145,7 @@ impl<K, V> MapValue<K, V> where K: Key, V: Value {
             if values[0].1 == value { return Err(Error::AlreadyExists) }
         }
 
-        let element = Element(replica.clone(), value.clone());
+        let element = (replica.clone(), value.clone());
         let old_elements = self.inner.entry(key.clone()).or_insert(vec![]);
         let new_elements = vec![element.clone()];
         let removed = mem::replace(old_elements, new_elements);
@@ -191,7 +190,7 @@ impl<K, V> MapValue<K, V> where K: Key, V: Value {
     }
 }
 
-impl<K, V> CrdtValue for MapValue<K, V> where K: Key, V: Value {
+impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
     type LocalValue = HashMap<K, V>;
     type RemoteOp = RemoteOp<K, V>;
     type LocalOp = LocalOp<K, V>;
@@ -215,7 +214,7 @@ impl<K, V> CrdtValue for MapValue<K, V> where K: Key, V: Value {
     }
 }
 
-impl<K, V> CrdtRemoteOp for RemoteOp<K, V> where K: Key, V: Value {
+impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
