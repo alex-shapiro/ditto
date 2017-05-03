@@ -7,6 +7,15 @@ extern crate serde;
 #[macro_use] extern crate serde_derive;
 extern crate serde_json;
 
+#[cfg(test)]
+#[macro_use]
+extern crate assert_matches;
+
+#[cfg(test)]
+extern crate rmp_serde;
+
+#[macro_use]
+mod macros;
 mod array;
 mod attributed_string;
 mod counter;
@@ -21,7 +30,7 @@ mod register;
 mod replica;
 mod sequence;
 mod serializer;
-mod set;
+pub mod set;
 mod traits;
 mod value;
 mod vlq;
