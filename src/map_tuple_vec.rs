@@ -2,16 +2,14 @@
 //! This allows a serialized HashMap to have keys of any type
 //! instead of only Strings.
 
-use Error;
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::ser::SerializeSeq;
-use serde::de::{DeserializeOwned, Visitor, SeqAccess};
+use serde::de::{Visitor, SeqAccess};
 
 use std::collections::HashMap;
 use std::fmt;
 use std::hash::Hash;
 use std::marker::PhantomData;
-use std::mem;
 
 pub fn serialize<K, V, S>(data: &HashMap<K, V>, serializer: S) -> Result<S::Ok, S::Error>
     where S: Serializer,
@@ -28,8 +26,8 @@ pub fn serialize<K, V, S>(data: &HashMap<K, V>, serializer: S) -> Result<S::Ok, 
 
 pub fn deserialize<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
     where D: Deserializer<'de>,
-          K: Hash + Eq + DeserializeOwned,
-          V: DeserializeOwned,
+          K: Hash + Eq + Deserialize<'de>,
+          V: Deserialize<'de>,
 {
     struct HashMapVisitor<K: Hash + Eq, V> {
         marker: PhantomData<HashMap<K, V>>,

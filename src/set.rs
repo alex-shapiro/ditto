@@ -6,15 +6,14 @@ use Replica;
 use map_tuple_vec;
 use traits::*;
 
-use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
-use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
 
-pub trait SetElement: Debug + Clone + Eq + Hash + Serialize + DeserializeOwned {}
-impl<T: Debug + Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
+pub trait SetElement: Clone + Eq + Hash + Serialize + DeserializeOwned {}
+impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Set<T: SetElement> {
@@ -324,7 +323,7 @@ mod tests {
         let _         = set2.insert(22).unwrap();
 
         assert!(set2.execute_remote(&remote_op).is_none());
-        assert!(set2.value.0.get(&22).unwrap().len() == 2);
+        assert!(set2.value.inner.get(&22).unwrap().len() == 2);
     }
 
     #[test]
@@ -335,7 +334,7 @@ mod tests {
 
         assert!(set2.execute_remote(&remote_op).is_some());
         assert!(set2.execute_remote(&remote_op).is_none());
-        assert!(set2.value.0.get(&22).unwrap().len() == 1);
+        assert!(set2.value.inner.get(&22).unwrap().len() == 1);
     }
 
     #[test]
@@ -395,7 +394,7 @@ mod tests {
         let (value2, replica2) = insert_fields(remote_ops.next().unwrap());
         let (value3, replicas) = remove_fields(remote_ops.next().unwrap());
 
-        assert!(set.value.0.get(&20).unwrap()[0].site == 5);
+        assert!(set.value.inner.get(&20).unwrap()[0].site == 5);
         assert!(value1 == 10 && replica1 == Replica::new(5, 0));
         assert!(value2 == 20 && replica2 == Replica::new(5, 1));
         assert!(value3 == 10 && replicas == vec![Replica::new(5, 0)]);
