@@ -1,30 +1,37 @@
 //! A `Set` stores a collection of distinct elements.
-//! The elements themselves are immutable.
+//! The elements in the set are immutable.
 
 use Error;
 use Replica;
+use map_tuple_vec;
 use traits::*;
 
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
+use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::fmt::Debug;
 use std::hash::Hash;
 use std::mem;
 
-pub trait SetElement: Debug + Clone + Eq + Hash {}
-impl<T: Debug + Clone + Eq + Hash> SetElement for T {}
+pub trait SetElement: Debug + Clone + Eq + Hash + Serialize + DeserializeOwned {}
+impl<T: Debug + Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Set<T: SetElement> {
+    #[serde(bound(deserialize = ""))]
     value: SetValue<T>,
     replica: Replica,
+    #[serde(bound(deserialize = ""))]
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
-pub struct SetValue<T: SetElement>(HashMap<T, Vec<Replica>>);
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetValue<T: SetElement>{
+    #[serde(with = "map_tuple_vec")]
+    inner: HashMap<T, Vec<Replica>>,
+}
 
-#[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<T> {
     Insert{value: T, replica: Replica},
     Remove{value: T, replicas: Vec<Replica>},
@@ -42,13 +49,13 @@ impl<T: SetElement> Set<T> {
     /// The set has site 1 and counter 0.
     pub fn new() -> Self {
         let replica = Replica::new(1, 0);
-        let value = SetValue(HashMap::new());
+        let value = SetValue::new();
         Set{replica, value, awaiting_site: vec![]}
     }
 
     /// Returns true iff the set contains the value.
     pub fn contains(&self, value: &T) -> bool {
-        self.value.0.contains_key(value)
+        self.value.contains(value)
     }
 
     /// Inserts a value into the set and returns a remote op
@@ -113,22 +120,22 @@ impl<T: SetElement> Crdt for Set<T> {
 
 impl<T: SetElement> SetValue<T> {
 
-    /// Constructs and returns a new set.
+    /// Constructs and returns a new set value.
     pub fn new() -> Self {
-        SetValue(HashMap::new())
+        SetValue{inner: HashMap::new()}
     }
 
     /// Returns true if the set contains the value.
     pub fn contains(&self, value: &T) -> bool {
-        self.0.contains_key(value)
+        self.inner.contains_key(value)
     }
 
     /// Inserts a value into the set and returns an op that can
     /// be sent to remote sites for replication. If the set already
     /// contains the value, it returns an AlreadyExists error.
     pub fn insert(&mut self, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
-        if self.0.contains_key(&value) { return Err(Error::AlreadyExists) }
-        self.0.insert(value.clone(), vec![replica.clone()]);
+        if self.inner.contains_key(&value) { return Err(Error::AlreadyExists) }
+        self.inner.insert(value.clone(), vec![replica.clone()]);
         Ok(RemoteOp::Insert{value, replica: replica.clone()})
     }
 
@@ -136,7 +143,7 @@ impl<T: SetElement> SetValue<T> {
     /// be sent to remote sites for replication. If the set does
     /// not contain the value, it returns a DoesNotExist error.
     pub fn remove(&mut self, value: &T) -> Result<RemoteOp<T>, Error> {
-        let replicas = self.0.remove(value).ok_or(Error::DoesNotExist)?;
+        let replicas = self.inner.remove(value).ok_or(Error::DoesNotExist)?;
         Ok(RemoteOp::Remove{value: value.clone(), replicas})
     }
 
@@ -144,7 +151,7 @@ impl<T: SetElement> SetValue<T> {
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         match *op {
             RemoteOp::Insert{ref value, ref replica} => {
-                let replicas = self.0.entry(value.clone()).or_insert(vec![]);
+                let replicas = self.inner.entry(value.clone()).or_insert(vec![]);
                 match replicas.binary_search_by(|r| r.cmp(replica)) {
                     Ok(_) => None,
                     Err(_) => {
@@ -159,7 +166,7 @@ impl<T: SetElement> SetValue<T> {
             }
             RemoteOp::Remove{ref value, ref replicas} => {
                 let should_remove_value = {
-                    let existing_replicas = try_opt!(self.0.get_mut(value));
+                    let existing_replicas = try_opt!(self.inner.get_mut(value));
                     for replica in replicas {
                         if let Ok(index) = existing_replicas.binary_search_by(|r| r.cmp(replica)) {
                             existing_replicas.remove(index);
@@ -169,7 +176,7 @@ impl<T: SetElement> SetValue<T> {
                 };
 
                 if should_remove_value {
-                    self.0.remove(value);
+                    self.inner.remove(value);
                     Some(LocalOp::Remove(value.clone()))
                 } else {
                     None
@@ -186,7 +193,7 @@ impl<T: SetElement> CrdtValue for SetValue<T> {
 
     fn local_value(&self) -> HashSet<T> {
         let mut hash_set = HashSet::new();
-        for key in self.0.keys() {
+        for key in self.inner.keys() {
             hash_set.insert(key.clone());
         }
         hash_set
@@ -194,7 +201,7 @@ impl<T: SetElement> CrdtValue for SetValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert{ref value, ref replica} = *op {
-            if let Some(ref mut replicas) = self.0.get_mut(value) {
+            if let Some(ref mut replicas) = self.inner.get_mut(value) {
                 if let Ok(index) = replicas.binary_search_by(|r| r.cmp(replica)) {
                     replicas[index].site = site;
                 }
@@ -216,54 +223,6 @@ impl<T: SetElement> CrdtRemoteOp for RemoteOp<T> {
                 }
             }
         }
-    }
-}
-
-impl<T: SetElement + Serialize> Serialize for SetValue<T> {
-    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        use serde::ser::SerializeSeq;
-
-        let mut seq = serializer.serialize_seq(Some(self.0.len()))?;
-        for value_replicas in self.0.iter() {
-            seq.serialize_element(&value_replicas)?;
-        }
-        seq.end()
-    }
-}
-
-impl<'de, T> Deserialize<'de> for SetValue<T> where T: SetElement + Deserialize<'de> {
-    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        use serde::de::{Visitor, SeqAccess};
-        use std::fmt;
-        use std::marker::PhantomData;
-
-        struct SetValueVisitor<T: SetElement> {
-            marker: PhantomData<SetValue<T>>,
-        }
-
-        impl<T: SetElement> SetValueVisitor<T> {
-            fn new() -> Self {
-                SetValueVisitor{marker: PhantomData}
-            }
-        }
-
-        impl<'de, T> Visitor<'de> for SetValueVisitor<T> where T: SetElement + Deserialize<'de> {
-            type Value = SetValue<T>;
-
-            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
-                formatter.write_str("a list of (T, Replica) tuples")
-            }
-
-            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqAccess<'de> {
-                let mut hash_map = HashMap::with_capacity(visitor.size_hint().unwrap_or(0));
-                while let Some((value, replica)) = visitor.next_element()? {
-                    hash_map.insert(value, replica);
-                }
-                Ok(SetValue(hash_map))
-            }
-        }
-
-        deserializer.deserialize_seq(SetValueVisitor::new())
     }
 }
 
