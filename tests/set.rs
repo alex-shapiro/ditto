@@ -43,13 +43,8 @@ fn test_set() {
 fn via_json<T>(value: &T) -> T
     where T: serde::Serialize + serde::de::DeserializeOwned
 {
-    let new_value: T = {
-        let json = serde_json::to_string(value).unwrap();
-        let x: T = serde_json::from_str(&json).unwrap();
-        x
-    };
-
-    new_value
+    let json = serde_json::to_string(value).unwrap();
+    serde_json::from_str(&json).unwrap()
 }
 
 fn via_msgpack<T>(value: &T) -> T
