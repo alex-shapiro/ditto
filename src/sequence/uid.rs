@@ -23,6 +23,8 @@ use rand::distributions::{IndependentSample, Range};
 use rand;
 use Replica;
 use rustc_serialize::base64::{self, ToBase64, FromBase64};
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
+use serde::de::{self, Visitor, SeqAccess};
 use std::cmp::{self, Ordering};
 use std::fmt::{self, Debug};
 use std::str::FromStr;
@@ -135,6 +137,21 @@ impl UID {
     fn use_boundary_plus_strategy(level: usize) -> bool {
         level % 2 == 1
     }
+
+    fn to_vlq(&self) -> Vec<u8> {
+        let mut vlq = vlq::encode_biguint(&self.position);
+        vlq.append(&mut vlq::encode_u32(self.site));
+        vlq.append(&mut vlq::encode_u32(self.counter));
+        vlq
+
+    }
+
+    fn from_vlq(vlq: &[u8]) -> Result<Self, Error> {
+        let (position, vlq_rest1) = vlq::decode_biguint(vlq)?;
+        let (site, vlq_rest2) = vlq::decode_u32(&vlq_rest1)?;
+        let (counter, _) = vlq::decode_u32(&vlq_rest2)?;
+        Ok(UID{position, site, counter})
+    }
 }
 
 fn big(num: usize) -> BigUint {
@@ -188,17 +205,13 @@ impl Ord for UID {
 impl Debug for UID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let uid = self.position.to_str_radix(2);
-        write!(f, "<{}, {}, {}>", uid, self.site, self.counter)
+        write!(f, "UID{{position: {}, site: {}, counter: {}}}", uid, self.site, self.counter)
     }
 }
 
 impl ToString for UID {
     fn to_string(&self) -> String {
-        let mut vlq = vlq::encode_biguint(&self.position);
-        vlq.append(&mut vlq::encode_u32(self.site));
-        vlq.append(&mut vlq::encode_u32(self.counter));
-
-        vlq.to_base64(base64::Config{
+        self.to_vlq().to_base64(base64::Config{
             char_set: base64::CharacterSet::Standard,
             newline: base64::Newline::LF,
             pad: false,
@@ -211,16 +224,40 @@ impl FromStr for UID {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        match s.from_base64() {
-            Ok(vlq) => {
-                let (position, vlq_rest1) = try!(vlq::decode_biguint(&vlq));
-                let (site, vlq_rest2)     = try!(vlq::decode_u32(&vlq_rest1));
-                let (counter, _)          = try!(vlq::decode_u32(&vlq_rest2));
-                Ok(UID{position: position, site: site, counter: counter})
-            },
-            Err(_) =>
-                Err(Error::DeserializeSequenceUID),
+        let vlq = s.from_base64().map_err(|_| Error::DeserializeSequenceUID)?;
+        UID::from_vlq(&vlq)
+    }
+}
+
+impl Serialize for UID {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        serializer.serialize_bytes(&self.to_vlq())
+    }
+}
+
+impl<'de> Deserialize<'de> for UID {
+    fn deserialize<D>(deserializer: D) -> Result<UID, D::Error> where D: Deserializer<'de> {
+        struct UIDVisitor;
+
+        impl<'de> Visitor<'de> for UIDVisitor {
+            type Value = UID;
+
+            fn expecting(&self, formatter: &mut fmt::Formatter) -> fmt::Result {
+                formatter.write_str("a byte buffer")
+            }
+
+            fn visit_seq<V>(self, mut visitor: V) -> Result<Self::Value, V::Error> where V: SeqAccess<'de> {
+                let mut vec = Vec::with_capacity(visitor.size_hint().unwrap_or(0));
+                while let Some(byte) = visitor.next_element()? { vec.push(byte); }
+                Ok(UID::from_vlq(&vec).map_err(|_| de::Error::missing_field("invalid VLQ value"))?)
+            }
+
+            fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> where E: de::Error {
+                Ok(UID::from_vlq(&v).map_err(|_| de::Error::missing_field("invalid VLQ value"))?)
+            }
         }
+
+        deserializer.deserialize_any(UIDVisitor)
     }
 }
 
@@ -230,6 +267,8 @@ mod tests {
     use num::bigint::{BigUint, ToBigUint};
     use Replica;
     use std::str::FromStr;
+    use serde_json;
+    use rmp_serde;
 
     const REPLICA: Replica = Replica{site: 3, counter: 2};
 
@@ -368,6 +407,17 @@ mod tests {
         let deserialized = UID::from_str(&serialized).unwrap();
         assert!(serialized == "gSoEUw");
         assert!(deserialized == uid);
+    }
+
+    #[test]
+    fn test_serialize() {
+        let uid1 = UID{position: big(0b1_010_1010_01101_100110_1011011_10111011_011001101), site: 491, counter: 82035};
+        let s_json = serde_json::to_string(&uid1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&uid1).unwrap();
+        let uid2: UID = serde_json::from_str(&s_json).unwrap();
+        let uid3: UID = rmp_serde::from_slice(&s_msgpack).unwrap();
+        assert!(uid1 == uid2);
+        assert!(uid1 == uid3);
     }
 
     #[test]
