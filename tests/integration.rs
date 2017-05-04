@@ -70,6 +70,9 @@ fn test_map() {
     assert_matches!(local_op31, map::LocalOp::Insert{key: 0, value: true});
     assert_matches!(local_op32, None);
     assert_matches!(local_op33, map::LocalOp::Insert{key: 0, value: false});
+
+    assert!(map1.value() == map2.value());
+    assert!(map1.value() == map3.value());
 }
 
 #[test]
@@ -96,6 +99,9 @@ fn test_register() {
     let local_op32 = register3.execute_remote(&via_json(&remote_op2)).unwrap();
     assert!(local_op31.new_value == 41);
     assert!(local_op32.new_value == 32);
+
+    assert!(register1.value() == register2.value());
+    assert!(register1.value() == register3.value());
 }
 
 #[test]
