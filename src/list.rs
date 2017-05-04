@@ -1,56 +1,139 @@
+//! A `List` stores an ordered sequence of elements.
+//! Elements in the list are immutable.
+
 use Error;
 use Replica;
 use sequence::uid::{self, UID};
+use traits::*;
 
-use std::fmt::Debug;
+use std::mem;
 
-#[derive(Debug)]
-pub struct List<T>(Vec<Element<T>>);
+#[derive(Debug, Clone, PartialEq)]
+pub struct List<T> {
+    value: ListValue<T>,
+    replica: Replica,
+    awaiting_site: Vec<RemoteOp<T>>,
+}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
+pub struct ListValue<T>(Vec<Element<T>>);
+
+#[derive(Debug, Clone, PartialEq)]
 pub enum RemoteOp<T> {
     Insert(Element<T>),
     Remove(Element<T>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum LocalOp<T> {
     Insert { index: usize, value: T },
     Remove { index: usize },
 }
 
-type Element<T> = (UID, T);
+#[derive(Debug, Clone, PartialEq)]
+pub struct Element<T>(UID, T);
 
-impl<T> List<T> where T: Debug + Clone {
+impl<T: Clone> List<T> {
 
     /// Constructs and returns a new list.
+    /// Th list has site 1 and counter 0.
     pub fn new() -> Self {
-        List(vec![])
+        let replica = Replica::new(1,0);
+        let value = ListValue::new();
+        List{replica, value, awaiting_site: vec![]}
     }
 
     /// Returns the number of elements in the list.
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.value.0.len()
     }
 
     /// Returns a reference to the element at position `index`.
-    /// Panics if the index is out-of-bounds.
-    pub fn get(&self, index: usize) -> &T {
-        &self.0[index].1
+    /// Returns None if the index is out-of-bounds.
+    pub fn get(&self, index: usize) -> Option<&T> {
+        self.value.0.get(index).and_then(|element| Some(&element.1))
     }
 
-    /// Binary searches the list by element UID. If a matching
-    /// element is found, returns `Ok` containing the index for
-    /// the element. If no match is found, returns `Err` containing
-    /// the index where a matching element could be inserted while
-    /// maintaining sorted order.
+    /// Returns the index of the element with `uid`. If a matching
+    /// element is found, it returns `Ok` containing the element index.
+    /// If no matching element is found, it returns `Err` containing
+    /// the index where an element with the UID may be inserted.
     pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
-        self.0.binary_search_by(|e| e.0.cmp(uid))
+        self.value.find_index(uid)
     }
 
     /// Inserts an element at position `index` within the list,
     /// shifting all elements after it to the right. Returns an
-    /// error if the index is out-of-bounds.
+    /// error if the index is out-of-bounds. If the list does not
+    /// have a site allocated, it caches the op and returns an
+    /// `AwaitingSite` error.
+    pub fn insert(&mut self, index: usize, value: T) -> Result<RemoteOp<T>, Error> {
+        let remote_op = self.value.insert(index, value, &self.replica)?;
+        self.manage_op(remote_op)
+    }
+
+    /// Removes the element at position `index` from the list,
+    /// shifting all elements after it to the left. Returns an
+    /// error if the index is out-of-bounds. If the list does not
+    /// have a site allocated, it caches the op and returns an
+    /// `AwaitingSite` error.
+    pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
+        let remote_op = self.value.remove(index)?;
+        self.manage_op(remote_op)
+    }
+
+    fn manage_op(&mut self, op: RemoteOp<T>) -> Result<RemoteOp<T>, Error> {
+        self.replica.counter += 1;
+        if self.replica.site != 0 { return Ok(op) }
+        self.awaiting_site.push(op);
+        Err(Error::AwaitingSite)
+    }
+}
+
+impl<T: Clone> Crdt for List<T> {
+    type Value = ListValue<T>;
+
+    fn site(&self) -> u32 {
+        self.replica.site
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.value
+    }
+
+    fn clone_value(&self) -> Self::Value {
+        self.value.clone()
+    }
+
+    fn from_value(value: Self::Value, site: u32) -> Self {
+        let replica = Replica::new(site, 0);
+        List{value, replica, awaiting_site: vec![]}
+    }
+
+    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
+        self.value.execute_remote(op)
+    }
+
+    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<T>>, Error> {
+        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
+        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
+        for op in &mut ops {
+            self.value.add_site(op, site);
+            op.add_site(site);
+        }
+        Ok(ops)
+    }
+}
+
+impl<T: Clone> ListValue<T> {
+    pub fn new() -> Self {
+        ListValue(vec![])
+    }
+
+    pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
+        self.0.binary_search_by(|element| element.0.cmp(uid))
+    }
+
     pub fn insert(&mut self, index: usize, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
         let max_index = self.0.len();
         if index > max_index { return Err(Error::OutOfBounds) }
@@ -61,14 +144,11 @@ impl<T> List<T> where T: Debug + Clone {
             UID::between(uid1, uid2, replica)
         };
 
-        let element = (uid, value);
+        let element = Element(uid, value);
         self.0.insert(index, element.clone());
         Ok(RemoteOp::Insert(element))
     }
 
-    /// Removes the element at position `index` from the list,
-    /// shifting all elements after it to the left. Returns an
-    /// error if the index is out-of-bounds.
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
         if index >= self.0.len() { return Err(Error::OutOfBounds) }
         let element = self.0.remove(index);
@@ -80,22 +160,47 @@ impl<T> List<T> where T: Debug + Clone {
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         match *op {
             RemoteOp::Insert(ref element) => {
-                if let Err(index) = self.find_index(&element.0) {
-                    self.0.insert(index, element.clone());
-                    let value = element.1.clone();
-                    Some(LocalOp::Insert{index: index, value: value})
-                } else {
-                    None
-                }
+                let index = try_opt!(self.find_index(&element.0).err());
+                self.0.insert(index, element.clone());
+                let value = element.1.clone();
+                Some(LocalOp::Insert{index: index, value: value})
             }
             RemoteOp::Remove(ref element) => {
-                if let Ok(index) = self.find_index(&element.0) {
-                    self.0.remove(index);
-                    Some(LocalOp::Remove{index: index})
-                } else {
-                    None
-                }
+                let index = try_opt!(self.find_index(&element.0).ok());
+                self.0.remove(index);
+                Some(LocalOp::Remove{index: index})
             }
+        }
+    }
+}
+
+impl<T: Clone> CrdtValue for ListValue<T> {
+    type LocalValue = Vec<T>;
+    type RemoteOp = RemoteOp<T>;
+    type LocalOp = LocalOp<T>;
+
+    fn local_value(&self) -> Vec<T> {
+        let mut vec = vec![];
+        for element in self.0.iter() {
+            vec.push(element.1.clone())
+        }
+        vec
+    }
+
+    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
+        if let RemoteOp::Insert(Element(ref uid, _)) = *op {
+            if let Ok(index) = self.find_index(uid) {
+                self.0[index].0.site = site;
+            }
+        }
+    }
+}
+
+impl<T> CrdtRemoteOp for RemoteOp<T> {
+    fn add_site(&mut self, site: u32) {
+        match *self {
+            RemoteOp::Insert(Element(ref mut uid, _)) => uid.site = site,
+            RemoteOp::Remove(Element(ref mut uid, _)) => uid.site = site,
         }
     }
 }
