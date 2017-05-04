@@ -17,7 +17,9 @@ extern crate rmp_serde;
 #[macro_use]
 mod macros;
 
+pub mod list;
 pub mod map;
+pub mod register;
 pub mod set;
 
 mod array;
@@ -25,12 +27,10 @@ mod attributed_string;
 mod counter;
 mod crdt;
 mod error;
-mod list;
 mod local_value;
 mod map_tuple_vec;
 mod object;
 mod op;
-mod register;
 mod replica;
 mod sequence;
 mod serializer;
