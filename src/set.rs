@@ -5,6 +5,7 @@ use Error;
 use Replica;
 use map_tuple_vec;
 use traits::*;
+use util::remove_elements;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
@@ -151,26 +152,18 @@ impl<T: SetElement> SetValue<T> {
         match *op {
             RemoteOp::Insert{ref value, ref replica} => {
                 let replicas = self.inner.entry(value.clone()).or_insert(vec![]);
-                match replicas.binary_search_by(|r| r.cmp(replica)) {
-                    Ok(_) => None,
-                    Err(_) => {
-                        replicas.push(replica.clone());
-                        if replicas.len() == 1 {
-                            Some(LocalOp::Insert(value.clone()))
-                        } else {
-                            None
-                        }
-                    }
+                let index = try_opt!(replicas.binary_search_by(|r| r.cmp(replica)).err());
+                replicas.insert(index, replica.clone());
+                if replicas.len() == 1 {
+                    Some(LocalOp::Insert(value.clone()))
+                } else {
+                    None
                 }
             }
             RemoteOp::Remove{ref value, ref replicas} => {
                 let should_remove_value = {
                     let existing_replicas = try_opt!(self.inner.get_mut(value));
-                    for replica in replicas {
-                        if let Ok(index) = existing_replicas.binary_search_by(|r| r.cmp(replica)) {
-                            existing_replicas.remove(index);
-                        }
-                    }
+                    remove_elements(existing_replicas, replicas);
                     existing_replicas.is_empty()
                 };
 
