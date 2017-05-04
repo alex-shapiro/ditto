@@ -1,56 +1,139 @@
+//! A `List` stores an ordered sequence of elements.
+//! Elements in the list are immutable.
+
 use Error;
 use Replica;
 use sequence::uid::{self, UID};
+use traits::*;
 
-use std::fmt::Debug;
+use std::mem;
 
-#[derive(Debug)]
-pub struct List<T>(Vec<Element<T>>);
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct List<T> {
+    value: ListValue<T>,
+    replica: Replica,
+    awaiting_site: Vec<RemoteOp<T>>,
+}
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ListValue<T>(Vec<Element<T>>);
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<T> {
     Insert(Element<T>),
     Remove(Element<T>),
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum LocalOp<T> {
     Insert { index: usize, value: T },
     Remove { index: usize },
 }
 
-type Element<T> = (UID, T);
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct Element<T>(UID, T);
 
-impl<T> List<T> where T: Debug + Clone {
+impl<T: Clone> List<T> {
 
     /// Constructs and returns a new list.
+    /// Th list has site 1 and counter 0.
     pub fn new() -> Self {
-        List(vec![])
+        let replica = Replica::new(1,0);
+        let value = ListValue::new();
+        List{replica, value, awaiting_site: vec![]}
     }
 
     /// Returns the number of elements in the list.
     pub fn len(&self) -> usize {
-        self.0.len()
+        self.value.0.len()
     }
 
     /// Returns a reference to the element at position `index`.
-    /// Panics if the index is out-of-bounds.
-    pub fn get(&self, index: usize) -> &T {
-        &self.0[index].1
+    /// Returns None if the index is out-of-bounds.
+    pub fn get(&self, index: usize) -> Option<&T> {
+        self.value.0.get(index).and_then(|element| Some(&element.1))
     }
 
-    /// Binary searches the list by element UID. If a matching
-    /// element is found, returns `Ok` containing the index for
-    /// the element. If no match is found, returns `Err` containing
-    /// the index where a matching element could be inserted while
-    /// maintaining sorted order.
+    /// Returns the index of the element with `uid`. If a matching
+    /// element is found, it returns `Ok` containing the element index.
+    /// If no matching element is found, it returns `Err` containing
+    /// the index where an element with the UID may be inserted.
     pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
-        self.0.binary_search_by(|e| e.0.cmp(uid))
+        self.value.find_index(uid)
     }
 
     /// Inserts an element at position `index` within the list,
     /// shifting all elements after it to the right. Returns an
-    /// error if the index is out-of-bounds.
+    /// error if the index is out-of-bounds. If the list does not
+    /// have a site allocated, it caches the op and returns an
+    /// `AwaitingSite` error.
+    pub fn insert(&mut self, index: usize, value: T) -> Result<RemoteOp<T>, Error> {
+        let remote_op = self.value.insert(index, value, &self.replica)?;
+        self.manage_op(remote_op)
+    }
+
+    /// Removes the element at position `index` from the list,
+    /// shifting all elements after it to the left. Returns an
+    /// error if the index is out-of-bounds. If the list does not
+    /// have a site allocated, it caches the op and returns an
+    /// `AwaitingSite` error.
+    pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
+        let remote_op = self.value.remove(index)?;
+        self.manage_op(remote_op)
+    }
+
+    fn manage_op(&mut self, op: RemoteOp<T>) -> Result<RemoteOp<T>, Error> {
+        self.replica.counter += 1;
+        if self.replica.site != 0 { return Ok(op) }
+        self.awaiting_site.push(op);
+        Err(Error::AwaitingSite)
+    }
+}
+
+impl<T: Clone> Crdt for List<T> {
+    type Value = ListValue<T>;
+
+    fn site(&self) -> u32 {
+        self.replica.site
+    }
+
+    fn value(&self) -> &Self::Value {
+        &self.value
+    }
+
+    fn clone_value(&self) -> Self::Value {
+        self.value.clone()
+    }
+
+    fn from_value(value: Self::Value, site: u32) -> Self {
+        let replica = Replica::new(site, 0);
+        List{value, replica, awaiting_site: vec![]}
+    }
+
+    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
+        self.value.execute_remote(op)
+    }
+
+    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<T>>, Error> {
+        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
+        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
+        for op in &mut ops {
+            self.value.add_site(op, site);
+            op.add_site(site);
+        }
+        Ok(ops)
+    }
+}
+
+impl<T: Clone> ListValue<T> {
+    pub fn new() -> Self {
+        ListValue(vec![])
+    }
+
+    pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
+        self.0.binary_search_by(|element| element.0.cmp(uid))
+    }
+
     pub fn insert(&mut self, index: usize, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
         let max_index = self.0.len();
         if index > max_index { return Err(Error::OutOfBounds) }
@@ -61,14 +144,11 @@ impl<T> List<T> where T: Debug + Clone {
             UID::between(uid1, uid2, replica)
         };
 
-        let element = (uid, value);
+        let element = Element(uid, value);
         self.0.insert(index, element.clone());
         Ok(RemoteOp::Insert(element))
     }
 
-    /// Removes the element at position `index` from the list,
-    /// shifting all elements after it to the left. Returns an
-    /// error if the index is out-of-bounds.
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
         if index >= self.0.len() { return Err(Error::OutOfBounds) }
         let element = self.0.remove(index);
@@ -80,22 +160,47 @@ impl<T> List<T> where T: Debug + Clone {
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         match *op {
             RemoteOp::Insert(ref element) => {
-                if let Err(index) = self.find_index(&element.0) {
-                    self.0.insert(index, element.clone());
-                    let value = element.1.clone();
-                    Some(LocalOp::Insert{index: index, value: value})
-                } else {
-                    None
-                }
+                let index = try_opt!(self.find_index(&element.0).err());
+                self.0.insert(index, element.clone());
+                let value = element.1.clone();
+                Some(LocalOp::Insert{index: index, value: value})
             }
             RemoteOp::Remove(ref element) => {
-                if let Ok(index) = self.find_index(&element.0) {
-                    self.0.remove(index);
-                    Some(LocalOp::Remove{index: index})
-                } else {
-                    None
-                }
+                let index = try_opt!(self.find_index(&element.0).ok());
+                self.0.remove(index);
+                Some(LocalOp::Remove{index: index})
             }
+        }
+    }
+}
+
+impl<T: Clone> CrdtValue for ListValue<T> {
+    type LocalValue = Vec<T>;
+    type RemoteOp = RemoteOp<T>;
+    type LocalOp = LocalOp<T>;
+
+    fn local_value(&self) -> Vec<T> {
+        let mut vec = vec![];
+        for element in self.0.iter() {
+            vec.push(element.1.clone())
+        }
+        vec
+    }
+
+    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
+        if let RemoteOp::Insert(Element(ref uid, _)) = *op {
+            if let Ok(index) = self.find_index(uid) {
+                self.0[index].0.site = site;
+            }
+        }
+    }
+}
+
+impl<T> CrdtRemoteOp for RemoteOp<T> {
+    fn add_site(&mut self, site: u32) {
+        match *self {
+            RemoteOp::Insert(Element(ref mut uid, _)) => uid.site = site,
+            RemoteOp::Remove(Element(ref mut uid, _)) => uid.site = site,
         }
     }
 }
@@ -103,6 +208,8 @@ impl<T> List<T> where T: Debug + Clone {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
+    use rmp_serde;
 
     #[test]
     fn test_new() {
@@ -113,18 +220,18 @@ mod tests {
     #[test]
     fn test_get() {
         let mut list: List<i64> = List::new();
-        let _ = list.insert(0, 123, &Replica::new(1, 0));
-        assert!(list.get(0) == &123);
+        let _ = list.insert(0, 123).unwrap();
+        assert!(list.get(0).unwrap() == &123);
     }
 
     #[test]
     fn test_find_index() {
         let mut list: List<i64> = List::new();
-        let _  = list.insert(0, 123, &Replica::new(1, 0)).unwrap();
-        let op = list.insert(1, 456, &Replica::new(1, 0)).unwrap();
-        let _  = list.insert(2, 789, &Replica::new(1, 0)).unwrap();
+        let _  = list.insert(0, 123).unwrap();
+        let op = list.insert(1, 456).unwrap();
+        let _  = list.insert(2, 789).unwrap();
 
-        let (uid, _) = get_elt(op);
+        let Element(uid, _) = get_elt(op);
         assert!(list.find_index(&uid) == Ok(1));
         assert!(list.find_index(&*uid::MIN) == Err(0));
         assert!(list.find_index(&*uid::MAX) == Err(3));
@@ -133,90 +240,90 @@ mod tests {
     #[test]
     fn test_insert_prepend() {
         let mut list: List<i64> = List::new();
-        let op1 = list.insert(0, 123, &Replica::new(1, 0)).unwrap();
-        let op2 = list.insert(0, 456, &Replica::new(1, 0)).unwrap();
-        let op3 = list.insert(0, 789, &Replica::new(1, 0)).unwrap();
+        let op1 = list.insert(0, 123).unwrap();
+        let op2 = list.insert(0, 456).unwrap();
+        let op3 = list.insert(0, 789).unwrap();
 
         assert!(list.len() == 3);
-        assert!(list.0[0].1 == 789);
-        assert!(list.0[1].1 == 456);
-        assert!(list.0[2].1 == 123);
+        assert!(list.value.0[0].1 == 789);
+        assert!(list.value.0[1].1 == 456);
+        assert!(list.value.0[2].1 == 123);
 
-        let (uid1, v1) = get_elt(op1);
-        let (uid2, v2) = get_elt(op2);
-        let (uid3, v3) = get_elt(op3);
+        let element1 = get_elt(op1);
+        let element2 = get_elt(op2);
+        let element3 = get_elt(op3);
 
-        assert!(v1 == 123 && v2 == 456 && v3 == 789);
-        assert!(*uid::MAX > uid1);
-        assert!(uid1 > uid2);
-        assert!(uid2 > uid3);
-        assert!(uid3 > *uid::MIN);
+        assert!(element1.1 == 123 && element2.1 == 456 && element3.1 == 789);
+        assert!(*uid::MAX > element1.0);
+        assert!(element1.0 > element2.0);
+        assert!(element2.0 > element3.0);
+        assert!(element3.0 > *uid::MIN);
     }
 
     #[test]
     fn test_insert_append() {
         let mut list: List<i64> = List::new();
-        let op1 = list.insert(0, 123, &Replica::new(1, 0)).unwrap();
-        let op2 = list.insert(1, 456, &Replica::new(1, 0)).unwrap();
-        let op3 = list.insert(2, 789, &Replica::new(1, 0)).unwrap();
+        let op1 = list.insert(0, 123).unwrap();
+        let op2 = list.insert(1, 456).unwrap();
+        let op3 = list.insert(2, 789).unwrap();
 
-        assert!(list.0[0].1 == 123);
-        assert!(list.0[1].1 == 456);
-        assert!(list.0[2].1 == 789);
+        assert!(list.value.0[0].1 == 123);
+        assert!(list.value.0[1].1 == 456);
+        assert!(list.value.0[2].1 == 789);
 
-        let (uid1, _) = get_elt(op1);
-        let (uid2, _) = get_elt(op2);
-        let (uid3, _) = get_elt(op3);
+        let element1 = get_elt(op1);
+        let element2 = get_elt(op2);
+        let element3 = get_elt(op3);
 
-        assert!(*uid::MIN < uid1);
-        assert!(uid1 < uid2);
-        assert!(uid2 < uid3);
-        assert!(uid3 < *uid::MAX);
+        assert!(*uid::MIN < element1.0);
+        assert!(element1.0 < element2.0);
+        assert!(element2.0 < element3.0);
+        assert!(element3.0 < *uid::MAX);
     }
 
     #[test]
     fn test_insert_middle() {
         let mut list: List<i64> = List::new();
-        let op1 = list.insert(0, 123, &Replica::new(1, 0)).unwrap();
-        let op2 = list.insert(1, 456, &Replica::new(1, 0)).unwrap();
-        let op3 = list.insert(1, 789, &Replica::new(1, 0)).unwrap();
+        let op1 = list.insert(0, 123).unwrap();
+        let op2 = list.insert(1, 456).unwrap();
+        let op3 = list.insert(1, 789).unwrap();
 
-        assert!(list.0[0].1 == 123);
-        assert!(list.0[1].1 == 789);
-        assert!(list.0[2].1 == 456);
+        assert!(list.value.0[0].1 == 123);
+        assert!(list.value.0[1].1 == 789);
+        assert!(list.value.0[2].1 == 456);
 
-        let (uid1, _) = get_elt(op1);
-        let (uid2, _) = get_elt(op2);
-        let (uid3, _) = get_elt(op3);
+        let element1 = get_elt(op1);
+        let element2 = get_elt(op2);
+        let element3 = get_elt(op3);
 
-        assert!(*uid::MIN < uid1);
-        assert!(uid1 < uid3);
-        assert!(uid3 < uid2);
-        assert!(uid2 < *uid::MAX);
+        assert!(*uid::MIN < element1.0);
+        assert!(element1.0 < element3.0);
+        assert!(element3.0 < element2.0);
+        assert!(element2.0 < *uid::MAX);
     }
 
     #[test]
     fn test_insert_out_of_bounds() {
         let mut list: List<i64> = List::new();
-        let result = list.insert(1, 123, &Replica::new(1, 0));
+        let result = list.insert(1, 123);
         assert!(result.unwrap_err() == Error::OutOfBounds);
     }
 
     #[test]
     fn test_remove() {
         let mut list: List<i64> = List::new();
-        let _   = list.insert(0, 123, &Replica::new(1, 0)).unwrap();
-        let op1 = list.insert(1, 456, &Replica::new(1, 0)).unwrap();
-        let _   = list.insert(2, 789, &Replica::new(1, 0)).unwrap();
+        let _   = list.insert(0, 123).unwrap();
+        let op1 = list.insert(1, 456).unwrap();
+        let _   = list.insert(2, 789).unwrap();
         let op2 = list.remove(1).unwrap();
 
-        let (uid1, _) = get_elt(op1);
-        let (uid2, _) = get_elt(op2);
+        let element1 = get_elt(op1);
+        let element2 = get_elt(op2);
 
         assert!(list.len() == 2);
-        assert!(list.0[0].1 == 123);
-        assert!(list.0[1].1 == 789);
-        assert!(uid1 == uid2);
+        assert!(list.value.0[0].1 == 123);
+        assert!(list.value.0[1].1 == 789);
+        assert!(element1 == element2);
     }
 
     #[test]
@@ -227,24 +334,33 @@ mod tests {
     }
 
     #[test]
+    fn test_insert_remove_awaiting_site() {
+        let mut list: List<i64> = List::from_value(ListValue::new(), 0);
+        assert!(list.insert(0, 123).unwrap_err() == Error::AwaitingSite);
+        assert!(list.len() == 1);
+        assert!(list.awaiting_site.len() == 1);
+        assert!(list.remove(0).unwrap_err() == Error::AwaitingSite);
+        assert!(list.len() == 0);
+        assert!(list.awaiting_site.len() == 2);
+    }
+
+    #[test]
     fn test_execute_remote_insert() {
-        let mut list1: List<String> = List::new();
-        let mut list2: List<String> = List::new();
-        let remote_op = list1.insert(0, "a".to_owned(), &Replica::new(1,0)).unwrap();
+        let mut list1: List<&'static str> = List::new();
+        let mut list2: List<&'static str> = List::new();
+        let remote_op = list1.insert(0, "a").unwrap();
         let local_op = list2.execute_remote(&remote_op).unwrap();
 
         assert!(list2.len() == 1);
-        assert!(list2.0[0].1 == "a");
-        let (i, v) = if let LocalOp::Insert{index: i, value: v} = local_op { (i, v) } else { panic!() };
-        assert!(i == 0);
-        assert!(v == "a");
+        assert!(list2.value.0[0].1 == "a");
+        assert_matches!(local_op, LocalOp::Insert{index: 0, value: "a"});
     }
 
     #[test]
     fn test_execute_remote_insert_dupe() {
         let mut list1: List<String> = List::new();
         let mut list2: List<String> = List::new();
-        let remote_op = list1.insert(0, "a".to_owned(), &Replica::new(1,0)).unwrap();
+        let remote_op = list1.insert(0, "a".to_owned()).unwrap();
 
         let _ = list2.execute_remote(&remote_op).unwrap();
         assert!(list2.execute_remote(&remote_op).is_none());
@@ -255,28 +371,109 @@ mod tests {
     fn test_execute_remote_remove() {
         let mut list1: List<String> = List::new();
         let mut list2: List<String> = List::new();
-        let remote_op1 = list1.insert(0, "a".to_owned(), &Replica::new(1,0)).unwrap();
+        let remote_op1 = list1.insert(0, "a".to_owned()).unwrap();
         let remote_op2 = list1.remove(0).unwrap();
         let _ = list2.execute_remote(&remote_op1).unwrap();
         let local_op = list2.execute_remote(&remote_op2).unwrap();
-
-        let i = if let LocalOp::Remove{index: i} = local_op { i } else { panic!() };
-
         assert!(list2.len() == 0);
-        assert!(i == 0);
+        assert_matches!(local_op, LocalOp::Remove{index: 0});
     }
 
     #[test]
     fn test_execute_remote_remove_dupe() {
         let mut list1: List<String> = List::new();
         let mut list2: List<String> = List::new();
-        let remote_op1 = list1.insert(0, "a".to_owned(), &Replica::new(1,0)).unwrap();
+        let remote_op1 = list1.insert(0, "a".to_owned()).unwrap();
         let remote_op2 = list1.remove(0).unwrap();
 
         let _ = list2.execute_remote(&remote_op1).unwrap();
         let _ = list2.execute_remote(&remote_op2).unwrap();
         assert!(list2.execute_remote(&remote_op2).is_none());
         assert!(list2.len() == 0);
+    }
+
+    #[test]
+    fn test_add_site() {
+        let mut list: List<u32> = List::from_value(ListValue::new(), 0);
+        let _ = list.insert(0, 51);
+        let _ = list.insert(1, 52);
+        let _ = list.remove(0);
+        let mut remote_ops = list.add_site(12).unwrap().into_iter();
+
+        let element1 = get_elt(remote_ops.next().unwrap());
+        let element2 = get_elt(remote_ops.next().unwrap());
+        let element3 = get_elt(remote_ops.next().unwrap());
+
+        assert!(list.value.0[0].0.site == 12);
+        assert!(element1.0.site == 12);
+        assert!(element2.0.site == 12);
+        assert!(element3.0.site == 12);
+    }
+
+    #[test]
+    fn test_add_site_already_has_site() {
+        let mut list: List<u32> = List::from_value(ListValue::new(), 12);
+        let _ = list.insert(0, 51);
+        let _ = list.insert(1, 52);
+        let _ = list.remove(0);
+        assert!(list.add_site(13).unwrap_err() == Error::AlreadyHasSite);
+    }
+
+    #[test]
+    fn test_serialize() {
+        let mut list1: List<u32> = List::new();
+        let _ = list1.insert(0, 502);
+        let _ = list1.insert(1, 48);
+
+        let s_json = serde_json::to_string(&list1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&list1).unwrap();
+        let list2: List<u32> = serde_json::from_str(&s_json).unwrap();
+        let list3: List<u32> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(list1 == list2);
+        assert!(list1 == list3);
+    }
+
+    #[test]
+    fn test_serialize_value() {
+        let mut list1: List<String> = List::new();
+        let _ = list1.insert(0, "Bob".to_owned());
+        let _ = list1.insert(1, "Sue".to_owned());
+
+        let s_json = serde_json::to_string(list1.value()).unwrap();
+        let s_msgpack = rmp_serde::to_vec(list1.value()).unwrap();
+        let value2: ListValue<String> = serde_json::from_str(&s_json).unwrap();
+        let value3: ListValue<String> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(*list1.value() == value2);
+        assert!(*list1.value() == value3);
+    }
+
+    #[test]
+    fn test_serialize_remote_op() {
+        let mut list: List<i8> = List::new();
+        let remote_op1 = list.insert(0, 24).unwrap();
+
+        let s_json = serde_json::to_string(&remote_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
+        let remote_op2: RemoteOp<i8> = serde_json::from_str(&s_json).unwrap();
+        let remote_op3: RemoteOp<i8> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(remote_op1 == remote_op2);
+        assert!(remote_op1 == remote_op3);
+    }
+
+    #[test]
+    fn test_serialize_local_op() {
+        let local_op1: LocalOp<String> = LocalOp::Insert{index: 0, value: "Bob".to_string()};
+
+        let s_json = serde_json::to_string(&local_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
+        let local_op2: LocalOp<String> = serde_json::from_str(&s_json).unwrap();
+        let local_op3: LocalOp<String> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(local_op1 == local_op2);
+        assert!(local_op1 == local_op3);
     }
 
     fn get_elt<T>(remote_op: RemoteOp<T>) -> Element<T> {

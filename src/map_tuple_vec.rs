@@ -23,7 +23,6 @@ pub fn serialize<K, V, S>(data: &HashMap<K, V>, serializer: S) -> Result<S::Ok, 
     seq.end()
 }
 
-
 pub fn deserialize<'de, K, V, D>(deserializer: D) -> Result<HashMap<K, V>, D::Error>
     where D: Deserializer<'de>,
           K: Hash + Eq + Deserialize<'de>,
