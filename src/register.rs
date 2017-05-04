@@ -15,7 +15,7 @@ pub struct Register<T: Debug + Clone> {
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegisterValue<T: Debug + Clone>(Vec<Element<T>>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -29,7 +29,7 @@ pub struct LocalOp<T> {
     pub new_value: T,
 }
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct Element<T: Debug + Clone>(Replica, T);
 
 impl<T: Debug + Clone> Register<T> {
