@@ -21,7 +21,7 @@ pub struct Text {
 #[derive(Debug, Clone, PartialEq, Default)]
 pub struct RemoteOp {
     inserts: Vec<Element>,
-    deletes: Vec<Element>,
+    removes: Vec<Element>,
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -32,7 +32,7 @@ pub struct LocalOp {
 #[derive(Debug, Clone, PartialEq)]
 pub enum LocalChange {
     Insert{index: usize, text: String},
-    Delete{index: usize, len: usize},
+    Remove{index: usize, len: usize},
 }
 
 impl Text {
@@ -59,12 +59,12 @@ impl Text {
         self.manage_op(remote_op)
     }
 
-    /// Deletes the text in the range [index..<index+len].
+    /// Removes the text in the range [index..<index+len].
     /// Returns an error if the start or stop index is out-of-bounds.
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn delete(&mut self, index: usize, len: usize) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.delete(index, len, &self.replica)?;
+    pub fn remove(&mut self, index: usize, len: usize) -> Result<RemoteOp, Error> {
+        let remote_op = self.value.remove(index, len, &self.replica)?;
         self.manage_op(remote_op)
     }
 
@@ -122,11 +122,11 @@ impl Crdt for Text {
 
 impl RemoteOp {
     pub fn merge(&mut self, other: RemoteOp) {
-        let RemoteOp{mut inserts, mut deletes} = other;
+        let RemoteOp{mut inserts, mut removes} = other;
         self.inserts.append(&mut inserts);
-        self.deletes.append(&mut deletes);
+        self.removes.append(&mut removes);
         self.inserts.sort();
-        self.deletes.sort();
+        self.removes.sort();
     }
 }
 
@@ -135,7 +135,7 @@ impl CrdtRemoteOp for RemoteOp {
         for element in &mut self.inserts {
             if element.uid.site == 0 { element.uid.site = site; }
         }
-        for element in &mut self.deletes {
+        for element in &mut self.removes {
             if element.uid.site == 0 { element.uid.site = site; }
         }
     }

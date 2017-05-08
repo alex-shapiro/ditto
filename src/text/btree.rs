@@ -1,6 +1,6 @@
 //! A Counted BTree that holds text elements. It can perform lookups
 //! by either element UID or character index. It performs all lookups,
-//! inserts, and deletes in O(log N) time.
+//! inserts, and removes in O(log N) time.
 
 use super::element::{self, Element};
 use sequence::uid::UID;
@@ -48,8 +48,8 @@ impl BTree {
     /// Deletes an element from the BTree. Returns None if the
     /// element is not in the BTree. This allows the CRDT to handle
     /// duplicate operations without losing consistency.
-    pub fn delete(&mut self, uid: &UID) -> Option<Element> {
-        self.root.delete(uid)
+    pub fn remove(&mut self, uid: &UID) -> Option<Element> {
+        self.root.remove(uid)
     }
 
     /// Returns the element that contains the character at
@@ -196,9 +196,9 @@ impl Node {
         }
     }
 
-    /// Delete an element from a tree, returning the deleted element.
+    /// Delete an element from a tree, returning the removed element.
     /// The root node must contain at least MIN_LEN + 1 elements.
-    fn delete(&mut self, uid: &UID) -> Option<Element> {
+    fn remove(&mut self, uid: &UID) -> Option<Element> {
         let (contains_element, mut index) =
             match self.elements.binary_search_by(|elt| elt.uid.cmp(uid)) {
                 Ok(index) => (true, index),
@@ -208,9 +208,9 @@ impl Node {
         // if the parent is a leaf and it contains the element,
         // simply remove the element.
         if self.is_leaf() && contains_element {
-            let deleted_element = self.elements.remove(index);
-            self.len -= deleted_element.len;
-            Some(deleted_element)
+            let removed_element = self.elements.remove(index);
+            self.len -= removed_element.len;
+            Some(removed_element)
 
         // if the parent is a leaf and does not contain the element
         // then the element does not exist in the BTree.
@@ -225,25 +225,25 @@ impl Node {
             if self.child_has_spare_element(index) {
                 let ref mut prev = self.children[index];
                 let predecessor_uid = prev.last_uid();
-                let e = prev.delete(&predecessor_uid).expect("Element must exist!");
-                let deleted_element = mem::replace(&mut self.elements[index], e);
-                self.len -= deleted_element.len;
-                Some(deleted_element)
+                let e = prev.remove(&predecessor_uid).expect("Element must exist!");
+                let removed_element = mem::replace(&mut self.elements[index], e);
+                self.len -= removed_element.len;
+                Some(removed_element)
 
             } else if self.child_has_spare_element(index+1) {
                 let ref mut next = self.children[index+1];
                 let successor_uid = next.first_uid();
-                let e = next.delete(&successor_uid).expect("Element must exist!");
-                let deleted_element = mem::replace(&mut self.elements[index], e);
-                self.len -= deleted_element.len;
-                Some(deleted_element)
+                let e = next.remove(&successor_uid).expect("Element must exist!");
+                let removed_element = mem::replace(&mut self.elements[index], e);
+                self.len -= removed_element.len;
+                Some(removed_element)
 
             } else {
                 self.merge_children(index);
                 if self.is_leaf() {
-                    self.delete(uid)
+                    self.remove(uid)
                 } else {
-                    let element = self.children[index].delete(uid);
+                    let element = self.children[index].remove(uid);
                     if let Some(ref e) = element { self.len -= e.len }
                     element
                 }
@@ -278,10 +278,10 @@ impl Node {
                 } else {
                     if self.children.len()-1 == index { index -= 1 }
                     self.merge_children(index);
-                    return self.delete(uid)
+                    return self.remove(uid)
                 }
             }
-            let element = self.children[index].delete(uid);
+            let element = self.children[index].remove(uid);
             if let Some(ref e) = element { self.len -= e.len }
             element
         }
@@ -506,14 +506,14 @@ mod tests {
     }
 
     #[test]
-    fn delete_basic() {
+    fn remove_basic() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "hello");
         insert_at(&mut btree, 5, "howareyou");
         insert_at(&mut btree, 14, "goodbye");
         assert!(btree.len() == 21);
 
-        let e = delete_at(&mut btree, 5);
+        let e = remove_at(&mut btree, 5);
         assert!(e.text == "howareyou");
         assert!(btree.len() == 12);
         assert!(btree.root.is_leaf());
@@ -522,14 +522,14 @@ mod tests {
     }
 
     #[test]
-    fn delete_emoji() {
+    fn remove_emoji() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "'sup");
         insert_at(&mut btree, 4, "🤣➔🥅");
         insert_at(&mut btree, 7, "goodbye");
         assert!(btree.len() == 14);
 
-        let e = delete_at(&mut btree, 4);
+        let e = remove_at(&mut btree, 4);
         assert!(e.text == "🤣➔🥅");
         assert!(btree.len() == 11);
         assert!(btree.root.is_leaf());
@@ -538,7 +538,7 @@ mod tests {
     }
 
     #[test]
-    fn insert_and_delete_ordered() {
+    fn insert_and_remove_ordered() {
         let mut btree = BTree::new();
         let paragraph = r#"
         a ac adipiscing aliquam aliquet amet arcu at auctor commodo congue
@@ -564,9 +564,9 @@ mod tests {
             assert!(element.text == word);
         }
 
-        let e1 = delete_at(&mut btree, 0);
-        let e2 = delete_at(&mut btree, 2);
-        let e3 = delete_at(&mut btree, 9);
+        let e1 = remove_at(&mut btree, 0);
+        let e2 = remove_at(&mut btree, 2);
+        let e3 = remove_at(&mut btree, 9);
         assert!(btree.len() == 525);
         assert!(e1.text == "a");
         assert!(e2.text == "adipiscing");
@@ -574,13 +574,13 @@ mod tests {
 
         while btree.len() > 0 {
             let old_len = btree.len();
-            let e1 = delete_at(&mut btree, 0);
+            let e1 = remove_at(&mut btree, 0);
             assert!(btree.len() == old_len - e1.len);
         }
     }
 
     #[test]
-    fn insert_and_delete_random() {
+    fn insert_and_remove_random() {
         let mut btree = BTree::new();
         let paragraph = r#"
         a ac adipiscing aliquam aliquet amet arcu at auctor commodo congue
@@ -603,7 +603,7 @@ mod tests {
 
         while btree.len() > 0 {
             let old_len = btree.len();
-            let e1 = delete_random(&mut btree);
+            let e1 = remove_random(&mut btree);
             assert!(btree.len() == old_len - e1.len);
         }
     }
@@ -624,14 +624,14 @@ mod tests {
         debug_assert!(btree.len() == old_len + elt_len);
     }
 
-    fn delete_at(btree: &mut BTree, index: usize) -> Element {
+    fn remove_at(btree: &mut BTree, index: usize) -> Element {
         debug_assert!(index < btree.len());
         let uid = {
             let (elt, _) = btree.get_element(index).expect("Element must exist for index!");
             elt.uid.clone()
         };
         let old_len = btree.len();
-        let element = btree.delete(&uid).expect("Element must exist for UID!");
+        let element = btree.remove(&uid).expect("Element must exist for UID!");
         debug_assert!(btree.len() == old_len - element.len);
         element
     }
@@ -643,10 +643,10 @@ mod tests {
         insert_at(btree, index, text)
     }
 
-    fn delete_random(btree: &mut BTree) -> Element {
+    fn remove_random(btree: &mut BTree) -> Element {
         let range = Range::new(0, btree.len());
         let mut rng = rand::thread_rng();
         let index = range.ind_sample(&mut rng);
-        delete_at(btree, index)
+        remove_at(btree, index)
     }
 }
