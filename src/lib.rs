@@ -21,6 +21,7 @@ pub mod list;
 pub mod map;
 pub mod register;
 pub mod set;
+pub mod text;
 
 mod array;
 mod attributed_string;

@@ -52,7 +52,7 @@ pub struct Element<V>(Replica, V);
 impl<K: Key, V: Value> Map<K, V> {
 
     /// Constructs and returns a new map.
-    /// Th map has site 1 and counter 0.
+    /// The map has site 1 and counter 0.
     pub fn new() -> Self {
         let replica = Replica::new(1, 0);
         let value = MapValue::new();
