@@ -76,7 +76,7 @@ impl UID {
                 position = (position << level) + big(pos);
                 return UID::new(position, replica.site, replica.counter);
             } else {
-                position = (position << level) + big(pos2);
+                position = (position << level) + big(pos1);
             }
         }
         panic!(format!("UID cannot have more than ({}) levels", MAX_LEVEL));

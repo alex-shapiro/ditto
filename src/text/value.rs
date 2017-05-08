@@ -191,36 +191,32 @@ impl CrdtValue for TextValue {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use super::element::Element;
-    use Error;
-    use op::remote::RemoteOp;
-    use Replica;
 
     const REPLICA1: Replica = Replica{site: 5, counter: 1023};
     const REPLICA2: Replica = Replica{site: 8, counter: 16};
 
     #[test]
     fn test_new() {
-        let attrstr = TextValue::new();
-        assert!(attrstr.len() == 0);
-        assert!(attrstr.to_string() == "");
+        let text = TextValue::new();
+        assert!(text.len() == 0);
+        assert!(text.local_value() == "");
     }
 
     #[test]
     fn test_insert_empty_string() {
-        let mut attrstr = TextValue::new();
-        let op = attrstr.insert_text(0, "".to_string(), &REPLICA1);
+        let mut text = TextValue::new();
+        let op = text.insert(0, "".to_owned(), &REPLICA1);
         assert!(op == Err(Error::Noop));
     }
 
     #[test]
-    fn test_insert_text_when_empty() {
-        let mut attrstr = TextValue::new();
-        let op = attrstr.insert_text(0, "quick".to_string(), &REPLICA1).unwrap();
-        let element = elt_at(&attrstr, 0, "quick");
+    fn test_insert_when_empty() {
+        let mut text = TextValue::new();
+        let op = text.insert(0, "quick".to_owned(), &REPLICA1).unwrap();
+        let element = elt_at(&text, 0, "quick");
 
-        assert!(attrstr.len() == 5);
-        assert!(attrstr.to_string() == "quick");
+        assert!(text.len() == 5);
+        assert!(text.local_value() == "quick");
         assert!(op.inserts.len() == 1);
         assert!(op.inserts[0].uid == element.uid);
         assert!(op.inserts[0].text == element.text);
@@ -228,18 +224,18 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_text_before_index() {
-        let mut attrstr = TextValue::new();
-        let  _ = attrstr.insert_text(0, "the ".to_owned(), &REPLICA1);
-        let  _ = attrstr.insert_text(4, "brown".to_owned(), &REPLICA1);
-        let op = attrstr.insert_text(4, "quick ".to_owned(), &REPLICA2).unwrap();
+    fn test_insert_before_index() {
+        let mut text = TextValue::new();
+        let  _ = text.insert(0, "the ".to_owned(), &REPLICA1);
+        let  _ = text.insert(4, "brown".to_owned(), &REPLICA1);
+        let op = text.insert(4, "quick ".to_owned(), &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 15);
-        assert!(attrstr.to_string() == "the quick brown");
+        assert!(text.len() == 15);
+        assert!(text.local_value() == "the quick brown");
 
-        let _  = elt_at(&attrstr,  0, "the ");
-        let e1 = elt_at(&attrstr,  4, "quick ");
-        let _  = elt_at(&attrstr, 10, "brown");
+        let _  = elt_at(&text,  0, "the ");
+        let e1 = elt_at(&text,  4, "quick ");
+        let _  = elt_at(&text, 10, "brown");
 
         assert!(op.inserts.len() == 1);
         assert!(op.inserts[0].uid == e1.uid);
@@ -248,19 +244,19 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_text_in_index() {
-        let mut attrstr = TextValue::new();
-        let op1 = attrstr.insert_text(0, "the  ".to_owned(), &REPLICA1).unwrap();
-        let   _ = attrstr.insert_text(5, "brown".to_owned(), &REPLICA1);
-        let op2 = attrstr.insert_text(4, "quick".to_owned(), &REPLICA2).unwrap();
+    fn test_insert_in_index() {
+        let mut text = TextValue::new();
+        let op1 = text.insert(0, "the  ".to_owned(), &REPLICA1).unwrap();
+        let   _ = text.insert(5, "brown".to_owned(), &REPLICA1);
+        let op2 = text.insert(4, "quick".to_owned(), &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 15);
-        assert!(attrstr.to_string() == "the quick brown");
+        assert!(text.len() == 15);
+        assert!(text.local_value() == "the quick brown");
 
-        let e0 = elt_at(&attrstr,  0, "the ");
-        let e1 = elt_at(&attrstr,  4, "quick");
-        let e2 = elt_at(&attrstr,  9, " ");
-        let _  = elt_at(&attrstr, 10, "brown");
+        let e0 = elt_at(&text,  0, "the ");
+        let e1 = elt_at(&text,  4, "quick");
+        let e2 = elt_at(&text,  9, " ");
+        let _  = elt_at(&text, 10, "brown");
 
         assert!(op2.inserts.len() == 3);
         assert!(op2.inserts[0].uid == e0.uid);
@@ -275,33 +271,33 @@ mod tests {
     }
 
     #[test]
-    fn test_insert_text_invalid() {
-        let mut attrstr = TextValue::new();
-        let op = attrstr.insert_text(1, "quick".to_owned(), &REPLICA1);
+    fn test_insert_invalid() {
+        let mut text = TextValue::new();
+        let op = text.insert(1, "quick".to_owned(), &REPLICA1);
         assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_remove_zero_text() {
-        let mut attrstr = TextValue::new();
-        let  _ = attrstr.insert_text(0, "the ".to_owned(), &REPLICA1);
-        let op = attrstr.remove_text(1, 0, &REPLICA2);
+        let mut text = TextValue::new();
+        let  _ = text.insert(0, "the ".to_owned(), &REPLICA1);
+        let op = text.remove(1, 0, &REPLICA2);
         assert!(op == Err(Error::Noop));
     }
 
     #[test]
-    fn test_remove_text_whole_single_element() {
-        let mut attrstr = TextValue::new();
-        let   _ = attrstr.insert_text(0, "the ".to_owned(), &REPLICA1);
-        let op1 = attrstr.insert_text(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let   _ = attrstr.insert_text(10, "brown".to_owned(), &REPLICA1);
-        let op2 = attrstr.remove_text(4, 6, &REPLICA2).unwrap();
+    fn test_remove_whole_single_element() {
+        let mut text = TextValue::new();
+        let   _ = text.insert(0, "the ".to_owned(), &REPLICA1);
+        let op1 = text.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
+        let   _ = text.insert(10, "brown".to_owned(), &REPLICA1);
+        let op2 = text.remove(4, 6, &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 9);
-        assert!(attrstr.to_string() == "the brown");
+        assert!(text.len() == 9);
+        assert!(text.local_value() == "the brown");
 
-        let _ = elt_at(&attrstr, 0, "the ");
-        let _ = elt_at(&attrstr, 4, "brown");
+        let _ = elt_at(&text, 0, "the ");
+        let _ = elt_at(&text, 4, "brown");
 
         assert!(op2.inserts.len() == 0);
         assert!(op2.removes.len() == 1);
@@ -309,17 +305,17 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_text_whole_multiple_elements() {
-        let mut attrstr = TextValue::new();
-        let   _ = attrstr.insert_text(0, "the ".to_owned(), &REPLICA1);
-        let op1 = attrstr.insert_text(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let op2 = attrstr.insert_text(10, "brown".to_owned(), &REPLICA1).unwrap();
-        let op3 = attrstr.remove_text(4, 11, &REPLICA2).unwrap();
+    fn test_remove_whole_multiple_elements() {
+        let mut text = TextValue::new();
+        let   _ = text.insert(0, "the ".to_owned(), &REPLICA1);
+        let op1 = text.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
+        let op2 = text.insert(10, "brown".to_owned(), &REPLICA1).unwrap();
+        let op3 = text.remove(4, 11, &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 4);
-        assert!(attrstr.to_string() == "the ");
+        assert!(text.len() == 4);
+        assert!(text.local_value() == "the ");
 
-        let _ = elt_at(&attrstr, 0, "the ");
+        let _ = elt_at(&text, 0, "the ");
 
         assert!(op3.inserts.len() == 0);
         assert!(op3.removes.len() == 2);
@@ -328,20 +324,20 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_text_split_single_element() {
-        let mut attrstr = TextValue::new();
-        let   _ = attrstr.insert_text(0, "the ".to_owned(), &REPLICA1);
-        let op1 = attrstr.insert_text(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let   _ = attrstr.insert_text(10, "brown".to_owned(), &REPLICA1);
-        let op2 = attrstr.remove_text(5, 3, &REPLICA2).unwrap();
+    fn test_remove_split_single_element() {
+        let mut text = TextValue::new();
+        let   _ = text.insert(0, "the ".to_owned(), &REPLICA1);
+        let op1 = text.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
+        let   _ = text.insert(10, "brown".to_owned(), &REPLICA1);
+        let op2 = text.remove(5, 3, &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 12);
-        assert!(attrstr.to_string() == "the qk brown");
+        assert!(text.len() == 12);
+        assert!(text.local_value() == "the qk brown");
 
-        let _ = elt_at(&attrstr, 0, "the ");
-        let _ = elt_at(&attrstr, 4, "q");
-        let _ = elt_at(&attrstr, 5, "k ");
-        let _ = elt_at(&attrstr, 7, "brown");
+        let _ = elt_at(&text, 0, "the ");
+        let _ = elt_at(&text, 4, "q");
+        let _ = elt_at(&text, 5, "k ");
+        let _ = elt_at(&text, 7, "brown");
 
         assert!(op2.inserts.len() == 2);
         assert!(op2.inserts[0].text == "q");
@@ -351,22 +347,22 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_text_split_multiple_elements() {
-        let mut attrstr = TextValue::new();
-        let op1 = attrstr.insert_text(0, "the ".to_owned(), &REPLICA1).unwrap();
-        let   _ = attrstr.insert_text(4, "quick ".to_owned(), &REPLICA1);
-        let   _ = attrstr.insert_text(10, "brown ".to_owned(), &REPLICA1);
-        let   _ = attrstr.insert_text(16, "fox ".to_owned(), &REPLICA1);
-        let op2 = attrstr.insert_text(20, "jumps ".to_owned(), &REPLICA1).unwrap();
-        let   _ = attrstr.insert_text(26, "over".to_owned(), &REPLICA1);
-        let op3 = attrstr.remove_text(2, 19, &REPLICA2).unwrap();
+    fn test_remove_split_multiple_elements() {
+        let mut text = TextValue::new();
+        let op1 = text.insert(0, "the ".to_owned(), &REPLICA1).unwrap();
+        let   _ = text.insert(4, "quick ".to_owned(), &REPLICA1);
+        let   _ = text.insert(10, "brown ".to_owned(), &REPLICA1);
+        let   _ = text.insert(16, "fox ".to_owned(), &REPLICA1);
+        let op2 = text.insert(20, "jumps ".to_owned(), &REPLICA1).unwrap();
+        let   _ = text.insert(26, "over".to_owned(), &REPLICA1);
+        let op3 = text.remove(2, 19, &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 11);
-        assert!(attrstr.to_string() == "thumps over");
+        assert!(text.len() == 11);
+        assert!(text.local_value() == "thumps over");
 
-        let _ = elt_at(&attrstr, 0, "th");
-        let _ = elt_at(&attrstr, 2, "umps ");
-        let _ = elt_at(&attrstr, 7, "over");
+        let _ = elt_at(&text, 0, "th");
+        let _ = elt_at(&text, 2, "umps ");
+        let _ = elt_at(&text, 7, "over");
 
         assert!(op3.inserts.len() == 2);
         assert!(op3.inserts[0].text == "th");
@@ -377,23 +373,23 @@ mod tests {
     }
 
     #[test]
-    fn test_remove_text_invalid() {
-        let mut attrstr = TextValue::new();
-        let op = attrstr.remove_text(0, 1, &REPLICA2);
+    fn test_remove_invalid() {
+        let mut text = TextValue::new();
+        let op = text.remove(0, 1, &REPLICA2);
         assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
-    fn test_replace_text_remove_only() {
-        let mut attrstr = TextValue::new();
-        let op1 = attrstr.insert_text(0, "hello world".to_owned(), &REPLICA1).unwrap();
-        let op2 = attrstr.replace_text(2, 6, "".to_owned(), &REPLICA2).unwrap();
+    fn test_replace_remove_only() {
+        let mut text = TextValue::new();
+        let op1 = text.insert(0, "hello world".to_owned(), &REPLICA1).unwrap();
+        let op2 = text.replace(2, 6, "".to_owned(), &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 5);
-        assert!(attrstr.to_string() == "herld");
+        assert!(text.len() == 5);
+        assert!(text.local_value() == "herld");
 
-        let _ = elt_at(&attrstr, 0, "he");
-        let _ = elt_at(&attrstr, 2, "rld");
+        let _ = elt_at(&text, 0, "he");
+        let _ = elt_at(&text, 2, "rld");
 
         assert!(op2.inserts.len() == 2);
         assert!(op2.removes.len() == 1);
@@ -403,15 +399,15 @@ mod tests {
     }
 
     #[test]
-    fn test_replace_text_insert_only() {
-        let mut attrstr = TextValue::new();
-        let op1 = attrstr.insert_text(0, "the fox".to_owned(), &REPLICA1).unwrap();
-        let op2 = attrstr.replace_text(4, 0, "quick ".to_owned(), &REPLICA2).unwrap();
+    fn test_replace_insert_only() {
+        let mut text = TextValue::new();
+        let op1 = text.insert(0, "the fox".to_owned(), &REPLICA1).unwrap();
+        let op2 = text.replace(4, 0, "quick ".to_owned(), &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 13);
-        let e0 = elt_at(&attrstr,  0, "the ");
-        let e1 = elt_at(&attrstr,  4, "quick ");
-        let e2 = elt_at(&attrstr, 10, "fox");
+        assert!(text.len() == 13);
+        let e0 = elt_at(&text,  0, "the ");
+        let e1 = elt_at(&text,  4, "quick ");
+        let e2 = elt_at(&text, 10, "fox");
 
         assert!(op2.inserts.len() == 3);
         assert!(op2.removes.len() == 1);
@@ -422,15 +418,15 @@ mod tests {
     }
 
     #[test]
-    fn test_replace_text_remove_and_insert() {
-        let mut attrstr = TextValue::new();
-        let op1 = attrstr.insert_text(0, "the brown fox".to_owned(), &REPLICA1).unwrap();
-        let op2 = attrstr.replace_text(4, 5, "qwik".to_owned(), &REPLICA2).unwrap();
+    fn test_replace_remove_and_insert() {
+        let mut text = TextValue::new();
+        let op1 = text.insert(0, "the brown fox".to_owned(), &REPLICA1).unwrap();
+        let op2 = text.replace(4, 5, "qwik".to_owned(), &REPLICA2).unwrap();
 
-        assert!(attrstr.len() == 12);
-        let e0 = elt_at(&attrstr,  0, "the ");
-        let e1 = elt_at(&attrstr,  4, "qwik");
-        let e2 = elt_at(&attrstr,  8, " fox");
+        assert!(text.len() == 12);
+        let e0 = elt_at(&text,  0, "the ");
+        let e1 = elt_at(&text,  4, "qwik");
+        let e2 = elt_at(&text,  8, " fox");
 
         assert!(op2.removes.len() == 1);
         assert!(op2.inserts.len() == 3);
@@ -442,94 +438,72 @@ mod tests {
 
     #[test]
     fn test_replace_invalid() {
-        let mut attrstr = TextValue::new();
-        let   _ = attrstr.insert_text(0, "the quick brown fox".to_owned(), &REPLICA1);
-        let op2 = attrstr.replace_text(4, 16, "slow green turtle".to_owned(), &REPLICA2);
+        let mut text = TextValue::new();
+        let   _ = text.insert(0, "the quick brown fox".to_owned(), &REPLICA1);
+        let op2 = text.replace(4, 16, "slow green turtle".to_owned(), &REPLICA2);
         assert!(op2 == Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_execute_remote_empty() {
-        let mut attrstr = TextValue::new();
-        let mut op = RemoteOp::default();
-        let local_ops = attrstr.execute_remote(&mut op);
-        assert!(local_ops.len() == 0);
+        let mut text = TextValue::new();
+        let mut op = RemoteOp{inserts: vec![], removes: vec![]};
+        assert!(text.execute_remote(&mut op).is_none());
     }
 
     #[test]
     fn test_execute_remote() {
-        let mut attrstr1 = TextValue::new();
-        let op1 = attrstr1.insert_text(0, "the brown".to_owned(), &REPLICA1).unwrap();
-        let op2 = attrstr1.insert_text(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let op3 = attrstr1.replace_text(6, 1, "a".to_owned(), &REPLICA1).unwrap();
+        let mut text1 = TextValue::new();
+        let op1 = text1.insert(0, "the brown".to_owned(), &REPLICA1).unwrap();
+        let op2 = text1.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
+        let op3 = text1.replace(6, 1, "a".to_owned(), &REPLICA1).unwrap();
 
-        let mut attrstr2 = TextValue::new();
-        let lops1 = attrstr2.execute_remote(&op1);
-        let lops2 = attrstr2.execute_remote(&op2);
-        let lops3 = attrstr2.execute_remote(&op3);
+        let mut text2 = TextValue::new();
+        let changes1 = text2.execute_remote(&op1).unwrap().changes;
+        let changes2 = text2.execute_remote(&op2).unwrap().changes;
+        let changes3 = text2.execute_remote(&op3).unwrap().changes;
 
-        assert!(attrstr1 == attrstr2);
-        assert!(lops1.len() == 1);
-        assert!(lops2.len() == 4);
-        assert!(lops3.len() == 4);
+        assert!(text1 == text2);
+        assert!(changes1.len() == 1);
+        assert!(changes2.len() == 4);
+        assert!(changes3.len() == 4);
 
-        let lop1 = lops1[0].insert_text().unwrap();
-        let lop2 = lops2[0].remove_text().unwrap();
-        let lop3 = lops2[1].insert_text().unwrap();
-        let lop4 = lops2[2].insert_text().unwrap();
-        let lop5 = lops2[3].insert_text().unwrap();
-        let lop6 = lops3[0].remove_text().unwrap();
-        let lop7 = lops3[1].insert_text().unwrap();
-        let lop8 = lops3[2].insert_text().unwrap();
-        let lop9 = lops3[3].insert_text().unwrap();
-
-        assert!(lop1.index == 0 && lop1.text == "the brown");
-        assert!(lop2.index == 0 && lop2.len == 9);
-        assert!(lop3.index == 0 && lop3.text == "the ");
-        assert!(lop4.index == 4 && lop4.text == "quick ");
-        assert!(lop5.index == 10 && lop5.text == "brown");
-        assert!(lop6.index == 4 && lop6.len == 6);
-        assert!(lop7.index == 4 && lop7.text == "qu");
-        assert!(lop8.index == 6 && lop8.text == "a");
-        assert!(lop9.index == 7 && lop9.text == "ck ");
+        assert_insert(&changes1[0], 0, "the brown");
+        assert_matches!(changes2[0], LocalChange::Remove{index: 0, len: 9});
+        assert_insert(&changes2[1], 0, "the ");
+        assert_insert(&changes2[2], 4, "quick ");
+        assert_insert(&changes2[3], 10, "brown");
+        assert_matches!(changes3[0], LocalChange::Remove{index: 4, len: 6});
+        assert_insert(&changes3[1], 4, "qu");
+        assert_insert(&changes3[2], 6, "a");
+        assert_insert(&changes3[3], 7, "ck ");
     }
 
     #[test]
     fn test_ignore_duplicate_inserts_and_removes() {
-        let mut attrstr1 = TextValue::new();
-        let mut attrstr2 = TextValue::new();
+        let mut text1 = TextValue::new();
+        let mut text2 = TextValue::new();
 
-        let op = attrstr1.insert_text(0, "hi".to_owned(), &REPLICA1).unwrap();
-        let lops1 = attrstr2.execute_remote(&op);
-        let lops2 = attrstr2.execute_remote(&op);
-
-        assert!(attrstr1 == attrstr2);
-        assert!(lops1.len() == 1);
-        assert!(lops2.len() == 0);
+        let op = text1.insert(0, "hi".to_owned(), &REPLICA1).unwrap();
+        assert!(text2.execute_remote(&op).is_some());
+        assert!(text2.execute_remote(&op).is_none());
+        assert!(text1 == text2);
     }
 
     #[test]
-    fn test_to_string() {
-        let mut attrstr = TextValue::new();
-        attrstr.insert_text(0, "the brown".to_string(), &REPLICA1).unwrap();
-        attrstr.insert_text(4, "quick ".to_string(), &REPLICA1).unwrap();
-        assert!(attrstr.to_string() == "the quick brown");
-    }
+    fn test_add_site() {
+        let mut text = TextValue::new();
+        let op1 = text.insert(0, "a".to_owned(), &Replica::new(0, 1)).unwrap();
+        let op2 = text.insert(1, "b".to_owned(), &Replica::new(0, 2)).unwrap();
 
-    #[test]
-    fn test_update_site() {
-        let mut attrstr = TextValue::new();
-        let op1 = attrstr.insert_text(0, "a".to_owned(), &Replica::new(0, 1)).unwrap();
-        let op2 = attrstr.insert_text(1, "b".to_owned(), &Replica::new(0, 2)).unwrap();
+        text.add_site(&op1, 4);
+        text.add_site(&op2, 8);
 
-        attrstr.update_site(&op1, 4);
-        attrstr.update_site(&op2, 8);
-
-        let (e1, _) = attrstr.0.get_element(0).unwrap();
+        let (e1, _) = text.0.get_element(0).unwrap();
         assert!(e1.uid.site == 4);
         assert!(e1.uid.counter == 1);
 
-        let (e2, _) = attrstr.0.get_element(1).unwrap();
+        let (e2, _) = text.0.get_element(1).unwrap();
         assert!(e2.uid.site == 8);
         assert!(e2.uid.counter == 2);
     }
@@ -540,5 +514,17 @@ mod tests {
         assert!(element.text == text);
         assert!(element.len == element.text.char_len());
         element
+    }
+
+    fn assert_insert(local_change: &LocalChange, index: usize, text: &'static str) {
+        match *local_change {
+            LocalChange::Insert{index: i, text: ref t} => {
+                assert!(i == index);
+                assert!(t == text);
+            },
+            _ => {
+                assert!(false, "Not an insert!");
+            }
+        }
     }
 }
