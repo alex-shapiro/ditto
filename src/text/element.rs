@@ -2,11 +2,19 @@ use char_fns::CharFns;
 use Replica;
 use sequence::uid::{self, UID};
 use std::cmp::Ordering;
+use serde::{Deserialize, Deserializer};
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize)]
 pub struct Element {
     pub uid: UID,
+    pub text: String,
+    #[serde(skip_serializing)]
     pub len: usize,
+}
+
+#[derive(Debug, Deserialize)]
+struct DeserializedElement {
+    pub uid: UID,
     pub text: String,
 }
 
@@ -47,5 +55,13 @@ impl PartialOrd for Element {
 impl Ord for Element {
     fn cmp(&self, other: &Element) -> Ordering {
         self.uid.cmp(&other.uid)
+    }
+}
+
+impl<'de> Deserialize<'de> for Element {
+    fn deserialize<D>(deserializer: D) -> Result<Element, D::Error> where D: Deserializer<'de> {
+        let DeserializedElement{uid, text} = DeserializedElement::deserialize(deserializer)?;
+        let len = text.char_len();
+        Ok(Element{uid, text, len})
     }
 }

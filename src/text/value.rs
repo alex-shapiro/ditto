@@ -10,7 +10,7 @@ use super::{RemoteOp, LocalOp, LocalChange};
 use traits::CrdtValue;
 use char_fns::CharFns;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextValue(BTree);
 
 impl TextValue {

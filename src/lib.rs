@@ -54,3 +54,4 @@ pub use list::List;
 pub use map::Map;
 pub use register::{Register, RegisterValue};
 pub use set::Set;
+pub use text::Text;
