@@ -51,11 +51,6 @@ impl UID {
         UID{position: position, site: site, counter: counter}
     }
 
-    pub fn set_replica(&mut self, replica: &Replica) {
-        self.site = replica.site;
-        self.counter = replica.counter;
-    }
-
     pub fn min() -> Self {
         UID::new(big(1 << BASE_LEVEL), 0, 0)
     }
@@ -286,15 +281,6 @@ mod tests {
         assert!(uid.position == big(0b1111));
         assert!(uid.site == 4294967295);
         assert!(uid.counter == 4294967295);
-    }
-
-    #[test]
-    fn test_set_replica() {
-        let mut uid = UID::min();
-        let mut replica = Replica{site: 432, counter: 182012};
-        uid.set_replica(&mut replica);
-        assert!(uid.site == 432);
-        assert!(uid.counter == 182012);
     }
 
     #[test]

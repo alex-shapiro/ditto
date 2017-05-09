@@ -21,6 +21,7 @@ pub mod list;
 pub mod map;
 pub mod register;
 pub mod set;
+pub mod text;
 
 mod array;
 mod attributed_string;
@@ -53,3 +54,4 @@ pub use list::List;
 pub use map::Map;
 pub use register::{Register, RegisterValue};
 pub use set::Set;
+pub use text::Text;
