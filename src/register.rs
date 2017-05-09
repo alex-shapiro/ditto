@@ -8,7 +8,7 @@ use traits::*;
 use std::fmt::Debug;
 use std::mem;
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Register<T: Debug + Clone> {
     value: RegisterValue<T>,
     replica: Replica,
@@ -18,13 +18,13 @@ pub struct Register<T: Debug + Clone> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegisterValue<T: Debug + Clone>(Vec<Element<T>>);
 
-#[derive(Debug, Clone, Serialize, Deserialize)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RemoteOp<T: Debug + Clone> {
     remove: Vec<Element<T>>,
     insert: Element<T>,
 }
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, PartialEq, Serialize, Deserialize)]
 pub struct LocalOp<T> {
     pub new_value: T,
 }
@@ -168,6 +168,8 @@ impl <T: Debug + Clone> CrdtRemoteOp for RemoteOp<T> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use serde_json;
+    use rmp_serde;
 
     #[test]
     fn test_new() {
@@ -234,5 +236,72 @@ mod tests {
         assert!(register2.get() == &"b");
         assert!(register2.value.0.len() == 1);
         assert!(local_op.new_value == "b");
+    }
+
+    #[test]
+    fn test_add_site() {
+        let mut register1 = Register::new(123);
+        let mut register2 = Register::from_value(register1.clone_value(), 0);
+        assert!(register2.update(456).unwrap_err() == Error::AwaitingSite);
+
+        let remote_ops = register2.add_site(2).unwrap();
+        let _ = register1.execute_remote(&remote_ops[0]);
+        assert!(register1.get() == &456);
+        assert!(register2.get() == &456);
+    }
+
+    #[test]
+    fn test_add_site_already_has_site() {
+        let mut register = Register::from_value(RegisterValue::new(123, &Replica{site: 42, counter: 0}), 42);
+        assert!(register.add_site(44).unwrap_err() == Error::AlreadyHasSite);
+    }
+
+    #[test]
+    fn test_serialize() {
+        let register1 = Register::new("hello".to_owned());
+        let s_json = serde_json::to_string(&register1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&register1).unwrap();
+        let register2: Register<String> = serde_json::from_str(&s_json).unwrap();
+        let register3: Register<String> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(register1 == register2);
+        assert!(register1 == register3);
+    }
+
+    #[test]
+    fn test_serialize_value() {
+        let register1 = Register::new("hello".to_owned());
+        let s_json = serde_json::to_string(register1.value()).unwrap();
+        let s_msgpack = rmp_serde::to_vec(register1.value()).unwrap();
+        let value2: RegisterValue<String> = serde_json::from_str(&s_json).unwrap();
+        let value3: RegisterValue<String> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(*register1.value() == value2);
+        assert!(*register1.value() == value3);
+    }
+
+    #[test]
+    fn test_serialize_remote_op() {
+        let mut register = Register::new(123);
+        let remote_op1 = register.update(456).unwrap();
+        let s_json = serde_json::to_string(&remote_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
+        let remote_op2: RemoteOp<u32> = serde_json::from_str(&s_json).unwrap();
+        let remote_op3: RemoteOp<u32> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(remote_op1 == remote_op2);
+        assert!(remote_op1 == remote_op3);
+    }
+
+    #[test]
+    fn test_serialize_local_op() {
+        let local_op1 = LocalOp{new_value: 456};
+        let s_json = serde_json::to_string(&local_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
+        let local_op2: LocalOp<u32> = serde_json::from_str(&s_json).unwrap();
+        let local_op3: LocalOp<u32> = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(local_op1 == local_op2);
+        assert!(local_op1 == local_op3);
     }
 }
