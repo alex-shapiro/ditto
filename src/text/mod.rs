@@ -6,7 +6,7 @@ mod btree;
 
 use Error;
 use Replica;
-use self::value::TextValue;
+pub use self::value::TextValue;
 use self::element::Element;
 use traits::*;
 use std::mem;

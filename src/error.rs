@@ -15,12 +15,14 @@ pub enum Error {
     InvalidJson,
     InvalidLocalOp,
     InvalidPath,
+    InvalidPointer,
     InvalidRemoteOp,
     KeyDoesNotExist,
     Noop,
     OutOfBounds,
     UIDDoesNotExist,
     VLQNoTerminatingByte,
+    WrongJsonType,
 }
 
 impl From<ParseIntError> for Error {

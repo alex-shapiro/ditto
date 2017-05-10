@@ -9,15 +9,17 @@ use util::remove_elements;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::borrow::Borrow;
+use std::cmp::Ordering;
+use std::collections::hash_map::{self, HashMap};
 use std::hash::Hash;
 use std::mem;
 
 pub trait Key: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> Key for T {}
 
-pub trait Value: Clone + Eq + Ord + Serialize + DeserializeOwned {}
-impl<T: Clone + Eq + Ord + Serialize + DeserializeOwned> Value for T {}
+pub trait Value: Clone + PartialEq + Serialize + DeserializeOwned {}
+impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Map<K: Key, V: Value> {
@@ -46,8 +48,28 @@ pub enum LocalOp<K, V> {
     Remove{key: K},
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Element<V>(Replica, V);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Element<V>(pub Replica, pub V);
+
+impl<V> PartialEq for Element<V> {
+    fn eq(&self, other: &Element<V>) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<V> Eq for Element<V> {}
+
+impl<V> PartialOrd for Element<V> {
+    fn partial_cmp(&self, other: &Element<V>) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl<V> Ord for Element<V> {
+    fn cmp(&self, other: &Element<V>) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
 
 impl<K: Key, V: Value> Map<K, V> {
 
@@ -136,6 +158,37 @@ impl<K: Key, V: Value> MapValue<K, V> {
         MapValue{inner: HashMap::new()}
     }
 
+    /// Returns the number of key-value pairs in the map.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Returns an iterator over the key-value pairs in the map.
+    pub fn iter(&self) -> hash_map::Iter<K,Vec<Element<V>>> {
+        self.inner.iter()
+    }
+
+    /// Returns a mutable reference to the first element for the key.
+    /// For internal use only.
+    pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut Element<V>>
+        where Q: Hash + Eq,
+              K: Borrow<Q>,
+    {
+        let elements = try_opt!(self.inner.get_mut(key));
+        Some(&mut elements[0])
+    }
+
+    /// Returns a mutable reference to the element corresponding to the
+    /// given key and replica. For internal use only.
+    pub fn get_mut_element<Q: ?Sized>(&mut self, key: &Q, replica: &Replica) -> Option<&mut Element<V>>
+        where Q: Hash + Eq,
+              K: Borrow<Q>,
+    {
+        let elements = try_opt!(self.inner.get_mut(key));
+        let index = try_opt!(elements.binary_search_by(|e| e.0.cmp(replica)).ok());
+        Some(&mut elements[index])
+    }
+
     /// Inserts a key-value pair into the map and returns an op
     /// that can be sent to remote sites for replication. If the
     /// map had this key present, the value is updated. If the
@@ -156,9 +209,12 @@ impl<K: Key, V: Value> MapValue<K, V> {
     /// Removes a key-value pair from the map and returns an op
     /// that can be sent to remote sites for replication. If the
     /// map did not contain the key, it returns a DoesNotExist error.
-    pub fn remove(&mut self, key: &K) -> Result<RemoteOp<K, V>, Error> {
+    pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Result<RemoteOp<K, V>, Error>
+        where Q: Hash + Eq + ToOwned<Owned = K>,
+              K: Borrow<Q>,
+    {
         let removed = self.inner.remove(key).ok_or(Error::DoesNotExist)?;
-        Ok(RemoteOp::Remove{key: key.clone(), removed})
+        Ok(RemoteOp::Remove{key: key.to_owned(), removed})
     }
 
     /// Updates the map and returns the equivalent local op.

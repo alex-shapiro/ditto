@@ -50,5 +50,5 @@ pub trait CrdtRemoteOp {
 
 /// Trait for converting a type into a CRDTs
 pub trait IntoCrdt<C: Crdt> {
-    fn into_crdt(self, site: &u32) -> C;
+    fn into_crdt(self, site: u32) -> C;
 }

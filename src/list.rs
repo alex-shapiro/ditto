@@ -7,6 +7,7 @@ use sequence::uid::{self, UID};
 use traits::*;
 
 use std::mem;
+use std::slice;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct List<T> {
@@ -31,7 +32,7 @@ pub enum LocalOp<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Element<T>(UID, T);
+pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
 
@@ -52,14 +53,6 @@ impl<T: Clone> List<T> {
     /// Returns None if the index is out-of-bounds.
     pub fn get(&self, index: usize) -> Option<&T> {
         self.value.0.get(index).and_then(|element| Some(&element.1))
-    }
-
-    /// Returns the index of the element with `uid`. If a matching
-    /// element is found, it returns `Ok` containing the element index.
-    /// If no matching element is found, it returns `Err` containing
-    /// the index where an element with the UID may be inserted.
-    pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
-        self.value.find_index(uid)
     }
 
     /// Inserts an element at position `index` within the list,
@@ -130,8 +123,16 @@ impl<T: Clone> ListValue<T> {
         ListValue(vec![])
     }
 
+    pub fn iter(&self) -> slice::Iter<Element<T>> {
+        self.0.iter()
+    }
+
     pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
         self.0.binary_search_by(|element| element.0.cmp(uid))
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Element<T>> {
+        self.0.get_mut(index)
     }
 
     pub fn insert(&mut self, index: usize, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {

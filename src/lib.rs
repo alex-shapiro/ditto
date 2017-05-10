@@ -17,6 +17,7 @@ extern crate rmp_serde;
 #[macro_use]
 mod macros;
 
+pub mod json;
 pub mod list;
 pub mod map;
 pub mod register;
