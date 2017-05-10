@@ -233,9 +233,9 @@ mod tests {
         let _  = list.insert(2, 789).unwrap();
 
         let Element(uid, _) = get_elt(op);
-        assert!(list.find_index(&uid) == Ok(1));
-        assert!(list.find_index(&*uid::MIN) == Err(0));
-        assert!(list.find_index(&*uid::MAX) == Err(3));
+        assert!(list.value.find_index(&uid) == Ok(1));
+        assert!(list.value.find_index(&*uid::MIN) == Err(0));
+        assert!(list.value.find_index(&*uid::MAX) == Err(3));
     }
 
     #[test]
