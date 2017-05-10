@@ -15,7 +15,6 @@ pub enum Error {
     InvalidJson,
     InvalidLocalOp,
     InvalidPath,
-    InvalidPointer,
     InvalidRemoteOp,
     KeyDoesNotExist,
     Noop,

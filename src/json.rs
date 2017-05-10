@@ -261,7 +261,7 @@ impl JsonValue {
 
     fn get_nested_local(&mut self, pointer: &str) -> Result<(&mut JsonValue, Vec<RemoteUID>), Error> {
         if !(pointer.is_empty() || pointer.starts_with("/")) {
-            return Err(Error::InvalidPointer)
+            return Err(Error::DoesNotExist)
         }
 
         let mut value = Some(self);
@@ -270,19 +270,19 @@ impl JsonValue {
         for key in pointer.split("/").skip(1) {
             match value.unwrap() {
                 &mut JsonValue::Object(ref mut map_value) => {
-                    let mut element = map_value.get_mut(key).ok_or(Error::InvalidPointer)?;
+                    let mut element = map_value.get_mut(key).ok_or(Error::DoesNotExist)?;
                     let uid = RemoteUID::Object(key.to_owned(), element.0.clone());
                     remote_pointer.push(uid);
                     value = Some(&mut element.1)
                 }
                 &mut JsonValue::Array(ref mut list_value) => {
                     let index = usize::from_str(key)?;
-                    let mut element = list_value.get_mut(index).ok_or(Error::InvalidPointer)?;
+                    let mut element = list_value.get_mut(index).ok_or(Error::DoesNotExist)?;
                     let uid = RemoteUID::Array(element.0.clone());
                     remote_pointer.push(uid);
                     value = Some(&mut element.1)
                 }
-                _ => return Err(Error::InvalidPointer),
+                _ => return Err(Error::DoesNotExist),
             }
         }
 
@@ -463,5 +463,145 @@ impl IntoJson for f64 {
 impl IntoJson for bool {
     fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
         Ok(JsonValue::Bool(self))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_from_str() {
+        let crdt = Json::from_str(r#"{"foo":123, "bar":true, "baz": [1.0,2.0,3.0]}"#).unwrap();
+        assert_matches!(crdt.value, JsonValue::Object(_));
+        assert!(crdt.replica.site == 1);
+        assert!(crdt.replica.counter == 1);
+        assert!(crdt.awaiting_site.is_empty());
+    }
+
+    #[test]
+    fn test_from_str_invalid() {
+        let invalid_json_str = r#"{"foo":123, "bar":true, "baz": [1.0,2.0,3.0]"#;
+        assert!(Json::from_str(invalid_json_str).unwrap_err() == Error::InvalidJson);
+    }
+
+    #[test]
+    fn test_object_insert() {
+        let mut crdt = Json::from_str(r#"{}"#).unwrap();
+        let remote_op1 = crdt.object_insert_json("", "foo".to_owned(), r#"{"bar": 3.5}"#).unwrap();
+        let remote_op2 = crdt.object_insert("/foo", "baz".to_owned(), true).unwrap();
+
+        assert!(crdt.replica.counter == 3);
+        assert!(*nested_value(&mut crdt, "/foo/bar").unwrap() == JsonValue::Number(3.5));
+        assert!(*nested_value(&mut crdt, "/foo/baz").unwrap() == JsonValue::Bool(true));
+
+        assert!(remote_op1.pointer.is_empty());
+        assert_matches!(remote_op1.op, RemoteOpInner::Object(map::RemoteOp::Insert{key: _, element: _, removed: _}));
+
+        assert!(remote_op2.pointer.len() == 1);
+        assert!(remote_op2.pointer[0] == RemoteUID::Object("foo".to_owned(), Replica::new(1,1)));
+        assert_matches!(remote_op2.op, RemoteOpInner::Object(map::RemoteOp::Insert{key: _, element: _, removed: _}));
+    }
+
+    #[test]
+    fn test_object_insert_invalid_pointer() {
+        let mut crdt = Json::from_str(r#"{}"#).unwrap();
+        let result = crdt.object_insert_json("/foo", "bar".to_owned(), r#"{"bar": 3.5}"#);
+        assert!(result.unwrap_err() == Error::DoesNotExist);
+    }
+
+    #[test]
+    fn test_object_insert_replaces_value() {
+        let mut crdt = Json::from_str(r#"{}"#).unwrap();
+        let _ = crdt.object_insert("", "foo".to_owned(), 19.7).unwrap();
+        let remote_op = crdt.object_insert("", "foo".to_owned(), 4.6).unwrap();
+
+        assert!(crdt.replica.counter == 3);
+        assert!(*nested_value(&mut crdt, "/foo").unwrap() == JsonValue::Number(4.6));
+
+        assert!(remote_op.pointer.is_empty());
+        let (key, element, removed) = map_insert_op_fields(remote_op);
+        assert!(key == "foo");
+        assert!(element.0 == Replica::new(1,2));
+        assert!(element.1 == JsonValue::Number(4.6));
+        assert!(removed[0].0 == Replica::new(1,1));
+    }
+
+    #[test]
+    fn test_object_insert_same_value() {
+        let mut crdt = Json::from_str("{}").unwrap();
+        assert!(crdt.object_insert("", "foo".to_owned(), 19.7).is_ok());
+        assert!(crdt.object_insert("", "foo".to_owned(), 19.7).unwrap_err() == Error::AlreadyExists);
+    }
+
+    #[test]
+    fn test_object_insert_awaiting_site() {
+        let crdt1 = Json::from_str("{}").unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let result = crdt2.object_insert("", "foo".to_owned(), 19.7);
+
+        assert!(result.unwrap_err() == Error::AwaitingSite);
+        assert!(crdt2.awaiting_site.len() == 1);
+        assert!(*nested_value(&mut crdt2, "/foo").unwrap() == JsonValue::Number(19.7));
+    }
+
+    #[test]
+    fn test_object_remove() {
+        let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
+        let remote_op = crdt.object_remove("/abc/2", "def").unwrap();
+
+        assert!(nested_value(&mut crdt, "abc/2/def").is_none());
+        assert!(remote_op.pointer.len() == 2);
+        assert!(remote_op.pointer[0] == RemoteUID::Object("abc".to_owned(), Replica::new(1,0)));
+        assert_matches!(remote_op.pointer[1], RemoteUID::Array(_));
+
+        let (key, removed) = map_remove_op_fields(remote_op);
+        assert!(key == "def");
+        assert!(removed.len() == 1);
+        assert!(removed[0].0 == Replica::new(1,0));
+        assert!(removed[0].1 == JsonValue::Bool(false));
+    }
+
+    #[test]
+    fn test_object_remove_invalid_pointer() {
+        let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
+        let result = crdt.object_remove("/uhoh/11", "def");
+        assert!(result.unwrap_err() == Error::DoesNotExist);
+    }
+
+    #[test]
+    fn test_object_remove_does_not_exist() {
+        let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
+        let result = crdt.object_remove("/abc/2", "zebra!");
+        assert!(result.unwrap_err() == Error::DoesNotExist);
+    }
+
+    #[test]
+    fn test_object_remove_awaiting_site() {
+        let crdt1 = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let result = crdt2.object_remove("/abc/2", "def");
+        assert!(result.unwrap_err() == Error::AwaitingSite);
+        assert!(crdt2.awaiting_site.len() == 1);
+        assert!(nested_value(&mut crdt2, "/abc/2/def").is_none());
+    }
+
+    fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {
+        let (value, _) = try_opt!(crdt.value.get_nested_local(pointer).ok());
+        Some(value)
+    }
+
+    fn map_insert_op_fields(remote_op: RemoteOp) -> (String, map::Element<JsonValue>, Vec<map::Element<JsonValue>>) {
+        match remote_op.op {
+            RemoteOpInner::Object(map::RemoteOp::Insert{key: k, element: e, removed: r}) => (k, e, r),
+            _ => panic!(),
+        }
+    }
+
+    fn map_remove_op_fields(remote_op: RemoteOp) -> (String, Vec<map::Element<JsonValue>>) {
+        match remote_op.op {
+            RemoteOpInner::Object(map::RemoteOp::Remove{key: k, removed: r}) => (k, r),
+            _ => panic!(),
+        }
     }
 }
