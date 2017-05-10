@@ -451,6 +451,12 @@ impl IntoJson for String {
     }
 }
 
+impl<'a> IntoJson for &'a str {
+    fn into_json(self, replica: &Replica) -> Result<JsonValue, Error> {
+        self.to_owned().into_json(replica)
+    }
+}
+
 impl IntoJson for f64 {
     fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
         match f64::is_finite(self) {
@@ -580,15 +586,83 @@ mod tests {
     fn test_object_remove_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
         let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
-        let result = crdt2.object_remove("/abc/2", "def");
-        assert!(result.unwrap_err() == Error::AwaitingSite);
+        assert!(crdt2.object_remove("/abc/2", "def").unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
         assert!(nested_value(&mut crdt2, "/abc/2/def").is_none());
+    }
+
+    #[test]
+    fn test_array_insert() {
+        let mut crdt = Json::from_str(r#"{"things":[1,[],2,3]}"#).unwrap();
+        let remote_op = crdt.array_insert("/things/1", 0, true).unwrap();
+        let element = list_insert_op_element(remote_op);
+        assert!(*nested_value(&mut crdt, "/things/1/0").unwrap() == JsonValue::Bool(true));
+        assert!(crdt.replica.counter == 2);
+        assert!(element.1 == JsonValue::Bool(true));
+    }
+
+    #[test]
+    fn test_array_insert_invalid_pointer() {
+        let mut crdt = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
+        assert!(crdt.array_insert("/others", 1, true).unwrap_err() == Error::DoesNotExist);
+    }
+
+    #[test]
+    fn test_array_insert_out_of_bounds() {
+        let mut crdt = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
+        assert!(crdt.array_insert("/things", 4, true).unwrap_err() == Error::OutOfBounds);
+    }
+
+    #[test]
+    fn test_array_insert_awaiting_site() {
+        let crdt1 = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        assert!(crdt2.array_insert("/things", 1, true).unwrap_err() == Error::AwaitingSite);
+        assert!(crdt2.awaiting_site.len() == 1);
+        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Bool(true));
+    }
+
+    #[test]
+    fn test_array_remove() {
+        let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
+        let remote_op = crdt.array_remove("/things/1", 2).unwrap();
+        let element = list_remove_op_element(remote_op);
+        assert!(nested_value(&mut crdt, "/things/1/2").is_none());
+        assert!(crdt.replica.counter == 2);
+        assert!(local_json(&element.1) == r#""hi""#);
+    }
+
+    #[test]
+    fn test_array_remove_invalid_pointer() {
+        let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
+        assert!(crdt.array_remove("/things/5", 2).unwrap_err() == Error::DoesNotExist);
+    }
+
+    #[test]
+    fn test_array_remove_out_of_bounds() {
+        let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
+        assert!(crdt.array_remove("/things/1", 3).unwrap_err() == Error::OutOfBounds);
+    }
+
+    #[test]
+    fn test_array_remove_awaiting_site() {
+        let crdt1 = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        assert!(crdt2.array_remove("/things", 1).unwrap_err() == Error::AwaitingSite);
+
+        let remote_op = crdt2.awaiting_site.pop().unwrap();
+        let element = list_remove_op_element(remote_op);
+        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Number(2.0));
+        assert!(local_json(&element.1) == r#"[true,false,"hi"]"#);
     }
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {
         let (value, _) = try_opt!(crdt.value.get_nested_local(pointer).ok());
         Some(value)
+    }
+
+    fn local_json(json_value: &JsonValue) -> String {
+        serde_json::to_string(&json_value.local_value()).unwrap()
     }
 
     fn map_insert_op_fields(remote_op: RemoteOp) -> (String, map::Element<JsonValue>, Vec<map::Element<JsonValue>>) {
@@ -601,6 +675,20 @@ mod tests {
     fn map_remove_op_fields(remote_op: RemoteOp) -> (String, Vec<map::Element<JsonValue>>) {
         match remote_op.op {
             RemoteOpInner::Object(map::RemoteOp::Remove{key: k, removed: r}) => (k, r),
+            _ => panic!(),
+        }
+    }
+
+    fn list_insert_op_element(remote_op: RemoteOp) -> list::Element<JsonValue> {
+        match remote_op.op {
+            RemoteOpInner::Array(list::RemoteOp::Insert(element)) => element,
+            _ => panic!(),
+        }
+    }
+
+    fn list_remove_op_element(remote_op: RemoteOp) -> list::Element<JsonValue> {
+        match remote_op.op {
+            RemoteOpInner::Array(list::RemoteOp::Remove(element)) => element,
             _ => panic!(),
         }
     }
