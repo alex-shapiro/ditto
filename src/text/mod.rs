@@ -20,8 +20,8 @@ pub struct Text {
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RemoteOp {
-    inserts: Vec<Element>,
-    removes: Vec<Element>,
+    pub inserts: Vec<Element>,
+    pub removes: Vec<Element>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -158,14 +158,14 @@ mod tests {
     #[test]
     fn test_insert() {
         let mut text = Text::new();
-        let remote_op = text.insert(0, "Hello".to_owned()).unwrap();
-        assert!(text.len() == 5);
-        assert!(text.local_value() == "Hello");
+        let remote_op = text.insert(0, "🇺🇸😀Hello".to_owned()).unwrap();
+        assert!(text.len() == 8);
+        assert!(text.local_value() == "🇺🇸😀Hello");
         assert!(text.replica.counter == 1);
         assert!(remote_op.inserts[0].uid.site == 1);
         assert!(remote_op.inserts[0].uid.counter == 0);
-        assert!(remote_op.inserts[0].len == 5);
-        assert!(remote_op.inserts[0].text == "Hello");
+        assert!(remote_op.inserts[0].len == 8);
+        assert!(remote_op.inserts[0].text == "🇺🇸😀Hello");
     }
 
     #[test]

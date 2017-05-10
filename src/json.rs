@@ -130,20 +130,20 @@ impl Json {
     }
 
     /// Inserts new text into a text node in the Json CRDT.
-    pub fn text_insert(&mut self, pointer: &str, index: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.text_insert(pointer, index, text, &self.replica)?;
+    pub fn string_insert(&mut self, pointer: &str, index: usize, text: String) -> Result<RemoteOp, Error> {
+        let remote_op = self.value.string_insert(pointer, index, text, &self.replica)?;
         self.after_op(remote_op)
     }
 
     /// Removes a text range from a text node in the Json CRDT.
-    pub fn text_remove(&mut self, pointer: &str, index: usize, len: usize) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.text_remove(pointer, index, len, &self.replica)?;
+    pub fn string_remove(&mut self, pointer: &str, index: usize, len: usize) -> Result<RemoteOp, Error> {
+        let remote_op = self.value.string_remove(pointer, index, len, &self.replica)?;
         self.after_op(remote_op)
     }
 
     /// Replaces a text range in a text node in the Json CRDT.
-    pub fn text_replace(&mut self, pointer: &str, index: usize, len: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.text_replace(pointer, index, len, text, &self.replica)?;
+    pub fn string_replace(&mut self, pointer: &str, index: usize, len: usize, text: String) -> Result<RemoteOp, Error> {
+        let remote_op = self.value.string_replace(pointer, index, len, text, &self.replica)?;
         self.after_op(remote_op)
     }
 
@@ -219,21 +219,21 @@ impl JsonValue {
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Array(remote_op)})
     }
 
-    pub fn text_insert(&mut self, pointer: &str, index: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
+    pub fn string_insert(&mut self, pointer: &str, index: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
         let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
         let text_value = json_value.as_text()?;
         let remote_op = text_value.insert(index, text, &replica)?;
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::String(remote_op)})
     }
 
-    pub fn text_remove(&mut self, pointer: &str, index: usize, len: usize, replica: &Replica) -> Result<RemoteOp, Error> {
+    pub fn string_remove(&mut self, pointer: &str, index: usize, len: usize, replica: &Replica) -> Result<RemoteOp, Error> {
         let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
         let text_value = json_value.as_text()?;
         let remote_op = text_value.remove(index, len, &replica)?;
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::String(remote_op)})
     }
 
-    pub fn text_replace(&mut self, pointer: &str, index: usize, len: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
+    pub fn string_replace(&mut self, pointer: &str, index: usize, len: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
         let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
         let text_value = json_value.as_text()?;
         let remote_op = text_value.replace(index, len, text, &replica)?;
@@ -656,13 +656,125 @@ mod tests {
         assert!(local_json(&element.1) == r#"[true,false,"hi"]"#);
     }
 
+    #[test]
+    fn test_string_insert() {
+        let mut crdt = Json::from_str(r#"["hello",5.0]"#).unwrap();
+        let remote_op = crdt.string_insert("/0", 0, "😗🇺🇸".to_owned()).unwrap();
+        let remote_op = text_remote_op(remote_op);
+        assert!(local_json(crdt.value()) == r#"["😗🇺🇸hello",5.0]"#);
+        assert!(remote_op.removes.is_empty());
+        assert!(remote_op.inserts[0].text == "😗🇺🇸");
+        assert!(crdt.replica.counter == 2);
+    }
+
+    #[test]
+    fn test_string_insert_invalid_pointer() {
+        let mut crdt = Json::from_str(r#"["hello",5.0]"#).unwrap();
+        assert!(crdt.string_insert("/1", 0, "😗🇺🇸".to_owned()).unwrap_err() == Error::WrongJsonType);
+    }
+
+    #[test]
+    fn test_string_insert_out_of_bounds() {
+        let mut crdt = Json::from_str(r#"["hello",5.0]"#).unwrap();
+        assert!(crdt.string_insert("/0", 6, "😗🇺🇸".to_owned()).unwrap_err() == Error::OutOfBounds);
+    }
+
+    #[test]
+    fn test_string_insert_awaiting_site() {
+        let remote_crdt = Json::from_str(r#"["hello",5.0]"#).unwrap();
+        let mut crdt = Json::from_value(remote_crdt.clone_value(), 0);
+        assert!(crdt.string_insert("/0", 0, "😗🇺🇸".to_owned()).unwrap_err() == Error::AwaitingSite);
+        assert!(local_json(crdt.value()) == r#"["😗🇺🇸hello",5.0]"#);
+
+        let remote_op = text_remote_op(crdt.awaiting_site.pop().unwrap());
+        assert!(remote_op.removes.is_empty());
+        assert!(remote_op.inserts[0].text == "😗🇺🇸");
+    }
+
+    #[test]
+    fn test_string_remove() {
+        let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        let remote_op = crdt.string_remove("/1", 1, 2).unwrap();
+        let remote_op = text_remote_op(remote_op);
+
+        assert!(local_json(crdt.value()) == r#"[5.0,"hlo"]"#);
+        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.inserts[0].text == "h");
+        assert!(remote_op.inserts[1].text == "lo");
+    }
+
+    #[test]
+    fn test_string_remove_invalid_pointer() {
+        let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        assert!(crdt.string_remove("/0", 1, 2).unwrap_err() == Error::WrongJsonType);
+    }
+
+    #[test]
+    fn test_string_remove_out_of_bounds() {
+        let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        assert!(crdt.string_remove("/1", 1, 6).unwrap_err() == Error::OutOfBounds);
+    }
+
+    #[test]
+    fn test_string_remove_awaiting_site() {
+        let remote_crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        let mut crdt = Json::from_value(remote_crdt.clone_value(), 0);
+        assert!(crdt.string_remove("/1", 1, 2).unwrap_err() == Error::AwaitingSite);
+        assert!(local_json(crdt.value()) == r#"[5.0,"hlo"]"#);
+
+        let remote_op = text_remote_op(crdt.awaiting_site.pop().unwrap());
+        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.inserts[0].text == "h");
+        assert!(remote_op.inserts[1].text == "lo");
+    }
+
+    #[test]
+    fn test_string_replace() {
+        let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        let remote_op = crdt.string_replace("/1", 1, 2, "åⱡ".to_owned()).unwrap();
+        let remote_op = text_remote_op(remote_op);
+        assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
+        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.inserts[0].text == "h");
+        assert!(remote_op.inserts[1].text == "åⱡ");
+        assert!(remote_op.inserts[2].text == "lo");
+    }
+
+    #[test]
+    fn test_string_replace_invalid_pointer() {
+        let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        assert!(crdt.string_replace("/0", 1, 2, "åⱡ".to_owned()).unwrap_err() == Error::WrongJsonType);
+    }
+
+    #[test]
+    fn test_string_replace_out_of_bounds() {
+        let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        assert!(crdt.string_replace("/1", 1, 6, "åⱡ".to_owned()).unwrap_err() == Error::OutOfBounds);
+    }
+
+    #[test]
+    fn test_string_replace_awaiting_site() {
+        let remote_crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
+        let mut crdt = Json::from_value(remote_crdt.clone_value(), 0);
+        assert!(crdt.string_replace("/1", 1, 2, "åⱡ".to_owned()).unwrap_err() == Error::AwaitingSite);
+        assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
+
+        let remote_op = text_remote_op(crdt.awaiting_site.pop().unwrap());
+        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.inserts[0].text == "h");
+        assert!(remote_op.inserts[1].text == "åⱡ");
+        assert!(remote_op.inserts[2].text == "lo");
+    }
+
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {
         let (value, _) = try_opt!(crdt.value.get_nested_local(pointer).ok());
         Some(value)
     }
 
     fn local_json(json_value: &JsonValue) -> String {
-        serde_json::to_string(&json_value.local_value()).unwrap()
+        let x = serde_json::to_string(&json_value.local_value()).unwrap();
+        println!("{:?}", &x);
+        x
     }
 
     fn map_insert_op_fields(remote_op: RemoteOp) -> (String, map::Element<JsonValue>, Vec<map::Element<JsonValue>>) {
@@ -692,4 +804,12 @@ mod tests {
             _ => panic!(),
         }
     }
+
+    fn text_remote_op(remote_op: RemoteOp) -> text::RemoteOp {
+        match remote_op.op {
+            RemoteOpInner::String(op) => op,
+            _ => panic!(),
+        }
+    }
+
 }
