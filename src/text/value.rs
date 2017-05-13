@@ -7,7 +7,8 @@ use Replica;
 use super::btree::BTree;
 use super::element::{self, Element};
 use super::{RemoteOp, LocalOp, LocalChange};
-use traits::CrdtValue;
+use sequence::uid::UID;
+use traits::{CrdtValue, AddSiteToAll};
 use char_fns::CharFns;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -182,6 +183,17 @@ impl CrdtValue for TextValue {
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
         for element in &op.inserts {
             let mut element = some!(self.0.remove(&element.uid));
+            element.uid.site = site;
+            let _ = self.0.insert(element);
+        }
+    }
+}
+
+impl AddSiteToAll for TextValue {
+    fn add_site_to_all(&mut self, site: u32) {
+        let uids: Vec<UID> = self.0.into_iter().map(|e| e.uid.clone()).collect();
+        for uid in uids {
+            let mut element = self.0.remove(&uid).expect("Element must exist");
             element.uid.site = site;
             let _ = self.0.insert(element);
         }

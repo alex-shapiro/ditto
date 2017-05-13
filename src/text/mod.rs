@@ -55,7 +55,8 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert(&mut self, index: usize, text: String) -> Result<RemoteOp, Error> {
-        self.after_op(self.value.insert(index, text, &self.replica)?)
+        let op = self.value.insert(index, text, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Removes the text in the range [index..<index+len].
@@ -63,7 +64,8 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, index: usize, len: usize) -> Result<RemoteOp, Error> {
-        self.after_op(self.value.remove(index, len, &self.replica)?)
+        let op = self.value.remove(index, len, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Replaces the text in the range [index..<index+len] with new text.
@@ -71,7 +73,8 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn replace(&mut self, index: usize, len: usize, text: String) -> Result<RemoteOp, Error> {
-        self.after_op(self.value.replace(index, len, text, &self.replica)?)
+        let op = self.value.replace(index, len, text, &self.replica)?;
+        self.after_op(op)
     }
 }
 
@@ -86,8 +89,16 @@ impl Crdt for Text {
         &self.value
     }
 
+    fn value_mut(&mut self) -> &mut Self::Value {
+        &mut self.value
+    }
+
     fn awaiting_site(&mut self) -> &mut Vec<RemoteOp> {
         &mut self.awaiting_site
+    }
+
+    fn increment_counter(&mut self) {
+        self.replica.counter += 1;
     }
 
     fn clone_value(&self) -> Self::Value {
@@ -119,8 +130,8 @@ impl CrdtRemoteOp for RemoteOp {
         for element in &mut self.inserts {
             element.uid.site = site;
         }
-        for element in &mut self.removes {
-            if element.uid.site == 0 { element.uid.site = site; }
+        for uid in &mut self.removes {
+            if uid.site == 0 { uid.site = site; }
         }
     }
 }

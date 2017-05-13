@@ -62,7 +62,8 @@ impl<T: SetElement> Set<T> {
     /// If the set does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert(&mut self, value: T) -> Result<RemoteOp<T>, Error> {
-        self.after_op(self.value.insert(value, &self.replica)?)
+        let remote_op = self.value.insert(value, &self.replica)?;
+        self.after_op(remote_op)
     }
 
     /// Removes a value from the set and returns a remote op
@@ -70,7 +71,8 @@ impl<T: SetElement> Set<T> {
     /// If the set does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, value: &T) -> Result<RemoteOp<T>, Error> {
-        self.after_op(self.value.remove(value)?)
+        let remote_op = self.value.remove(value)?;
+        self.after_op(remote_op)
     }
 }
 
@@ -85,8 +87,16 @@ impl<T: SetElement> Crdt for Set<T> {
         &self.value
     }
 
+    fn value_mut(&mut self) -> &mut SetValue<T> {
+        &mut self.value
+    }
+
     fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
         &mut self.awaiting_site
+    }
+
+    fn increment_counter(&mut self) {
+        self.replica.counter += 1;
     }
 
     fn clone_value(&self) -> SetValue<T> {

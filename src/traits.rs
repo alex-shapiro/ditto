@@ -11,6 +11,9 @@ pub trait Crdt: Sized {
     /// Returns a reference to the CRDT's inner value
     fn value(&self) -> &Self::Value;
 
+    // Returns a mutable reference to the CRDT's inner value
+    fn value_mut(&mut self) -> &mut Self::Value;
+
     /// Returns a mutable reference to the list of ops
     /// that need a site allocation before they can be
     /// sent to remote sites.
@@ -22,6 +25,9 @@ pub trait Crdt: Sized {
     /// Constructs a new CRDT from an inner value and a site.
     fn from_value(value: Self::Value, site: u32) -> Self;
 
+    /// Increment's the CRDT's counter
+    fn increment_counter(&mut self);
+
     /// Executes a remote op and returns the equivalent local op.
     fn execute_remote(&mut self, op: &<Self::Value as CrdtValue>::RemoteOp) -> Option<<Self::Value as CrdtValue>::LocalOp>;
 
@@ -32,9 +38,9 @@ pub trait Crdt: Sized {
     }
 
     /// Should be called after any successful local op.
-    fn after_op(&mut self, op: RemoteOp<T>) -> Result<RemoteOp<T>, Error> {
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
+    fn after_op(&mut self, op: <Self::Value as CrdtValue>::RemoteOp) -> Result<<Self::Value as CrdtValue>::RemoteOp, Error> {
+        self.increment_counter();
+        if self.site() != 0 { return Ok(op) }
         self.awaiting_site().push(op);
         Err(Error::AwaitingSite)
     }
@@ -43,10 +49,10 @@ pub trait Crdt: Sized {
     /// Do not override the default implementation.
     fn add_site(&mut self, site: u32) -> Result<Vec<<Self::Value as CrdtValue>::RemoteOp>, Error> {
         if self.site() != 0 { return Err(Error::AlreadyHasSite) }
-        let ops = mem::replace(self.awaiting_site(), vec![]);
+        let mut ops = mem::replace(self.awaiting_site(), vec![]);
 
         for mut op in ops.iter_mut() {
-            self.value.add_site(op, site);
+            self.value_mut().add_site(op, site);
             op.add_site(site);
         }
 

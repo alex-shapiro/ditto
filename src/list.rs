@@ -59,7 +59,8 @@ impl<T: Clone> List<T> {
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn insert(&mut self, index: usize, value: T) -> Result<RemoteOp<T>, Error> {
-        self.after_op(self.value.insert(index, value, &self.replica)?)
+        let remote_op = self.value.insert(index, value, &self.replica)?;
+        self.after_op(remote_op)
     }
 
     /// Removes the element at position `index` from the list,
@@ -68,7 +69,8 @@ impl<T: Clone> List<T> {
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
-        self.after_op(self.value.remove(index)?)
+        let remote_op = self.value.remove(index)?;
+        self.after_op(remote_op)
     }
 }
 
@@ -83,8 +85,16 @@ impl<T: Clone> Crdt for List<T> {
         &self.value
     }
 
+    fn value_mut(&mut self) -> &mut Self::Value {
+        &mut self.value
+    }
+
     fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
         &mut self.awaiting_site
+    }
+
+    fn increment_counter(&mut self) {
+        self.replica.counter += 1;
     }
 
     fn clone_value(&self) -> Self::Value {
@@ -173,8 +183,17 @@ impl<T: Clone> CrdtValue for ListValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert(Element(ref uid, _)) = *op {
-            let index = some!(self.find_index(uid));
+            let index = some!(self.find_index(uid).ok());
             self.0[index].0.site = site;
+        }
+    }
+}
+
+impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
+    fn add_site_to_all(&mut self, site: u32) {
+        for element in self.0.iter_mut() {
+            element.0.site = site;
+            element.1.add_site_to_all(site);
         }
     }
 }

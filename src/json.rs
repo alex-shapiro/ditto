@@ -12,7 +12,6 @@ use traits::*;
 use serde_json::{self, Value as SJValue};
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::mem;
 use std::str::FromStr;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -166,6 +165,18 @@ impl Crdt for Json {
         &self.value
     }
 
+    fn value_mut(&mut self) -> &mut Self::Value {
+        &mut self.value
+    }
+
+    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp> {
+        &mut self.awaiting_site
+    }
+
+    fn increment_counter(&mut self) {
+        self.replica.counter += 1;
+    }
+
     fn clone_value(&self) -> Self::Value {
         self.value.clone()
     }
@@ -177,16 +188,6 @@ impl Crdt for Json {
 
     fn execute_remote(&mut self, op: &RemoteOp) -> Option<LocalOp> {
         self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
     }
 }
 
@@ -364,19 +365,12 @@ impl CrdtValue for JsonValue {
         }
     }
 
-    fn add_site(&mut self, op: &Self::RemoteOp, site: u32) {
-        let json_value = match self.get_nested_remote(&op.pointer) {
-            Some((json_value, _)) => json_value,
-            None => return,
-        };
-
-        match (json_value, &op.op) {
-            (&mut JsonValue::Object(ref mut map), &RemoteOpInner::Object(ref op)) =>
-                map.add_site(op, site),
-            (&mut JsonValue::Array(ref mut list), &RemoteOpInner::Array(ref op)) =>
-                list.add_site(op, site),
-            (&mut JsonValue::String(ref mut text), &RemoteOpInner::String(ref op)) =>
-                text.add_site(op, site),
+    fn add_site(&mut self, op: &RemoteOp, site: u32) {
+        let (value, _) = some!(self.get_nested_remote(&op.pointer));
+        match (value, &op.op) {
+            (&mut JsonValue::Object(ref mut m), &RemoteOpInner::Object(ref op)) => add_site_map(m, op, site),
+            (&mut JsonValue::Array(ref mut l), &RemoteOpInner::Array(ref op)) => add_site_list(l, op, site),
+            (&mut JsonValue::String(ref mut t), &RemoteOpInner::String(ref op)) => t.add_site(op, site),
             _ => return,
         }
     }
@@ -384,10 +378,34 @@ impl CrdtValue for JsonValue {
 
 impl CrdtRemoteOp for RemoteOp {
     fn add_site(&mut self, site: u32) {
+        // update sites in the pointer
+        for uid in self.pointer.iter_mut() {
+            match *uid {
+                RemoteUID::Object(_, ref mut replica) => {
+                    if replica.site == 0 { replica.site = site; }
+                }
+                RemoteUID::Array(ref mut uid) => {
+                    if uid.site == 0 { uid.site = site; }
+                }
+            }
+        }
+
+        // update sites in the op
         match self.op {
-            RemoteOpInner::Object(ref mut remote_op) => remote_op.add_site(site),
-            RemoteOpInner::Array(ref mut remote_op) => remote_op.add_site(site),
-            RemoteOpInner::String(ref mut remote_op) => remote_op.add_site(site),
+            RemoteOpInner::Object(ref mut op) => add_site_map_op(op, site),
+            RemoteOpInner::Array(ref mut op) => add_site_list_op(op, site),
+            RemoteOpInner::String(ref mut op) => op.add_site(site),
+        }
+    }
+}
+
+impl AddSiteToAll for JsonValue {
+    fn add_site_to_all(&mut self, site: u32) {
+        match *self {
+            JsonValue::Object(ref mut m) => m.add_site_to_all(site),
+            JsonValue::Array(ref mut l) => l.add_site_to_all(site),
+            JsonValue::String(ref mut s) => s.add_site_to_all(site),
+            _ => return,
         }
     }
 }
@@ -470,6 +488,22 @@ impl IntoJson for bool {
     fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
         Ok(JsonValue::Bool(self))
     }
+}
+
+fn add_site_map(m: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
+    unimplemented!()
+}
+
+fn add_site_list(m: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
+    unimplemented!()
+}
+
+fn add_site_map_op(op: &mut map::RemoteOp<String, JsonValue>, site: u32) {
+    unimplemented!()
+}
+
+fn add_site_list_op(op: &mut list::RemoteOp<JsonValue>, site: u32) {
+    unimplemented!()
 }
 
 #[cfg(test)]
@@ -764,6 +798,89 @@ mod tests {
         assert!(remote_op.inserts[0].text == "h");
         assert!(remote_op.inserts[1].text == "åⱡ");
         assert!(remote_op.inserts[2].text == "lo");
+    }
+
+    #[test]
+    fn test_execute_remote_object() {
+        let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let remote_op = crdt1.object_insert("", "baz".to_owned(), 54.0).unwrap();
+        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+
+        assert!(crdt1.value() == crdt2.value());
+        assert!(local_op.pointer.is_empty());
+    }
+
+    #[test]
+    fn test_execute_remote_array() {
+        let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let remote_op = crdt1.array_insert("/foo", 0, 54.0).unwrap();
+        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+
+        assert!(crdt1.value() == crdt2.value());
+        assert!(local_op.pointer == [LocalUID::Object("foo".to_owned())]);
+    }
+
+    #[test]
+    fn test_execute_remote_string() {
+        let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let remote_op = crdt1.string_replace("/foo/2", 1, 2, "ab".to_owned()).unwrap();
+        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+
+        assert!(crdt1.value() == crdt2.value());
+        assert!(local_op.pointer == [LocalUID::Object("foo".to_owned()), LocalUID::Array(2)]);
+    }
+
+    #[test]
+    fn test_execute_remote_missing_pointer() {
+        let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 2);
+        let remote_op = crdt1.object_remove("", "bar").unwrap();
+        let _         = crdt2.object_remove("", "bar").unwrap();
+        assert!(crdt2.execute_remote(&remote_op).is_none());
+    }
+
+    #[test]
+    fn test_add_site() {
+        // let mut crdt = Json::from_str("{}").unwrap();
+        // let _ = crdt.object_insert("", "foo", vec![1.0]).unwrap();
+        // let _ = crdt.array_insert("", "foo", 0, "hello").unwrap();
+        // let _ = crdt.text_insert("/foo/0", 5, " everybody").unwrap();
+        // let mut remote_ops = crdt.add_site(11).unwrap().into_iter();
+
+        // let nested_value = nested_value(&mut crdt, "/foo/0")
+
+        // assert!(crdt.replica.site == 11);
+        // assert!(crdt.value.get_nested_local())
+
+        // let (_, element, _) = map_insert_op_fields(remote_ops.next().unwrap());
+        // assert!(element.0.site == 11);
+
+        // let element = list_insert_op_element(remote_ops.next().unwrap());
+        // assert!(element.0.site == 11);
+
+        // let element = text_remote_op(remote_ops.next().unwrap());
+        // assert!(element.site == 11);
+    }
+
+    #[test]
+    fn test_add_site_already_has_site() {
+        let mut crdt = Json::from_str("{}").unwrap();
+        let _ = crdt.object_insert("", "foo", vec![1.0]).unwrap();
+        let _ = crdt.array_insert("", "foo", 0, "hello").unwrap();
+        let _ = crdt.text_insert("/foo/0", 5, " everybody").unwrap();
+        assert!(crdt.add_site(11).unwrap_err() == Error::AlreadyHasSite);
+    }
+
+    #[test]
+    fn test_execute_remote_dupe() {
+        let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let remote_op = crdt1.object_remove("", "bar").unwrap();
+        assert!(crdt2.execute_remote(&remote_op).is_some());
+        assert!(crdt2.execute_remote(&remote_op).is_none());
     }
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {

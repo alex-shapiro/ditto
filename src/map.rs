@@ -96,7 +96,8 @@ impl<K: Key, V: Value> Map<K, V> {
     /// map does not have a site allocated, it caches the op and
     /// returns an `AwaitingSite` error.
     pub fn insert(&mut self, key: K, value: V) -> Result<RemoteOp<K, V>, Error> {
-        self.after_op(self.value.insert(key, value, &self.replica)?)
+        let remote_op = self.value.insert(key, value, &self.replica)?;
+        self.after_op(remote_op)
     }
 
     /// Removes a key from the map and returns a remote op
@@ -104,7 +105,8 @@ impl<K: Key, V: Value> Map<K, V> {
     /// If the map does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, key: &K) -> Result<RemoteOp<K,V>, Error> {
-        self.after_op(self.value.remove(key)?)
+        let remote_op = self.value.remove(key)?;
+        self.after_op(remote_op)
     }
 }
 
@@ -119,8 +121,16 @@ impl<K: Key, V: Value> Crdt for Map<K,V> {
         &self.value
     }
 
+    fn value_mut(&mut self) -> &mut Self::Value {
+        &mut self.value
+    }
+
     fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<K,V>> {
         &mut self.awaiting_site
+    }
+
+    fn increment_counter(&mut self) {
+        self.replica.counter += 1;
     }
 
     fn clone_value(&self) -> Self::Value {
@@ -254,11 +264,22 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
         hash_map
     }
 
-    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
+    fn add_site(&mut self, op: &RemoteOp<K,V>, site: u32) {
         if let RemoteOp::Insert{ref key, ref element, ..} = *op {
             let elements = some!(self.inner.get_mut(key));
-            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok())
+            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
             elements[index].0.site = site;
+        }
+    }
+}
+
+impl<K: Key, V: Value + AddSiteToAll> AddSiteToAll for MapValue<K,V> {
+    fn add_site_to_all(&mut self, site: u32) {
+        for elements in self.inner.values_mut() {
+            for element in elements.iter_mut() {
+                element.0.site = site;
+                element.1.add_site_to_all(site);
+            }
         }
     }
 }
@@ -273,8 +294,8 @@ impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
                 }
             }
             RemoteOp::Remove{ref mut removed, ..} => {
-                for element in removed {
-                    if element.0.site == 0 { element.0.site = site; }
+                for replica in removed {
+                    if replica.site == 0 { replica.site = site; }
                 }
             }
         }

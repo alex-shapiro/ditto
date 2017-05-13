@@ -54,7 +54,8 @@ impl<T: Debug + Clone> Register<T> {
     /// If the register does not have a site allocated, it
     /// caches the op and returns an `AwaitingSite` error.
     pub fn update(&mut self, new_value: T) -> Result<RemoteOp<T>, Error> {
-        self.after_op(self.value.update(new_value, &self.replica))
+        let remote_op = self.value.update(new_value, &self.replica);
+        self.after_op(remote_op)
     }
 }
 
@@ -69,8 +70,16 @@ impl<T: Debug + Clone> Crdt for Register<T> {
         &self.value
     }
 
+    fn value_mut(&mut self) -> &mut RegisterValue<T> {
+        &mut self.value
+    }
+
     fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
         &mut self.awaiting_site
+    }
+
+    fn increment_counter(&mut self) {
+        self.replica.counter += 1;
     }
 
     fn clone_value(&self) -> RegisterValue<T> {
@@ -146,7 +155,7 @@ impl<T: Debug + Clone> CrdtValue for RegisterValue<T> {
     }
 }
 
-impl<T: Debug + Clone> CrdtRemoteOp for RemoteOp {
+impl<T: Debug + Clone> CrdtRemoteOp for RemoteOp<T> {
     fn add_site(&mut self, site: u32) {
         self.insert.0.site = site;
         for replica in &mut self.remove {
