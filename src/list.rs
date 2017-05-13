@@ -15,7 +15,7 @@ pub struct List<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ListValue<T>(Vec<Element<T>>);
+pub struct ListValue<T>(pub Vec<Element<T>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<T> {

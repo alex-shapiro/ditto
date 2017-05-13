@@ -457,20 +457,52 @@ impl IntoJson for bool {
     }
 }
 
-fn add_site_map(m: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
-    unimplemented!()
+fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
+    if let map::RemoteOp::Insert{ref key, ref element, ..} = *op {
+        let elements = some!(map_value.inner.get_mut(key));
+        let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
+        let ref mut element = elements[index];
+        element.0.site = site;
+        element.1.add_site_to_all(site);
+    }
 }
 
-fn add_site_list(m: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
-    unimplemented!()
+fn add_site_list(list_value: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
+    if let list::RemoteOp::Insert(list::Element(ref uid, _)) = *op {
+        let index = some!(list_value.find_index(uid).ok());
+        let ref mut element = list_value.0[index];
+        element.0.site = site;
+        element.1.add_site_to_all(site);
+    }
 }
 
 fn add_site_map_op(op: &mut map::RemoteOp<String, JsonValue>, site: u32) {
-    unimplemented!()
+    match *op {
+        map::RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+            for replica in removed {
+                if replica.site == 0 { replica.site = site; }
+            }
+        }
+        map::RemoteOp::Remove{ref mut removed, ..} => {
+            for replica in removed {
+                if replica.site == 0 { replica.site = site; }
+            }
+        }
+    }
 }
 
 fn add_site_list_op(op: &mut list::RemoteOp<JsonValue>, site: u32) {
-    unimplemented!()
+    match *op {
+        list::RemoteOp::Insert(ref mut element) => {
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+        }
+        list::RemoteOp::Remove(ref mut uid) => {
+            if uid.site == 0 { uid.site = site };
+        }
+    }
 }
 
 #[cfg(test)]

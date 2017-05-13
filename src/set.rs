@@ -5,7 +5,6 @@ use Error;
 use Replica;
 use map_tuple_vec;
 use traits::*;
-use util::remove_elements;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
@@ -124,7 +123,7 @@ impl<T: SetElement> SetValue<T> {
             RemoteOp::Remove{ref value, ref replicas} => {
                 let should_remove_value = {
                     let existing_replicas = try_opt!(self.inner.get_mut(value));
-                    remove_elements(existing_replicas, replicas);
+                    remove_replicas(existing_replicas, replicas);
                     existing_replicas.is_empty()
                 };
 
@@ -172,6 +171,14 @@ impl<T: SetElement> CrdtRemoteOp for RemoteOp<T> {
                     if replica.site == 0 { replica.site = site; }
                 }
             }
+        }
+    }
+}
+
+pub fn remove_replicas(replicas: &mut Vec<Replica>, removed: &[Replica]) {
+    for replica in removed {
+        if let Ok(index) = replicas.binary_search_by(|e| e.cmp(&replica)) {
+            replicas.remove(index);
         }
     }
 }

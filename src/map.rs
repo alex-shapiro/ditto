@@ -5,7 +5,6 @@ use Error;
 use Replica;
 use map_tuple_vec;
 use traits::*;
-use util::remove_elements;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
@@ -32,12 +31,12 @@ pub struct Map<K: Key, V: Value> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MapValue<K: Key, V: Value> {
     #[serde(with = "map_tuple_vec")]
-    inner: HashMap<K, Vec<Element<V>>>,
+    pub inner: HashMap<K, Vec<Element<V>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<K, V> {
-    Insert{key: K, element: Element<V>, removed: Vec<Element<V>>},
+    Insert{key: K, element: Element<V>, removed: Vec<Replica>},
     Remove{key: K, removed: Vec<Replica>},
 }
 
@@ -164,7 +163,8 @@ impl<K: Key, V: Value> MapValue<K, V> {
         let element = Element(replica.clone(), value.clone());
         let old_elements = self.inner.entry(key.clone()).or_insert(vec![]);
         let new_elements = vec![element.clone()];
-        let removed = mem::replace(old_elements, new_elements);
+        let removed_elements = mem::replace(old_elements, new_elements);
+        let removed = removed_elements.into_iter().map(|e| e.0).collect();
         Ok(RemoteOp::Insert{key, element, removed})
     }
 
@@ -175,8 +175,8 @@ impl<K: Key, V: Value> MapValue<K, V> {
         where Q: Hash + Eq + ToOwned<Owned = K>,
               K: Borrow<Q>,
     {
-        let elements = self.inner.remove(key).ok_or(Error::DoesNotExist)?;
-        let removed = elements.into_iter().map(|e| e.0).collect();
+        let removed_elements = self.inner.remove(key).ok_or(Error::DoesNotExist)?;
+        let removed = removed_elements.into_iter().map(|e| e.0).collect();
         Ok(RemoteOp::Remove{key: key.to_owned(), removed})
     }
 
@@ -185,7 +185,7 @@ impl<K: Key, V: Value> MapValue<K, V> {
         match *op {
             RemoteOp::Insert{ref key, ref element, ref removed} => {
                 let elements = self.inner.entry(key.clone()).or_insert(vec![]);
-                remove_elements(elements, removed);
+                remove_replicas(elements, removed);
 
                 let index = try_opt!(elements.binary_search_by(|e| e.0.cmp(&element.0)).err());
                 elements.insert(index, element.clone());
@@ -197,13 +197,9 @@ impl<K: Key, V: Value> MapValue<K, V> {
             }
             RemoteOp::Remove{ref key, ref removed} => {
                 let first_remaining_element = {
-                    let existing_elements = try_opt!(self.inner.get_mut(key));
-                    for replica in removed {
-                        if let Ok(index) = existing_elements.binary_search_by(|e| e.0.cmp(&replica)) {
-                            existing_elements.remove(index);
-                        }
-                    }
-                    existing_elements.first().and_then(|e| Some(e.1.clone()))
+                    let elements = try_opt!(self.inner.get_mut(key));
+                    remove_replicas(elements, removed);
+                    elements.first().and_then(|e| Some(e.1.clone()))
                 };
 
                 if let Some(value) = first_remaining_element {
@@ -213,6 +209,14 @@ impl<K: Key, V: Value> MapValue<K, V> {
                     Some(LocalOp::Remove{key: key.clone()})
                 }
             }
+        }
+    }
+}
+
+fn remove_replicas<V: Value>(elements: &mut Vec<Element<V>>, replicas: &[Replica]) {
+    for replica in replicas {
+        if let Ok(index) = elements.binary_search_by(|e| e.0.cmp(&replica)) {
+            elements.remove(index);
         }
     }
 }
@@ -255,8 +259,8 @@ impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
         match *self {
             RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
                 element.0.site = site;
-                for element in removed {
-                    if element.0.site == 0 { element.0.site = site; }
+                for replica in removed {
+                    if replica.site == 0 { replica.site = site; }
                 }
             }
             RemoteOp::Remove{ref mut removed, ..} => {

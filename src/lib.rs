@@ -36,7 +36,6 @@ mod op;
 mod replica;
 mod sequence;
 mod serializer;
-mod util;
 mod value;
 mod vlq;
 
