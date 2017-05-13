@@ -155,40 +155,7 @@ impl Json {
 }
 
 impl Crdt for Json {
-    type Value = JsonValue;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &Self::Value {
-        &self.value
-    }
-
-    fn value_mut(&mut self) -> &mut Self::Value {
-        &mut self.value
-    }
-
-    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp> {
-        &mut self.awaiting_site
-    }
-
-    fn increment_counter(&mut self) {
-        self.replica.counter += 1;
-    }
-
-    fn clone_value(&self) -> Self::Value {
-        self.value.clone()
-    }
-
-    fn from_value(value: Self::Value, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Json{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp) -> Option<LocalOp> {
-        self.value.execute_remote(op)
-    }
+    crdt_impl!(Json, JsonValue);
 }
 
 impl JsonValue {

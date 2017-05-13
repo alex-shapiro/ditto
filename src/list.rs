@@ -75,40 +75,7 @@ impl<T: Clone> List<T> {
 }
 
 impl<T: Clone> Crdt for List<T> {
-    type Value = ListValue<T>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &Self::Value {
-        &self.value
-    }
-
-    fn value_mut(&mut self) -> &mut Self::Value {
-        &mut self.value
-    }
-
-    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
-        &mut self.awaiting_site
-    }
-
-    fn increment_counter(&mut self) {
-        self.replica.counter += 1;
-    }
-
-    fn clone_value(&self) -> Self::Value {
-        self.value.clone()
-    }
-
-    fn from_value(value: Self::Value, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        List{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        self.value.execute_remote(op)
-    }
+    crdt_impl!(List, ListValue<T>);
 }
 
 impl<T: Clone> ListValue<T> {

@@ -14,8 +14,8 @@ extern crate assert_matches;
 #[cfg(test)]
 extern crate rmp_serde;
 
-#[macro_use]
-mod macros;
+#[macro_use] mod macros;
+#[macro_use] mod traits;
 
 pub mod json;
 pub mod list;
@@ -36,7 +36,6 @@ mod op;
 mod replica;
 mod sequence;
 mod serializer;
-mod traits;
 mod util;
 mod value;
 mod vlq;

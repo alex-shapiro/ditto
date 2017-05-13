@@ -16,11 +16,10 @@ pub trait SetElement: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(deserialize = ""))]
 pub struct Set<T: SetElement> {
-    #[serde(bound(deserialize = ""))]
     value: SetValue<T>,
     replica: Replica,
-    #[serde(bound(deserialize = ""))]
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
@@ -77,40 +76,7 @@ impl<T: SetElement> Set<T> {
 }
 
 impl<T: SetElement> Crdt for Set<T> {
-    type Value = SetValue<T>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &SetValue<T> {
-        &self.value
-    }
-
-    fn value_mut(&mut self) -> &mut SetValue<T> {
-        &mut self.value
-    }
-
-    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
-        &mut self.awaiting_site
-    }
-
-    fn increment_counter(&mut self) {
-        self.replica.counter += 1;
-    }
-
-    fn clone_value(&self) -> SetValue<T> {
-        self.value.clone()
-    }
-
-    fn from_value(value: SetValue<T>, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Set{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        self.value.execute_remote(op)
-    }
+    crdt_impl!(Set, SetValue<T>);
 }
 
 impl<T: SetElement> SetValue<T> {

@@ -22,11 +22,10 @@ pub trait Value: Clone + PartialEq + Serialize + DeserializeOwned {}
 impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(deserialize = ""))]
 pub struct Map<K: Key, V: Value> {
-    #[serde(bound(deserialize = "K: Key, V: Value"))]
     value: MapValue<K, V>,
     replica: Replica,
-    #[serde(bound(deserialize = "K: Key, V: Value"))]
     awaiting_site: Vec<RemoteOp<K, V>>,
 }
 
@@ -111,40 +110,7 @@ impl<K: Key, V: Value> Map<K, V> {
 }
 
 impl<K: Key, V: Value> Crdt for Map<K,V> {
-    type Value = MapValue<K,V>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &Self::Value {
-        &self.value
-    }
-
-    fn value_mut(&mut self) -> &mut Self::Value {
-        &mut self.value
-    }
-
-    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<K,V>> {
-        &mut self.awaiting_site
-    }
-
-    fn increment_counter(&mut self) {
-        self.replica.counter += 1;
-    }
-
-    fn clone_value(&self) -> Self::Value {
-        self.value.clone()
-    }
-
-    fn from_value(value: Self::Value, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Map{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<K,V>) -> Option<LocalOp<K,V>> {
-        self.value.execute_remote(op)
-    }
+    crdt_impl!(Map, MapValue<K,V>);
 }
 
 impl<K: Key, V: Value> MapValue<K, V> {

@@ -5,21 +5,20 @@
 use Error;
 use Replica;
 use traits::*;
-use std::fmt::Debug;
 use std::mem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Register<T: Debug + Clone> {
+pub struct Register<T: Clone> {
     value: RegisterValue<T>,
     replica: Replica,
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RegisterValue<T: Debug + Clone>(Vec<Element<T>>);
+pub struct RegisterValue<T: Clone>(Vec<Element<T>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RemoteOp<T: Debug + Clone> {
+pub struct RemoteOp<T: Clone> {
     remove: Vec<Replica>,
     insert: Element<T>,
 }
@@ -30,9 +29,9 @@ pub struct LocalOp<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Element<T: Debug + Clone>(Replica, T);
+struct Element<T: Clone>(Replica, T);
 
-impl<T: Debug + Clone> Register<T> {
+impl<T: Clone> Register<T> {
 
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.
@@ -59,44 +58,11 @@ impl<T: Debug + Clone> Register<T> {
     }
 }
 
-impl<T: Debug + Clone> Crdt for Register<T> {
-    type Value = RegisterValue<T>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &RegisterValue<T> {
-        &self.value
-    }
-
-    fn value_mut(&mut self) -> &mut RegisterValue<T> {
-        &mut self.value
-    }
-
-    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
-        &mut self.awaiting_site
-    }
-
-    fn increment_counter(&mut self) {
-        self.replica.counter += 1;
-    }
-
-    fn clone_value(&self) -> RegisterValue<T> {
-        self.value.clone()
-    }
-
-    fn from_value(value: RegisterValue<T>, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Register{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        self.value.execute_remote(op)
-    }
+impl<T: Clone> Crdt for Register<T> {
+    crdt_impl!(Register, RegisterValue<T>);
 }
 
-impl<T: Debug + Clone> RegisterValue<T> {
+impl<T: Clone> RegisterValue<T> {
 
     /// Returns a new register value.
     pub fn new(value: T, replica: &Replica) -> Self {
@@ -140,7 +106,7 @@ impl<T: Debug + Clone> RegisterValue<T> {
     }
 }
 
-impl<T: Debug + Clone> CrdtValue for RegisterValue<T> {
+impl<T: Clone> CrdtValue for RegisterValue<T> {
     type LocalValue = T;
     type RemoteOp = RemoteOp<T>;
     type LocalOp = LocalOp<T>;
@@ -155,7 +121,7 @@ impl<T: Debug + Clone> CrdtValue for RegisterValue<T> {
     }
 }
 
-impl<T: Debug + Clone> CrdtRemoteOp for RemoteOp<T> {
+impl<T: Clone> CrdtRemoteOp for RemoteOp<T> {
     fn add_site(&mut self, site: u32) {
         self.insert.0.site = site;
         for replica in &mut self.remove {
