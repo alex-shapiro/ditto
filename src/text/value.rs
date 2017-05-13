@@ -11,7 +11,7 @@ use traits::CrdtValue;
 use char_fns::CharFns;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextValue(BTree);
+pub struct TextValue(pub BTree);
 
 impl TextValue {
 
@@ -58,6 +58,7 @@ impl TextValue {
         };
 
         for e in &inserts { let _ = self.0.insert(e.clone()); }
+        let removes = removes.into_iter().map(|e| e.uid).collect();
         Ok(RemoteOp{inserts: inserts, removes: removes})
     }
 
@@ -103,6 +104,7 @@ impl TextValue {
         };
 
         for e in &inserts { let _ = self.0.insert(e.clone()); }
+        let removes = removes.into_iter().map(|e| e.uid).collect();
         Ok(RemoteOp{inserts: inserts, removes: removes})
     }
 
@@ -127,16 +129,15 @@ impl TextValue {
     pub fn execute_remote(&mut self, op: &RemoteOp) -> Option<LocalOp> {
         let mut changes = Vec::with_capacity(op.inserts.len() + op.removes.len());
 
-        for element in &op.removes {
-            if let Some(char_index) = self.0.get_index(&element.uid) {
-                self.0.remove(&element.uid);
+        for uid in &op.removes {
+            if let Some(char_index) = self.0.get_index(&uid) {
+                let element = self.0.remove(&uid).expect("Element must exist!");
                 changes.push(LocalChange::Remove{index: char_index, len: element.len});
             }
         }
 
         for element in &op.inserts {
-            if let None = self.0.get_index(&element.uid) {
-                let _ = self.0.insert(element.clone());
+            if let Ok(_) = self.0.insert(element.clone()) {
                 let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
                 changes.push(LocalChange::Insert{index: char_index, text: element.text.clone()});
             }
@@ -180,10 +181,9 @@ impl CrdtValue for TextValue {
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
         for element in &op.inserts {
-            if let Some(mut element) = self.0.remove(&element.uid) {
-                element.uid.site = site;
-                let _ = self.0.insert(element);
-            }
+            let mut element = some!(self.0.remove(&element.uid));
+            element.uid.site = site;
+            let _ = self.0.insert(element);
         }
     }
 }

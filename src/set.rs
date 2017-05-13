@@ -11,7 +11,6 @@ use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::mem;
 
 pub trait SetElement: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
@@ -63,11 +62,7 @@ impl<T: SetElement> Set<T> {
     /// If the set does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert(&mut self, value: T) -> Result<RemoteOp<T>, Error> {
-        let op = self.value.insert(value, &self.replica)?;
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
+        self.after_op(self.value.insert(value, &self.replica)?)
     }
 
     /// Removes a value from the set and returns a remote op
@@ -75,11 +70,7 @@ impl<T: SetElement> Set<T> {
     /// If the set does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, value: &T) -> Result<RemoteOp<T>, Error> {
-        let op = self.value.remove(value)?;
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
+        self.after_op(self.value.remove(value)?)
     }
 }
 
@@ -94,6 +85,10 @@ impl<T: SetElement> Crdt for Set<T> {
         &self.value
     }
 
+    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
+        &mut self.awaiting_site
+    }
+
     fn clone_value(&self) -> SetValue<T> {
         self.value.clone()
     }
@@ -105,16 +100,6 @@ impl<T: SetElement> Crdt for Set<T> {
 
     fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<T>>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
     }
 }
 
@@ -193,21 +178,18 @@ impl<T: SetElement> CrdtValue for SetValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert{ref value, ref replica} = *op {
-            if let Some(ref mut replicas) = self.inner.get_mut(value) {
-                if let Ok(index) = replicas.binary_search_by(|r| r.cmp(replica)) {
-                    replicas[index].site = site;
-                }
-            }
+            let ref mut replicas = some!(self.inner.get_mut(value));
+            let index = some!(replicas.binary_search_by(|r| r.cmp(replica)).ok());
+            replicas[index].site = site;
         }
     }
 }
-
 
 impl<T: SetElement> CrdtRemoteOp for RemoteOp<T> {
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert{ref mut replica, ..} => {
-                if replica.site == 0 { replica.site = site; }
+                replica.site = site;
             }
             RemoteOp::Remove{ref mut replicas, ..} => {
                 for replica in replicas {

@@ -1,4 +1,5 @@
 use Error;
+use std::mem;
 
 /// Required functions for CRDT implementation.
 pub trait Crdt: Sized {
@@ -10,6 +11,11 @@ pub trait Crdt: Sized {
     /// Returns a reference to the CRDT's inner value
     fn value(&self) -> &Self::Value;
 
+    /// Returns a mutable reference to the list of ops
+    /// that need a site allocation before they can be
+    /// sent to remote sites.
+    fn awaiting_site(&mut self) -> &mut Vec<<Self::Value as CrdtValue>::RemoteOp>;
+
     /// Clones the CRDT's inner value.
     fn clone_value(&self) -> Self::Value;
 
@@ -20,12 +26,32 @@ pub trait Crdt: Sized {
     fn execute_remote(&mut self, op: &<Self::Value as CrdtValue>::RemoteOp) -> Option<<Self::Value as CrdtValue>::LocalOp>;
 
     /// Consumes the CRDT and returns the equivalent local value.
+    /// Do not override the default implementation.
     fn local_value(&self) -> <Self::Value as CrdtValue>::LocalValue {
         self.value().local_value()
     }
 
+    /// Should be called after any successful local op.
+    fn after_op(&mut self, op: RemoteOp<T>) -> Result<RemoteOp<T>, Error> {
+        self.replica.counter += 1;
+        if self.replica.site != 0 { return Ok(op) }
+        self.awaiting_site().push(op);
+        Err(Error::AwaitingSite)
+    }
+
     /// Updates the CRDT's site and executes any awaiting ops.
-    fn add_site(&mut self, site: u32) -> Result<Vec<<Self::Value as CrdtValue>::RemoteOp>, Error>;
+    /// Do not override the default implementation.
+    fn add_site(&mut self, site: u32) -> Result<Vec<<Self::Value as CrdtValue>::RemoteOp>, Error> {
+        if self.site() != 0 { return Err(Error::AlreadyHasSite) }
+        let ops = mem::replace(self.awaiting_site(), vec![]);
+
+        for mut op in ops.iter_mut() {
+            self.value.add_site(op, site);
+            op.add_site(site);
+        }
+
+        Ok(ops)
+    }
 }
 
 /// Required functions for CRDT values.
@@ -37,9 +63,9 @@ pub trait CrdtValue {
     /// Returns the equivalent LocalValue.
     fn local_value(&self) -> Self::LocalValue;
 
-    /// Adds a site to all elements of the Crdt that are
-    /// affected by the provided op.
+    /// Adds a site to the elements affected by the remote op.
     fn add_site(&mut self, op: &Self::RemoteOp, site: u32);
+
 }
 
 /// Required functions for CRDT remote ops.
@@ -48,7 +74,7 @@ pub trait CrdtRemoteOp {
     fn add_site(&mut self, site: u32);
 }
 
-/// Trait for converting a type into a CRDTs
-pub trait IntoCrdt<C: Crdt> {
-    fn into_crdt(self, site: u32) -> C;
+pub trait AddSiteToAll {
+    /// Adds a site to all elements in the CRDT.
+    fn add_site_to_all(&mut self, site: u32);
 }

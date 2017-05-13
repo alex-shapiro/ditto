@@ -8,8 +8,8 @@ use Error;
 use Replica;
 pub use self::value::TextValue;
 use self::element::Element;
+use sequence::uid::UID;
 use traits::*;
-use std::mem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Text {
@@ -21,7 +21,7 @@ pub struct Text {
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RemoteOp {
     pub inserts: Vec<Element>,
-    pub removes: Vec<Element>,
+    pub removes: Vec<UID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -55,8 +55,7 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert(&mut self, index: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.insert(index, text, &self.replica)?;
-        self.manage_op(remote_op)
+        self.after_op(self.value.insert(index, text, &self.replica)?)
     }
 
     /// Removes the text in the range [index..<index+len].
@@ -64,8 +63,7 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, index: usize, len: usize) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.remove(index, len, &self.replica)?;
-        self.manage_op(remote_op)
+        self.after_op(self.value.remove(index, len, &self.replica)?)
     }
 
     /// Replaces the text in the range [index..<index+len] with new text.
@@ -73,15 +71,7 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn replace(&mut self, index: usize, len: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.replace(index, len, text, &self.replica)?;
-        self.manage_op(remote_op)
-    }
-
-    fn manage_op(&mut self, op: RemoteOp) -> Result<RemoteOp, Error> {
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
+        self.after_op(self.value.replace(index, len, text, &self.replica)?)
     }
 }
 
@@ -96,6 +86,10 @@ impl Crdt for Text {
         &self.value
     }
 
+    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp> {
+        &mut self.awaiting_site
+    }
+
     fn clone_value(&self) -> Self::Value {
         self.value.clone()
     }
@@ -107,16 +101,6 @@ impl Crdt for Text {
 
     fn execute_remote(&mut self, op: &RemoteOp) -> Option<LocalOp> {
         self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
     }
 }
 
@@ -133,7 +117,7 @@ impl RemoteOp {
 impl CrdtRemoteOp for RemoteOp {
     fn add_site(&mut self, site: u32) {
         for element in &mut self.inserts {
-            if element.uid.site == 0 { element.uid.site = site; }
+            element.uid.site = site;
         }
         for element in &mut self.removes {
             if element.uid.site == 0 { element.uid.site = site; }

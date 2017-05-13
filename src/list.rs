@@ -5,8 +5,6 @@ use Error;
 use Replica;
 use sequence::uid::{self, UID};
 use traits::*;
-
-use std::mem;
 use std::slice;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -22,7 +20,7 @@ pub struct ListValue<T>(Vec<Element<T>>);
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<T> {
     Insert(Element<T>),
-    Remove(Element<T>),
+    Remove(UID),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,8 +59,7 @@ impl<T: Clone> List<T> {
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn insert(&mut self, index: usize, value: T) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.insert(index, value, &self.replica)?;
-        self.manage_op(remote_op)
+        self.after_op(self.value.insert(index, value, &self.replica)?)
     }
 
     /// Removes the element at position `index` from the list,
@@ -71,15 +68,7 @@ impl<T: Clone> List<T> {
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.remove(index)?;
-        self.manage_op(remote_op)
-    }
-
-    fn manage_op(&mut self, op: RemoteOp<T>) -> Result<RemoteOp<T>, Error> {
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
+        self.after_op(self.value.remove(index)?)
     }
 }
 
@@ -94,6 +83,10 @@ impl<T: Clone> Crdt for List<T> {
         &self.value
     }
 
+    fn awaiting_site(&mut self) -> &mut Vec<RemoteOp<T>> {
+        &mut self.awaiting_site
+    }
+
     fn clone_value(&self) -> Self::Value {
         self.value.clone()
     }
@@ -105,16 +98,6 @@ impl<T: Clone> Crdt for List<T> {
 
     fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<T>>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
     }
 }
 
@@ -153,7 +136,7 @@ impl<T: Clone> ListValue<T> {
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
         if index >= self.0.len() { return Err(Error::OutOfBounds) }
         let element = self.0.remove(index);
-        Ok(RemoteOp::Remove(element))
+        Ok(RemoteOp::Remove(element.0))
     }
 
     /// Updates the list and returns the equivalent local op.
@@ -166,8 +149,8 @@ impl<T: Clone> ListValue<T> {
                 let value = element.1.clone();
                 Some(LocalOp::Insert{index: index, value: value})
             }
-            RemoteOp::Remove(ref element) => {
-                let index = try_opt!(self.find_index(&element.0).ok());
+            RemoteOp::Remove(ref uid) => {
+                let index = try_opt!(self.find_index(&uid).ok());
                 self.0.remove(index);
                 Some(LocalOp::Remove{index: index})
             }
@@ -190,9 +173,8 @@ impl<T: Clone> CrdtValue for ListValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert(Element(ref uid, _)) = *op {
-            if let Ok(index) = self.find_index(uid) {
-                self.0[index].0.site = site;
-            }
+            let index = some!(self.find_index(uid));
+            self.0[index].0.site = site;
         }
     }
 }
@@ -201,7 +183,9 @@ impl<T> CrdtRemoteOp for RemoteOp<T> {
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert(Element(ref mut uid, _)) => uid.site = site,
-            RemoteOp::Remove(Element(ref mut uid, _)) => uid.site = site,
+            RemoteOp::Remove(ref mut uid) => {
+                if uid.site == 0 { uid.site = site };
+            }
         }
     }
 }

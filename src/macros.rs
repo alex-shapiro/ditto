@@ -6,3 +6,12 @@ macro_rules! try_opt {
         }
     )
 }
+
+macro_rules! some {
+    ($e:expr) => (
+        match $e {
+            Some(v) => v,
+            None => return,
+        }
+    )
+}
