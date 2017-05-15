@@ -1,7 +1,7 @@
 Ditto
 =====
 
-Ditto is a CRDT library focusing on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs, all of which present a consistent interface for generating local ops, processing remote ops, serializing, and deserializing. All CRDTs are tombstoneless.
+Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs and provides a standard interface for generating ops, executing remote ops, and serialization. All CRDTs are op-based and tombstoneless.
 
 ## Usage
 
@@ -48,6 +48,6 @@ Although Ditto CRDTs handle pre-site operations and site addition gracefully, th
 
 Ditto CRDTs are all op-based. Therefore, all remote operations received from some site **S** must be executed in the order that they were generated at **S**. Out-of-order remote execution WILL lead to consistency errors.
 
-The root value of a `Json` CRDT cannot be replaced. This means that if you create a `Json` CRDT with a `Number` or `Bool` root type, your CRDT is immutable!
+The root value of a `Json` CRDT cannot be replaced. This means that if you create a `Json` CRDT with a `Number` or `Bool` root type, your CRDT is immutable.
 
-CRDTs have significant memory and storage overhead compared to standard types. A Text CRDT may  require 5x the storage of a regular string. If the only operation you need for a string is full replacement, consider using the `Register<String>` CRDT instead.
+CRDTs are much larger than their equivalent native types. The `Text` and `List` CRDTs in particular may require 5x or more memory than `String` or `Vec`. If the only operation you need for a `Text` CRDT is full replacement, consider using `Register<String>` instead.
