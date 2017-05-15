@@ -1,7 +1,7 @@
 Ditto
 =====
 
-Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs and provides a standard interface for generating ops, executing remote ops, and serialization. All CRDTs are op-based and tombstoneless.
+Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs and provides a standard interface for generating ops, executing remote ops, and serialization. All CRDTs are op-based and tombstoneless. All remote ops are idempotent, so CRDTs can handle duplicate ops (eg due to a network outage) without losing consistency.
 
 ## Usage
 
