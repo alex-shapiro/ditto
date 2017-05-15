@@ -55,8 +55,8 @@ impl<T: Clone> Register<T> {
     /// If the register does not have a site allocated, it
     /// caches the op and returns an `AwaitingSite` error.
     pub fn update(&mut self, new_value: T) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.update(new_value, &self.replica);
-        self.after_op(remote_op)
+        let op = self.value.update(new_value, &self.replica);
+        self.after_op(op)
     }
 }
 

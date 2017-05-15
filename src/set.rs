@@ -62,8 +62,8 @@ impl<T: SetElement> Set<T> {
     /// If the set does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert(&mut self, value: T) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.insert(value, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.insert(value, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Removes a value from the set and returns a remote op
@@ -71,8 +71,8 @@ impl<T: SetElement> Set<T> {
     /// If the set does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, value: &T) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.remove(value)?;
-        self.after_op(remote_op)
+        let op = self.value.remove(value)?;
+        self.after_op(op)
     }
 }
 

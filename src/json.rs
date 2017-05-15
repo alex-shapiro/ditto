@@ -93,8 +93,8 @@ impl Json {
     /// and returns an `AwaitingSite` error.
     pub fn object_insert<T: IntoJson>(&mut self, pointer: &str, key: String, value: T) -> Result<RemoteOp, Error> {
         let value = value.into_json(&self.replica)?;
-        let remote_op = self.value.object_insert(pointer, key, value, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.object_insert(pointer, key, value, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Inserts a key-value pair into an object in the Json CRDT, where
@@ -106,15 +106,15 @@ impl Json {
 
     /// Deletes a key-value pair from an object in the Json CRDT.
     pub fn object_remove(&mut self, pointer: &str, key: &str) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.object_remove(pointer, key)?;
-        self.after_op(remote_op)
+        let op = self.value.object_remove(pointer, key)?;
+        self.after_op(op)
     }
 
     /// Inserts an element into an array in the Json CRDT.
     pub fn array_insert<T: IntoJson>(&mut self, pointer: &str, index: usize, value: T) -> Result<RemoteOp, Error> {
         let value = value.into_json(&self.replica)?;
-        let remote_op = self.value.array_insert(pointer, index, value, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.array_insert(pointer, index, value, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Inserts an element into an array in the Json CRDT, where the
@@ -126,26 +126,26 @@ impl Json {
 
     /// Removes an element from an array in the Json CRDT.
     pub fn array_remove(&mut self, pointer: &str, index: usize) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.array_remove(pointer, index)?;
-        self.after_op(remote_op)
+        let op = self.value.array_remove(pointer, index)?;
+        self.after_op(op)
     }
 
     /// Inserts new text into a text node in the Json CRDT.
     pub fn string_insert(&mut self, pointer: &str, index: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.string_insert(pointer, index, text, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.string_insert(pointer, index, text, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Removes a text range from a text node in the Json CRDT.
     pub fn string_remove(&mut self, pointer: &str, index: usize, len: usize) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.string_remove(pointer, index, len, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.string_remove(pointer, index, len, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Replaces a text range in a text node in the Json CRDT.
     pub fn string_replace(&mut self, pointer: &str, index: usize, len: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.string_replace(pointer, index, len, text, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.string_replace(pointer, index, len, text, &self.replica)?;
+        self.after_op(op)
     }
 }
 

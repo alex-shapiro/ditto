@@ -96,8 +96,8 @@ impl<K: Key, V: Value> Map<K, V> {
     /// map does not have a site allocated, it caches the op and
     /// returns an `AwaitingSite` error.
     pub fn insert(&mut self, key: K, value: V) -> Result<RemoteOp<K, V>, Error> {
-        let remote_op = self.value.insert(key, value, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.insert(key, value, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Removes a key from the map and returns a remote op
@@ -105,8 +105,8 @@ impl<K: Key, V: Value> Map<K, V> {
     /// If the map does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, key: &K) -> Result<RemoteOp<K,V>, Error> {
-        let remote_op = self.value.remove(key)?;
-        self.after_op(remote_op)
+        let op = self.value.remove(key)?;
+        self.after_op(op)
     }
 }
 

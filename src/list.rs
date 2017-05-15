@@ -61,8 +61,8 @@ impl<T: Clone> List<T> {
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn insert(&mut self, index: usize, value: T) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.insert(index, value, &self.replica)?;
-        self.after_op(remote_op)
+        let op = self.value.insert(index, value, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Removes the element at position `index` from the list,
@@ -71,8 +71,8 @@ impl<T: Clone> List<T> {
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.remove(index)?;
-        self.after_op(remote_op)
+        let op = self.value.remove(index)?;
+        self.after_op(op)
     }
 }
 
