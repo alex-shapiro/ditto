@@ -7,11 +7,12 @@ use Replica;
 use super::btree::BTree;
 use super::element::{self, Element};
 use super::{RemoteOp, LocalOp, LocalChange};
-use traits::CrdtValue;
+use sequence::uid::UID;
+use traits::{CrdtValue, AddSiteToAll};
 use char_fns::CharFns;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextValue(BTree);
+pub struct TextValue(pub BTree);
 
 impl TextValue {
 
@@ -58,6 +59,7 @@ impl TextValue {
         };
 
         for e in &inserts { let _ = self.0.insert(e.clone()); }
+        let removes = removes.into_iter().map(|e| e.uid).collect();
         Ok(RemoteOp{inserts: inserts, removes: removes})
     }
 
@@ -103,6 +105,7 @@ impl TextValue {
         };
 
         for e in &inserts { let _ = self.0.insert(e.clone()); }
+        let removes = removes.into_iter().map(|e| e.uid).collect();
         Ok(RemoteOp{inserts: inserts, removes: removes})
     }
 
@@ -127,16 +130,15 @@ impl TextValue {
     pub fn execute_remote(&mut self, op: &RemoteOp) -> Option<LocalOp> {
         let mut changes = Vec::with_capacity(op.inserts.len() + op.removes.len());
 
-        for element in &op.removes {
-            if let Some(char_index) = self.0.get_index(&element.uid) {
-                self.0.remove(&element.uid);
+        for uid in &op.removes {
+            if let Some(char_index) = self.0.get_index(&uid) {
+                let element = self.0.remove(&uid).expect("Element must exist!");
                 changes.push(LocalChange::Remove{index: char_index, len: element.len});
             }
         }
 
         for element in &op.inserts {
-            if let None = self.0.get_index(&element.uid) {
-                let _ = self.0.insert(element.clone());
+            if let Ok(_) = self.0.insert(element.clone()) {
                 let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
                 changes.push(LocalChange::Insert{index: char_index, text: element.text.clone()});
             }
@@ -180,11 +182,28 @@ impl CrdtValue for TextValue {
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
         for element in &op.inserts {
-            if let Some(mut element) = self.0.remove(&element.uid) {
-                element.uid.site = site;
-                let _ = self.0.insert(element);
-            }
+            let mut element = some!(self.0.remove(&element.uid));
+            element.uid.site = site;
+            let _ = self.0.insert(element);
         }
+    }
+}
+
+impl AddSiteToAll for TextValue {
+    fn add_site_to_all(&mut self, site: u32) {
+        let uids: Vec<UID> = self.0.into_iter().map(|e| e.uid.clone()).collect();
+        for uid in uids {
+            let mut element = self.0.remove(&uid).expect("Element must exist");
+            element.uid.site = site;
+            let _ = self.0.insert(element);
+        }
+    }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        for element in self.0.into_iter() {
+            try_assert!(element.uid.site == site, Error::InvalidRemoteOp);
+        }
+        Ok(())
     }
 }
 
@@ -267,7 +286,7 @@ mod tests {
         assert!(op2.inserts[2].text == e2.text);
 
         assert!(op2.removes.len() == 1);
-        assert!(op2.removes[0] == op1.inserts[0]);
+        assert!(op2.removes[0] == op1.inserts[0].uid);
     }
 
     #[test]
@@ -301,7 +320,7 @@ mod tests {
 
         assert!(op2.inserts.len() == 0);
         assert!(op2.removes.len() == 1);
-        assert!(op2.removes[0] == op1.inserts[0]);
+        assert!(op2.removes[0] == op1.inserts[0].uid);
     }
 
     #[test]
@@ -319,8 +338,8 @@ mod tests {
 
         assert!(op3.inserts.len() == 0);
         assert!(op3.removes.len() == 2);
-        assert!(op3.removes[0] == op1.inserts[0]);
-        assert!(op3.removes[1] == op2.inserts[0]);
+        assert!(op3.removes[0] == op1.inserts[0].uid);
+        assert!(op3.removes[1] == op2.inserts[0].uid);
     }
 
     #[test]
@@ -343,7 +362,7 @@ mod tests {
         assert!(op2.inserts[0].text == "q");
         assert!(op2.inserts[1].text == "k ");
         assert!(op2.removes.len() == 1);
-        assert!(op2.removes[0] == op1.inserts[0]);
+        assert!(op2.removes[0] == op1.inserts[0].uid);
     }
 
     #[test]
@@ -368,8 +387,8 @@ mod tests {
         assert!(op3.inserts[0].text == "th");
         assert!(op3.inserts[1].text == "umps ");
         assert!(op3.removes.len() == 5);
-        assert!(op3.removes[0] == op1.inserts[0]);
-        assert!(op3.removes[4] == op2.inserts[0]);
+        assert!(op3.removes[0] == op1.inserts[0].uid);
+        assert!(op3.removes[4] == op2.inserts[0].uid);
     }
 
     #[test]
@@ -395,7 +414,7 @@ mod tests {
         assert!(op2.removes.len() == 1);
         assert!(op2.inserts[0].text == "he");
         assert!(op2.inserts[1].text == "rld");
-        assert!(op2.removes[0] == op1.inserts[0]);
+        assert!(op2.removes[0] == op1.inserts[0].uid);
     }
 
     #[test]
@@ -414,7 +433,7 @@ mod tests {
         assert!(op2.inserts[0].text == e0.text);
         assert!(op2.inserts[1].text == e1.text);
         assert!(op2.inserts[2].text == e2.text);
-        assert!(op2.removes[0] == op1.inserts[0]);
+        assert!(op2.removes[0] == op1.inserts[0].uid);
     }
 
     #[test]
@@ -430,7 +449,7 @@ mod tests {
 
         assert!(op2.removes.len() == 1);
         assert!(op2.inserts.len() == 3);
-        assert!(op2.removes[0] == op1.inserts[0]);
+        assert!(op2.removes[0] == op1.inserts[0].uid);
         assert!(op2.inserts[0].text == e0.text);
         assert!(op2.inserts[1].text == e1.text);
         assert!(op2.inserts[2].text == e2.text);

@@ -5,23 +5,20 @@ use Error;
 use Replica;
 use map_tuple_vec;
 use traits::*;
-use util::remove_elements;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::mem;
 
 pub trait SetElement: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(deserialize = ""))]
 pub struct Set<T: SetElement> {
-    #[serde(bound(deserialize = ""))]
     value: SetValue<T>,
     replica: Replica,
-    #[serde(bound(deserialize = ""))]
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
@@ -45,6 +42,8 @@ pub enum LocalOp<T> {
 
 impl<T: SetElement> Set<T> {
 
+    crdt_impl!(Set, SetValue<T>);
+
     /// Constructs and returns a new set CRDT.
     /// The set has site 1 and counter 0.
     pub fn new() -> Self {
@@ -64,10 +63,7 @@ impl<T: SetElement> Set<T> {
     /// the op and returns an `AwaitingSite` error.
     pub fn insert(&mut self, value: T) -> Result<RemoteOp<T>, Error> {
         let op = self.value.insert(value, &self.replica)?;
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
+        self.after_op(op)
     }
 
     /// Removes a value from the set and returns a remote op
@@ -76,45 +72,7 @@ impl<T: SetElement> Set<T> {
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, value: &T) -> Result<RemoteOp<T>, Error> {
         let op = self.value.remove(value)?;
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
-    }
-}
-
-impl<T: SetElement> Crdt for Set<T> {
-    type Value = SetValue<T>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &SetValue<T> {
-        &self.value
-    }
-
-    fn clone_value(&self) -> SetValue<T> {
-        self.value.clone()
-    }
-
-    fn from_value(value: SetValue<T>, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Set{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<T>>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
+        self.after_op(op)
     }
 }
 
@@ -163,7 +121,7 @@ impl<T: SetElement> SetValue<T> {
             RemoteOp::Remove{ref value, ref replicas} => {
                 let should_remove_value = {
                     let existing_replicas = try_opt!(self.inner.get_mut(value));
-                    remove_elements(existing_replicas, replicas);
+                    remove_replicas(existing_replicas, replicas);
                     existing_replicas.is_empty()
                 };
 
@@ -193,27 +151,42 @@ impl<T: SetElement> CrdtValue for SetValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert{ref value, ref replica} = *op {
-            if let Some(ref mut replicas) = self.inner.get_mut(value) {
-                if let Ok(index) = replicas.binary_search_by(|r| r.cmp(replica)) {
-                    replicas[index].site = site;
-                }
-            }
+            let ref mut replicas = some!(self.inner.get_mut(value));
+            let index = some!(replicas.binary_search_by(|r| r.cmp(replica)).ok());
+            replicas[index].site = site;
         }
     }
 }
-
 
 impl<T: SetElement> CrdtRemoteOp for RemoteOp<T> {
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert{ref mut replica, ..} => {
-                if replica.site == 0 { replica.site = site; }
+                replica.site = site;
             }
             RemoteOp::Remove{ref mut replicas, ..} => {
                 for replica in replicas {
                     if replica.site == 0 { replica.site = site; }
                 }
             }
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove{..} => Ok(()),
+            RemoteOp::Insert{ref replica, ..} => {
+                try_assert!(replica.site == site, Error::InvalidRemoteOp);
+                Ok(())
+            }
+        }
+    }
+}
+
+pub fn remove_replicas(replicas: &mut Vec<Replica>, removed: &[Replica]) {
+    for replica in removed {
+        if let Ok(index) = replicas.binary_search_by(|e| e.cmp(&replica)) {
+            replicas.remove(index);
         }
     }
 }

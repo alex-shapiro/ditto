@@ -5,8 +5,7 @@ use Error;
 use Replica;
 use sequence::uid::{self, UID};
 use traits::*;
-
-use std::mem;
+use std::slice;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct List<T> {
@@ -16,12 +15,12 @@ pub struct List<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ListValue<T>(Vec<Element<T>>);
+pub struct ListValue<T>(pub Vec<Element<T>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<T> {
     Insert(Element<T>),
-    Remove(Element<T>),
+    Remove(UID),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -31,9 +30,11 @@ pub enum LocalOp<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Element<T>(UID, T);
+pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
+
+    crdt_impl!(List, ListValue<T>);
 
     /// Constructs and returns a new list.
     /// Th list has site 1 and counter 0.
@@ -54,22 +55,14 @@ impl<T: Clone> List<T> {
         self.value.0.get(index).and_then(|element| Some(&element.1))
     }
 
-    /// Returns the index of the element with `uid`. If a matching
-    /// element is found, it returns `Ok` containing the element index.
-    /// If no matching element is found, it returns `Err` containing
-    /// the index where an element with the UID may be inserted.
-    pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
-        self.value.find_index(uid)
-    }
-
     /// Inserts an element at position `index` within the list,
     /// shifting all elements after it to the right. Returns an
     /// error if the index is out-of-bounds. If the list does not
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn insert(&mut self, index: usize, value: T) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.insert(index, value, &self.replica)?;
-        self.manage_op(remote_op)
+        let op = self.value.insert(index, value, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Removes the element at position `index` from the list,
@@ -78,50 +71,8 @@ impl<T: Clone> List<T> {
     /// have a site allocated, it caches the op and returns an
     /// `AwaitingSite` error.
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
-        let remote_op = self.value.remove(index)?;
-        self.manage_op(remote_op)
-    }
-
-    fn manage_op(&mut self, op: RemoteOp<T>) -> Result<RemoteOp<T>, Error> {
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
-    }
-}
-
-impl<T: Clone> Crdt for List<T> {
-    type Value = ListValue<T>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &Self::Value {
-        &self.value
-    }
-
-    fn clone_value(&self) -> Self::Value {
-        self.value.clone()
-    }
-
-    fn from_value(value: Self::Value, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        List{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<T>>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
+        let op = self.value.remove(index)?;
+        self.after_op(op)
     }
 }
 
@@ -130,8 +81,16 @@ impl<T: Clone> ListValue<T> {
         ListValue(vec![])
     }
 
+    pub fn iter(&self) -> slice::Iter<Element<T>> {
+        self.0.iter()
+    }
+
     pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
         self.0.binary_search_by(|element| element.0.cmp(uid))
+    }
+
+    pub fn get_mut(&mut self, index: usize) -> Option<&mut Element<T>> {
+        self.0.get_mut(index)
     }
 
     pub fn insert(&mut self, index: usize, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
@@ -152,7 +111,7 @@ impl<T: Clone> ListValue<T> {
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
         if index >= self.0.len() { return Err(Error::OutOfBounds) }
         let element = self.0.remove(index);
-        Ok(RemoteOp::Remove(element))
+        Ok(RemoteOp::Remove(element.0))
     }
 
     /// Updates the list and returns the equivalent local op.
@@ -165,8 +124,8 @@ impl<T: Clone> ListValue<T> {
                 let value = element.1.clone();
                 Some(LocalOp::Insert{index: index, value: value})
             }
-            RemoteOp::Remove(ref element) => {
-                let index = try_opt!(self.find_index(&element.0).ok());
+            RemoteOp::Remove(ref uid) => {
+                let index = try_opt!(self.find_index(&uid).ok());
                 self.0.remove(index);
                 Some(LocalOp::Remove{index: index})
             }
@@ -189,10 +148,26 @@ impl<T: Clone> CrdtValue for ListValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert(Element(ref uid, _)) = *op {
-            if let Ok(index) = self.find_index(uid) {
-                self.0[index].0.site = site;
-            }
+            let index = some!(self.find_index(uid).ok());
+            self.0[index].0.site = site;
         }
+    }
+}
+
+impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
+    fn add_site_to_all(&mut self, site: u32) {
+        for element in self.0.iter_mut() {
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+        }
+    }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        for element in self.0.iter() {
+            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            try!(element.1.validate_site_for_all(site));
+        }
+        Ok(())
     }
 }
 
@@ -200,7 +175,19 @@ impl<T> CrdtRemoteOp for RemoteOp<T> {
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert(Element(ref mut uid, _)) => uid.site = site,
-            RemoteOp::Remove(Element(ref mut uid, _)) => uid.site = site,
+            RemoteOp::Remove(ref mut uid) => {
+                if uid.site == 0 { uid.site = site };
+            }
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove(_) => Ok(()),
+            RemoteOp::Insert(Element(ref uid, _)) => {
+                try_assert!(uid.site == site, Error::InvalidRemoteOp);
+                Ok(())
+            }
         }
     }
 }
@@ -231,10 +218,10 @@ mod tests {
         let op = list.insert(1, 456).unwrap();
         let _  = list.insert(2, 789).unwrap();
 
-        let Element(uid, _) = get_elt(op);
-        assert!(list.find_index(&uid) == Ok(1));
-        assert!(list.find_index(&*uid::MIN) == Err(0));
-        assert!(list.find_index(&*uid::MAX) == Err(3));
+        let Element(uid, _) = get_insert_elt(op);
+        assert!(list.value.find_index(&uid) == Ok(1));
+        assert!(list.value.find_index(&*uid::MIN) == Err(0));
+        assert!(list.value.find_index(&*uid::MAX) == Err(3));
     }
 
     #[test]
@@ -249,9 +236,9 @@ mod tests {
         assert!(list.value.0[1].1 == 456);
         assert!(list.value.0[2].1 == 123);
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
-        let element3 = get_elt(op3);
+        let element1 = get_insert_elt(op1);
+        let element2 = get_insert_elt(op2);
+        let element3 = get_insert_elt(op3);
 
         assert!(element1.1 == 123 && element2.1 == 456 && element3.1 == 789);
         assert!(*uid::MAX > element1.0);
@@ -271,9 +258,9 @@ mod tests {
         assert!(list.value.0[1].1 == 456);
         assert!(list.value.0[2].1 == 789);
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
-        let element3 = get_elt(op3);
+        let element1 = get_insert_elt(op1);
+        let element2 = get_insert_elt(op2);
+        let element3 = get_insert_elt(op3);
 
         assert!(*uid::MIN < element1.0);
         assert!(element1.0 < element2.0);
@@ -292,9 +279,9 @@ mod tests {
         assert!(list.value.0[1].1 == 789);
         assert!(list.value.0[2].1 == 456);
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
-        let element3 = get_elt(op3);
+        let element1 = get_insert_elt(op1);
+        let element2 = get_insert_elt(op2);
+        let element3 = get_insert_elt(op3);
 
         assert!(*uid::MIN < element1.0);
         assert!(element1.0 < element3.0);
@@ -317,13 +304,13 @@ mod tests {
         let _   = list.insert(2, 789).unwrap();
         let op2 = list.remove(1).unwrap();
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
+        let element = get_insert_elt(op1);
+        let uid     = get_remove_uid(op2);
 
         assert!(list.len() == 2);
         assert!(list.value.0[0].1 == 123);
         assert!(list.value.0[1].1 == 789);
-        assert!(element1 == element2);
+        assert!(element.0 == uid);
     }
 
     #[test]
@@ -400,14 +387,14 @@ mod tests {
         let _ = list.remove(0);
         let mut remote_ops = list.add_site(12).unwrap().into_iter();
 
-        let element1 = get_elt(remote_ops.next().unwrap());
-        let element2 = get_elt(remote_ops.next().unwrap());
-        let element3 = get_elt(remote_ops.next().unwrap());
+        let element1 = get_insert_elt(remote_ops.next().unwrap());
+        let element2 = get_insert_elt(remote_ops.next().unwrap());
+        let uid3     = get_remove_uid(remote_ops.next().unwrap());
 
         assert!(list.value.0[0].0.site == 12);
         assert!(element1.0.site == 12);
         assert!(element2.0.site == 12);
-        assert!(element3.0.site == 12);
+        assert!(uid3.site == 12);
     }
 
     #[test]
@@ -476,10 +463,18 @@ mod tests {
         assert!(local_op1 == local_op3);
     }
 
-    fn get_elt<T>(remote_op: RemoteOp<T>) -> Element<T> {
+    fn get_insert_elt<T>(remote_op: RemoteOp<T>) -> Element<T> {
         match remote_op {
             RemoteOp::Insert(element) => element,
-            RemoteOp::Remove(element) => element,
+            RemoteOp::Remove(_) => panic!(),
         }
     }
+
+    fn get_remove_uid<T>(remote_op: RemoteOp<T>) -> UID {
+        match remote_op {
+            RemoteOp::Remove(uid) => uid,
+            RemoteOp::Insert(_) => panic!(),
+        }
+    }
+
 }

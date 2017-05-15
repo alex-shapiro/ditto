@@ -5,22 +5,21 @@
 use Error;
 use Replica;
 use traits::*;
-use std::fmt::Debug;
 use std::mem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Register<T: Debug + Clone> {
+pub struct Register<T: Clone> {
     value: RegisterValue<T>,
     replica: Replica,
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RegisterValue<T: Debug + Clone>(Vec<Element<T>>);
+pub struct RegisterValue<T: Clone>(Vec<Element<T>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RemoteOp<T: Debug + Clone> {
-    remove: Vec<Element<T>>,
+pub struct RemoteOp<T: Clone> {
+    remove: Vec<Replica>,
     insert: Element<T>,
 }
 
@@ -30,9 +29,11 @@ pub struct LocalOp<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Element<T: Debug + Clone>(Replica, T);
+struct Element<T: Clone>(Replica, T);
 
-impl<T: Debug + Clone> Register<T> {
+impl<T: Clone> Register<T> {
+
+    crdt_impl!(Register, RegisterValue<T>);
 
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.
@@ -55,49 +56,11 @@ impl<T: Debug + Clone> Register<T> {
     /// caches the op and returns an `AwaitingSite` error.
     pub fn update(&mut self, new_value: T) -> Result<RemoteOp<T>, Error> {
         let op = self.value.update(new_value, &self.replica);
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
+        self.after_op(op)
     }
 }
 
-impl<T: Debug + Clone> Crdt for Register<T> {
-    type Value = RegisterValue<T>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &RegisterValue<T> {
-        &self.value
-    }
-
-    fn clone_value(&self) -> RegisterValue<T> {
-        self.value.clone()
-    }
-
-    fn from_value(value: RegisterValue<T>, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Register{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<T>>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            let _ = { self.value.add_site(op, site) };
-            op.add_site(site);
-        }
-        Ok(ops)
-    }
-}
-
-impl<T: Debug + Clone> RegisterValue<T> {
+impl<T: Clone> RegisterValue<T> {
 
     /// Returns a new register value.
     pub fn new(value: T, replica: &Replica) -> Self {
@@ -114,7 +77,8 @@ impl<T: Debug + Clone> RegisterValue<T> {
     /// that can be sent to remote sites for replication.
     pub fn update(&mut self, new_value: T, replica: &Replica) -> RemoteOp<T> {
         let insert = Element(replica.clone(), new_value);
-        let remove = mem::replace(&mut self.0, vec![insert.clone()]);
+        let removed_elements = mem::replace(&mut self.0, vec![insert.clone()]);
+        let remove = removed_elements.into_iter().map(|e| e.0).collect();
         RemoteOp{ remove, insert }
     }
 
@@ -122,8 +86,8 @@ impl<T: Debug + Clone> RegisterValue<T> {
     /// If the op's insert does not become the register's locally-visible
     /// value, returns None.
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        for element in &op.remove {
-            if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&element.0)) {
+        for replica in &op.remove {
+            if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&replica)) {
                 let _ = self.0.remove(index);
             }
         }
@@ -140,7 +104,7 @@ impl<T: Debug + Clone> RegisterValue<T> {
     }
 }
 
-impl<T: Debug + Clone> CrdtValue for RegisterValue<T> {
+impl<T: Clone> CrdtValue for RegisterValue<T> {
     type LocalValue = T;
     type RemoteOp = RemoteOp<T>;
     type LocalOp = LocalOp<T>;
@@ -150,18 +114,22 @@ impl<T: Debug + Clone> CrdtValue for RegisterValue<T> {
     }
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
-        if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)) {
-            self.0[index].0.site = site;
-        }
+        let index = some!(self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)).ok());
+        self.0[index].0.site = site;
     }
 }
 
-impl <T: Debug + Clone> CrdtRemoteOp for RemoteOp<T> {
+impl<T: Clone> CrdtRemoteOp for RemoteOp<T> {
     fn add_site(&mut self, site: u32) {
-        for element in &mut self.remove {
-            if element.0.site == 0 { element.0.site = site; }
+        self.insert.0.site = site;
+        for replica in &mut self.remove {
+            if replica.site == 0 { replica.site = site };
         }
-        if self.insert.0.site == 0 { self.insert.0.site = site; }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        try_assert!(self.insert.0.site == site, Error::InvalidRemoteOp);
+        Ok(())
     }
 }
 
@@ -189,8 +157,7 @@ mod tests {
         assert!(register.get() == &42);
         assert!(register.replica.counter == 2);
         assert!(op.remove.len() == 1);
-        assert!(op.remove[0].0 == Replica{site: 1, counter: 0});
-        assert!(op.remove[0].1.clone() == 8142);
+        assert!(op.remove[0] == Replica{site: 1, counter: 0});
         assert!(op.insert.0 == Replica{site: 1, counter: 1});
         assert!(op.insert.1.clone() == 42);
     }

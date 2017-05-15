@@ -21,6 +21,7 @@ pub enum Error {
     OutOfBounds,
     UIDDoesNotExist,
     VLQNoTerminatingByte,
+    WrongJsonType,
 }
 
 impl From<ParseIntError> for Error {

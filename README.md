@@ -1,70 +1,53 @@
 Ditto
 =====
 
-Ditto is a CRDT library focusing on simplicity. Its goal is to allow real-time collaboration with JSON-like data.
+Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs and provides a standard interface for generating ops, executing remote ops, and serialization. All CRDTs are op-based and tombstoneless. All remote ops are idempotent, so CRDTs can handle duplicate ops (eg due to a network outage) without losing consistency.
 
 ## Usage
 
 ```rust
-use ditto::CRDT;
+use ditto::List;
 
-// bob creates a CRDT and dumps its value
-let mut crdt1 = CRDT::create("[1, 2, 3]");
-let crdt1_value = crdt1.dump();
+// site 1 creates the CRDT and sends its original value to site 2.
+let mut list1: List<u32> = List::new();
+let mut list2: List<u32> = List::from_value(list1.clone_value(), 2);
 
-// bob sends crdt1_value to alice, who loads it into crdt2.
-let mut crdt2 = CRDT::load(crdt1_value, 2, 0).unwrap();
+// each site concurrently inserts a different number at index 0
+let remote_op1 = list1.insert(0, 7).unwrap();
+let remote_op2 = list2.insert(0, 11).unwrap();
 
-// crdt1 executes some operations
-let op1 = crdt1.delete_item("", 1).unwrap();
-let op2 = crdt1.insert_item("", 1, "true").unwrap();
-let op3 = crdt1.insert_item("", 1, "32.0").unwrap();
+// each site executes the other's op
+let _ = list1.execute_remote(&remote_op2).unwrap();
+let _ = list2.execute_remote(&remote_op1).unwrap();
 
-// crdt2 executes some operations concurrently with crdt1
-let op4 = crdt2.delete_item("", 1).unwrap();
-let op5 = crdt2.insert_item("", 1, "\"Hello!\"").unwrap();
-let op6 = crdt2.insert_item("", 2, "true").unwrap();
-
-// alice sends crdt2's operations to bob. He executes them on crdt1.
-crdt1.execute_remote(&op4);
-crdt1.execute_remote(&op5);
-crdt1.execute_remote(&op6);
-
-// bob sends crdt1's operations to alice. She executes them on crdt2.
-crdt2.execute_remote(&op1);
-crdt2.execute_remote(&op2);
-crdt2.execute_remote(&op3);
-
-// after all operations are replicated at both sites, the sites are identical.
-assert!(crdt1.value() == crdt2.value());
+// now the two sites have lists that contain either [7,11]
+// or [11, 7]. In either case, the lists have the same order.
+assert!(list1.value() == list2.value());
+assert!(list1.value)
 ```
 
-## Supported Types
+For more examples, take a look at the integration tests.
 
-**Object**, a mutable key-value data structure with string-typed keys and any supported type as a value. It functions like a JSON object. Supported functions are `put` and `delete`. The `__TYPE__` key is restricted; any attempt to set this key will fail.
+## CRDT Types
 
-**Array**, a mutable vec-like data structure that can hold items of any supported type. It functions like a JSON array. Supported functions are `insert_item` and `delete_item`.
+**Register&lt;T&gt;** stores a single value. Its supported operation is `update`, which replaces the value with a new value.
 
-**AttributedString** stores and efficiently edits large mutable strings. Indexed by unicode character. Supported functions are `insert_text`, `delete_text`, and `replace_text`.
+**Set&lt;T&gt;** stores a collection of distinct elements. Its supported operations are `insert` and `remove`, which insert and remove items, respectively.
 
-**Counter**, a mutable 64-bit float. Supports the `increment` function. Counters require more space than Numbers and should only be used when concurrent increments are required.
+**Map&lt;K,V&gt;** stores a collection of key-value pairs. The values in the map are immutable. Its supported operations are `insert` and `remove`, which insert and remove key-value pairs, respectively.
 
-**String**, an immutable string.
+**List&lt;T&gt;** stores an ordered sequence of values. Values in the list are immutable. Its supported operations are `insert` and `remove`, which insert and remove list value, respectively.
 
-**Number**, an immutable 64-bit float.
+**Text** is a string-like CRDT for mutable text. Its supported operations are `insert`, `remove`, and `replace`.
 
-**Boolean**, an immutable boolean value.
+**Json** is a container for any kind of data that can be represented via Json - objects, arrays, text, numbers, bools, and null. Its supported operations are `object_insert`, `object_remove`, `array_insert`, `array_remove`, `string_insert`, `string_remove`, and `string_replace`. Numbers, bools, and nulls are immutable.
 
-**Null** an immutable null value.
+## Notes
 
-## Limitations
+Although Ditto CRDTs handle pre-site operations and site addition gracefully, they do not provide site allocation or any other networking feature. Site allocation in particular must be handled carefully; if two or more clients use the same site concurrently you WILL have consistency errors.
 
-Ditto does not provide site allocation or networking features. Site allocation in particular must be handled carefully; two or more clients using the same site concurrently will lead to consistency errors.
+Ditto CRDTs are all op-based. Therefore, all remote operations received from some site **S** must be executed in the order that they were generated at **S**. Out-of-order remote execution WILL lead to consistency errors.
 
-All remote operations received from some site **S** must be executed in the order that they were generated at **S**. Out-of-order remote execution will lead to consistency errors.
+The root value of a `Json` CRDT cannot be replaced. This means that if you create a `Json` CRDT with a `Number` or `Bool` root type, your CRDT is immutable.
 
-The root value of a CRDT cannot be replaced. This means that your root value type is permanent; if you create a CRDT with a String or Bool root type, that means your CRDT is immutable!
-
-Mutable container types **Object**, **Array**, and **AttributedString** have significant memory and storage overhead associated with both the container and each element. A CRDT, when stored, may take over 3x the size of the equivalent non-CRDT JSON structure. This overhead is due to CRDT requirements of unique IDs for each item.
-
-Ditto is closely bound to `serde_json` at the moment. It is a required crate; this may change over time as more compact binary encoder are evaluated for serialization to disk and network.
+CRDTs are much larger than their equivalent native types. The `Text` and `List` CRDTs in particular may require 5x or more memory than `String` or `Vec`. If the only operation you need for a `Text` CRDT is full replacement, consider using `Register<String>` instead.

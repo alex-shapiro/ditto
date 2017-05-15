@@ -6,10 +6,10 @@ mod btree;
 
 use Error;
 use Replica;
-use self::value::TextValue;
+pub use self::value::TextValue;
 use self::element::Element;
+use sequence::uid::UID;
 use traits::*;
-use std::mem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Text {
@@ -20,8 +20,8 @@ pub struct Text {
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RemoteOp {
-    inserts: Vec<Element>,
-    removes: Vec<Element>,
+    pub inserts: Vec<Element>,
+    pub removes: Vec<UID>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -36,6 +36,8 @@ pub enum LocalChange {
 }
 
 impl Text {
+
+    crdt_impl!(Text, TextValue);
 
     /// Constructs and returns a new `Text` crdt.
     /// The crdt has site 1 and counter 0.
@@ -55,8 +57,8 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert(&mut self, index: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.insert(index, text, &self.replica)?;
-        self.manage_op(remote_op)
+        let op = self.value.insert(index, text, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Removes the text in the range [index..<index+len].
@@ -64,8 +66,8 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, index: usize, len: usize) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.remove(index, len, &self.replica)?;
-        self.manage_op(remote_op)
+        let op = self.value.remove(index, len, &self.replica)?;
+        self.after_op(op)
     }
 
     /// Replaces the text in the range [index..<index+len] with new text.
@@ -73,50 +75,8 @@ impl Text {
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn replace(&mut self, index: usize, len: usize, text: String) -> Result<RemoteOp, Error> {
-        let remote_op = self.value.replace(index, len, text, &self.replica)?;
-        self.manage_op(remote_op)
-    }
-
-    fn manage_op(&mut self, op: RemoteOp) -> Result<RemoteOp, Error> {
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
-    }
-}
-
-impl Crdt for Text {
-    type Value = TextValue;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &Self::Value {
-        &self.value
-    }
-
-    fn clone_value(&self) -> Self::Value {
-        self.value.clone()
-    }
-
-    fn from_value(value: Self::Value, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Text{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp) -> Option<LocalOp> {
-        self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
+        let op = self.value.replace(index, len, text, &self.replica)?;
+        self.after_op(op)
     }
 }
 
@@ -133,11 +93,18 @@ impl RemoteOp {
 impl CrdtRemoteOp for RemoteOp {
     fn add_site(&mut self, site: u32) {
         for element in &mut self.inserts {
-            if element.uid.site == 0 { element.uid.site = site; }
+            element.uid.site = site;
         }
-        for element in &mut self.removes {
-            if element.uid.site == 0 { element.uid.site = site; }
+        for uid in &mut self.removes {
+            if uid.site == 0 { uid.site = site; }
         }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        for element in &self.inserts {
+            try_assert!(element.uid.site == site, Error::InvalidRemoteOp);
+        }
+        Ok(())
     }
 }
 
@@ -158,14 +125,14 @@ mod tests {
     #[test]
     fn test_insert() {
         let mut text = Text::new();
-        let remote_op = text.insert(0, "Hello".to_owned()).unwrap();
-        assert!(text.len() == 5);
-        assert!(text.local_value() == "Hello");
+        let remote_op = text.insert(0, "🇺🇸😀Hello".to_owned()).unwrap();
+        assert!(text.len() == 8);
+        assert!(text.local_value() == "🇺🇸😀Hello");
         assert!(text.replica.counter == 1);
         assert!(remote_op.inserts[0].uid.site == 1);
         assert!(remote_op.inserts[0].uid.counter == 0);
-        assert!(remote_op.inserts[0].len == 5);
-        assert!(remote_op.inserts[0].text == "Hello");
+        assert!(remote_op.inserts[0].len == 8);
+        assert!(remote_op.inserts[0].text == "🇺🇸😀Hello");
     }
 
     #[test]
@@ -184,7 +151,7 @@ mod tests {
         assert!(text.len() == 8);
         assert!(text.local_value() == "I  going");
         assert!(text.replica.counter == 2);
-        assert!(remote_op1.inserts[0] == remote_op2.removes[0]);
+        assert!(remote_op1.inserts[0].uid == remote_op2.removes[0]);
         assert!(remote_op2.inserts[0].text == "I ");
         assert!(remote_op2.inserts[1].text == " going");
     }
@@ -250,7 +217,7 @@ mod tests {
 
         assert!(remote_op1.inserts[0].uid.site == 7);
         assert!(remote_op2.inserts[0].uid.site == 7);
-        assert!(remote_op3.removes[0].uid.site == 7);
+        assert!(remote_op3.removes[0].site == 7);
         assert!(remote_op3.inserts[0].uid.site == 7);
     }
 

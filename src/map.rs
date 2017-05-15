@@ -5,39 +5,39 @@ use Error;
 use Replica;
 use map_tuple_vec;
 use traits::*;
-use util::remove_elements;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
-use std::collections::HashMap;
+use std::borrow::Borrow;
+use std::cmp::Ordering;
+use std::collections::hash_map::{self, HashMap};
 use std::hash::Hash;
 use std::mem;
 
 pub trait Key: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> Key for T {}
 
-pub trait Value: Clone + Eq + Ord + Serialize + DeserializeOwned {}
-impl<T: Clone + Eq + Ord + Serialize + DeserializeOwned> Value for T {}
+pub trait Value: Clone + PartialEq + Serialize + DeserializeOwned {}
+impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(bound(deserialize = ""))]
 pub struct Map<K: Key, V: Value> {
-    #[serde(bound(deserialize = "K: Key, V: Value"))]
     value: MapValue<K, V>,
     replica: Replica,
-    #[serde(bound(deserialize = "K: Key, V: Value"))]
     awaiting_site: Vec<RemoteOp<K, V>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MapValue<K: Key, V: Value> {
     #[serde(with = "map_tuple_vec")]
-    inner: HashMap<K, Vec<Element<V>>>,
+    pub inner: HashMap<K, Vec<Element<V>>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<K, V> {
-    Insert{key: K, element: Element<V>, removed: Vec<Element<V>>},
-    Remove{key: K, removed: Vec<Element<V>>},
+    Insert{key: K, element: Element<V>, removed: Vec<Replica>},
+    Remove{key: K, removed: Vec<Replica>},
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -46,10 +46,32 @@ pub enum LocalOp<K, V> {
     Remove{key: K},
 }
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Element<V>(Replica, V);
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Element<V>(pub Replica, pub V);
+
+impl<V> PartialEq for Element<V> {
+    fn eq(&self, other: &Element<V>) -> bool {
+        self.0 == other.0
+    }
+}
+
+impl<V> Eq for Element<V> {}
+
+impl<V> PartialOrd for Element<V> {
+    fn partial_cmp(&self, other: &Element<V>) -> Option<Ordering> {
+        Some(self.cmp(&other))
+    }
+}
+
+impl<V> Ord for Element<V> {
+    fn cmp(&self, other: &Element<V>) -> Ordering {
+        self.0.cmp(&other.0)
+    }
+}
 
 impl<K: Key, V: Value> Map<K, V> {
+
+    crdt_impl!(Map, MapValue<K,V>);
 
     /// Constructs and returns a new map.
     /// The map has site 1 and counter 0.
@@ -75,10 +97,7 @@ impl<K: Key, V: Value> Map<K, V> {
     /// returns an `AwaitingSite` error.
     pub fn insert(&mut self, key: K, value: V) -> Result<RemoteOp<K, V>, Error> {
         let op = self.value.insert(key, value, &self.replica)?;
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
+        self.after_op(op)
     }
 
     /// Removes a key from the map and returns a remote op
@@ -87,45 +106,7 @@ impl<K: Key, V: Value> Map<K, V> {
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, key: &K) -> Result<RemoteOp<K,V>, Error> {
         let op = self.value.remove(key)?;
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
-    }
-}
-
-impl<K: Key, V: Value> Crdt for Map<K,V> {
-    type Value = MapValue<K,V>;
-
-    fn site(&self) -> u32 {
-        self.replica.site
-    }
-
-    fn value(&self) -> &Self::Value {
-        &self.value
-    }
-
-    fn clone_value(&self) -> Self::Value {
-        self.value.clone()
-    }
-
-    fn from_value(value: Self::Value, site: u32) -> Self {
-        let replica = Replica::new(site, 0);
-        Map{value, replica, awaiting_site: vec![]}
-    }
-
-    fn execute_remote(&mut self, op: &RemoteOp<K,V>) -> Option<LocalOp<K,V>> {
-        self.value.execute_remote(op)
-    }
-
-    fn add_site(&mut self, site: u32) -> Result<Vec<RemoteOp<K,V>>, Error> {
-        if self.replica.site != 0 { return Err(Error::AlreadyHasSite) };
-        let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
-        for op in &mut ops {
-            self.value.add_site(op, site);
-            op.add_site(site);
-        }
-        Ok(ops)
+        self.after_op(op)
     }
 }
 
@@ -134,6 +115,37 @@ impl<K: Key, V: Value> MapValue<K, V> {
     /// Constructs and returns a new map value.
     pub fn new() -> Self {
         MapValue{inner: HashMap::new()}
+    }
+
+    /// Returns the number of key-value pairs in the map.
+    pub fn len(&self) -> usize {
+        self.inner.len()
+    }
+
+    /// Returns an iterator over the key-value pairs in the map.
+    pub fn iter(&self) -> hash_map::Iter<K,Vec<Element<V>>> {
+        self.inner.iter()
+    }
+
+    /// Returns a mutable reference to the first element for the key.
+    /// For internal use only.
+    pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut Element<V>>
+        where Q: Hash + Eq,
+              K: Borrow<Q>,
+    {
+        let elements = try_opt!(self.inner.get_mut(key));
+        Some(&mut elements[0])
+    }
+
+    /// Returns a mutable reference to the element corresponding to the
+    /// given key and replica. For internal use only.
+    pub fn get_mut_element<Q: ?Sized>(&mut self, key: &Q, replica: &Replica) -> Option<&mut Element<V>>
+        where Q: Hash + Eq,
+              K: Borrow<Q>,
+    {
+        let elements = try_opt!(self.inner.get_mut(key));
+        let index = try_opt!(elements.binary_search_by(|e| e.0.cmp(replica)).ok());
+        Some(&mut elements[index])
     }
 
     /// Inserts a key-value pair into the map and returns an op
@@ -149,16 +161,21 @@ impl<K: Key, V: Value> MapValue<K, V> {
         let element = Element(replica.clone(), value.clone());
         let old_elements = self.inner.entry(key.clone()).or_insert(vec![]);
         let new_elements = vec![element.clone()];
-        let removed = mem::replace(old_elements, new_elements);
+        let removed_elements = mem::replace(old_elements, new_elements);
+        let removed = removed_elements.into_iter().map(|e| e.0).collect();
         Ok(RemoteOp::Insert{key, element, removed})
     }
 
     /// Removes a key-value pair from the map and returns an op
     /// that can be sent to remote sites for replication. If the
     /// map did not contain the key, it returns a DoesNotExist error.
-    pub fn remove(&mut self, key: &K) -> Result<RemoteOp<K, V>, Error> {
-        let removed = self.inner.remove(key).ok_or(Error::DoesNotExist)?;
-        Ok(RemoteOp::Remove{key: key.clone(), removed})
+    pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Result<RemoteOp<K, V>, Error>
+        where Q: Hash + Eq + ToOwned<Owned = K>,
+              K: Borrow<Q>,
+    {
+        let removed_elements = self.inner.remove(key).ok_or(Error::DoesNotExist)?;
+        let removed = removed_elements.into_iter().map(|e| e.0).collect();
+        Ok(RemoteOp::Remove{key: key.to_owned(), removed})
     }
 
     /// Updates the map and returns the equivalent local op.
@@ -166,7 +183,7 @@ impl<K: Key, V: Value> MapValue<K, V> {
         match *op {
             RemoteOp::Insert{ref key, ref element, ref removed} => {
                 let elements = self.inner.entry(key.clone()).or_insert(vec![]);
-                remove_elements(elements, removed);
+                remove_replicas(elements, removed);
 
                 let index = try_opt!(elements.binary_search_by(|e| e.0.cmp(&element.0)).err());
                 elements.insert(index, element.clone());
@@ -178,9 +195,9 @@ impl<K: Key, V: Value> MapValue<K, V> {
             }
             RemoteOp::Remove{ref key, ref removed} => {
                 let first_remaining_element = {
-                    let existing_elements = try_opt!(self.inner.get_mut(key));
-                    remove_elements(existing_elements, removed);
-                    existing_elements.first().and_then(|e| Some(e.1.clone()))
+                    let elements = try_opt!(self.inner.get_mut(key));
+                    remove_replicas(elements, removed);
+                    elements.first().and_then(|e| Some(e.1.clone()))
                 };
 
                 if let Some(value) = first_remaining_element {
@@ -190,6 +207,14 @@ impl<K: Key, V: Value> MapValue<K, V> {
                     Some(LocalOp::Remove{key: key.clone()})
                 }
             }
+        }
+    }
+}
+
+fn remove_replicas<V: Value>(elements: &mut Vec<Element<V>>, replicas: &[Replica]) {
+    for replica in replicas {
+        if let Ok(index) = elements.binary_search_by(|e| e.0.cmp(&replica)) {
+            elements.remove(index);
         }
     }
 }
@@ -207,14 +232,33 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
         hash_map
     }
 
-    fn add_site(&mut self, op: &RemoteOp<K, V>, site: u32) {
+    fn add_site(&mut self, op: &RemoteOp<K,V>, site: u32) {
         if let RemoteOp::Insert{ref key, ref element, ..} = *op {
-            if let Some(ref mut elements) = self.inner.get_mut(key) {
-                if let Ok(index) = elements.binary_search_by(|e| e.0.cmp(&element.0)) {
-                    elements[index].0.site = site;
-                }
+            let elements = some!(self.inner.get_mut(key));
+            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
+            elements[index].0.site = site;
+        }
+    }
+}
+
+impl<K: Key, V: Value + AddSiteToAll> AddSiteToAll for MapValue<K,V> {
+    fn add_site_to_all(&mut self, site: u32) {
+        for elements in self.inner.values_mut() {
+            for element in elements.iter_mut() {
+                element.0.site = site;
+                element.1.add_site_to_all(site);
             }
         }
+    }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        for elements in self.inner.values() {
+            for element in elements.iter() {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try!(element.1.validate_site_for_all(site));
+            }
+        }
+        Ok(())
     }
 }
 
@@ -222,15 +266,25 @@ impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
-                if element.0.site == 0 { element.0.site = site; }
-                for element in removed {
-                    if element.0.site == 0 { element.0.site = site; }
+                element.0.site = site;
+                for replica in removed {
+                    if replica.site == 0 { replica.site = site; }
                 }
             }
             RemoteOp::Remove{ref mut removed, ..} => {
-                for element in removed {
-                    if element.0.site == 0 { element.0.site = site; }
+                for replica in removed {
+                    if replica.site == 0 { replica.site = site; }
                 }
+            }
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove{..} => Ok(()),
+            RemoteOp::Insert{ref element, ..} => {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                Ok(())
             }
         }
     }
@@ -272,14 +326,13 @@ mod tests {
         let mut map: Map<u32, String> = Map::new();
         let _ = map.insert(123, "abc".to_owned()).unwrap();
         let remote_op2 = map.insert(123, "def".to_owned()).unwrap();
-        let (key2, element2, removed2) = insert_fields(remote_op2);
+        let (key, element, removed) = insert_fields(remote_op2);
 
         assert!(map.get(&123).unwrap() == "def");
-        assert!(key2 == 123);
-        assert!(element2.0 == Replica::new(1,1));
-        assert!(element2.1 == "def");
-        assert!(removed2[0].0 == Replica::new(1,0));
-        assert!(removed2[0].1 == "abc");
+        assert!(key == 123);
+        assert!(element.0 == Replica::new(1,1));
+        assert!(element.1 == "def");
+        assert!(removed[0] == Replica::new(1,0));
     }
 
     #[test]
@@ -306,8 +359,7 @@ mod tests {
 
         assert!(map.get(&true).is_none());
         assert!(key == true);
-        assert!(removed[0].0 == Replica::new(1,0));
-        assert!(removed[0].1 == 3);
+        assert!(removed[0] == Replica::new(1,0));
     }
 
     #[test]
@@ -427,7 +479,7 @@ mod tests {
 
         assert!(key1 == 10 && elt1.0 == Replica::new(5,0) && elt1.1 == 56 && removed1.is_empty());
         assert!(key2 == 20 && elt2.0 == Replica::new(5,1) && elt2.1 == 57 && removed2.is_empty());
-        assert!(key3 == 10 && removed3.len() == 1 && removed3[0].0 == Replica::new(5,0));
+        assert!(key3 == 10 && removed3.len() == 1 && removed3[0] == Replica::new(5,0));
     }
 
     #[test]
@@ -496,14 +548,14 @@ mod tests {
         assert!(local_op1 == local_op3);
     }
 
-    fn insert_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Element<V>, Vec<Element<V>>) {
+    fn insert_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Element<V>, Vec<Replica>) {
         match remote_op {
             RemoteOp::Insert{key, element, removed} => (key, element, removed),
             _ => panic!(),
         }
     }
 
-    fn remove_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Vec<Element<V>>) {
+    fn remove_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Vec<Replica>) {
         match remote_op {
             RemoteOp::Remove{key, removed} => (key, removed),
             _ => panic!(),
