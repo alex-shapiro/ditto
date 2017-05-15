@@ -55,6 +55,7 @@ pub use local_value::LocalValue;
 pub use op::NestedLocalOp;
 pub use op::NestedRemoteOp;
 
+pub use json::Json;
 pub use list::List;
 pub use map::Map;
 pub use register::{Register, RegisterValue};

@@ -4,7 +4,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate rmp_serde as rmps;
 
-use ditto::{List, Map, Register, Set, Text, Crdt};
+use ditto::{Json, List, Map, Register, Set, Text, Crdt};
 use ditto::{list, map, set};
 
 #[test]
@@ -158,6 +158,27 @@ fn test_text() {
 
     assert!(text1.value() == text2.value());
     assert!(text1.value() == text3.value());
+}
+
+#[test]
+fn test_json() {
+    let mut crdt1 = Json::from_str("{}").unwrap();
+    let mut crdt2 = Json::from_value(crdt1.clone_value(), 2);
+    let mut crdt3 = Json::from_value(crdt1.clone_value(), 3);
+
+    let remote_op1 = crdt1.object_insert("", "foo".to_owned(), 1.0).unwrap();
+    let remote_op2 = crdt2.object_insert("", "foo".to_owned(), 2.0).unwrap();
+    let remote_op3 = crdt3.object_insert("", "bar".to_owned(), 3.0).unwrap();
+
+    let _ = crdt1.execute_remote(&via_msgpack(&remote_op2));
+    let _ = crdt1.execute_remote(&via_msgpack(&remote_op3));
+    let _ = crdt2.execute_remote(&via_msgpack(&remote_op1));
+    let _ = crdt2.execute_remote(&via_json(&remote_op3));
+    let _ = crdt3.execute_remote(&via_json(&remote_op1));
+    let _ = crdt3.execute_remote(&via_json(&remote_op2));
+
+    assert!(crdt1.value() == crdt2.value());
+    assert!(crdt1.value() == crdt3.value());
 }
 
 fn via_json<T>(value: &T) -> T
