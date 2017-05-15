@@ -4,8 +4,30 @@ extern crate serde;
 extern crate serde_json;
 extern crate rmp_serde as rmps;
 
-use ditto::{Json, List, Map, Register, Set, Text};
+use ditto::{Counter, Json, List, Map, Register, Set, Text};
 use ditto::{list, map, set};
+
+#[test]
+fn test_counter() {
+    let mut counter1 = Counter::new(4832.182);
+    let mut counter2 = Counter::from_value(counter1.clone_value(), 2);
+    let mut counter3 = Counter::from_value(counter1.clone_value(), 3);
+
+    let remote_op1 = counter1.increment(881.5).unwrap();
+    let remote_op2 = counter2.increment(-102.2).unwrap();
+    let remote_op3 = counter3.increment(391.482).unwrap();
+
+    let _ = counter1.execute_remote(&via_msgpack(&remote_op2)).unwrap();
+    let _ = counter1.execute_remote(&via_msgpack(&remote_op3)).unwrap();
+    let _ = counter2.execute_remote(&via_msgpack(&remote_op1)).unwrap();
+    let _ = counter2.execute_remote(&via_json(&remote_op3)).unwrap();
+    let _ = counter3.execute_remote(&via_json(&remote_op1)).unwrap();
+    let _ = counter3.execute_remote(&via_json(&remote_op2)).unwrap();
+    let _ = counter3.execute_remote(&via_json(&remote_op2));
+
+    assert!(counter1.value() == counter2.value());
+    assert!(counter1.value() == counter3.value());
+}
 
 #[test]
 fn test_list() {

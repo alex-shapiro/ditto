@@ -23,6 +23,7 @@ extern crate rmp_serde;
 #[macro_use] mod macros;
 #[macro_use] mod traits;
 
+pub mod counter;
 pub mod json;
 pub mod list;
 pub mod map;
@@ -30,31 +31,17 @@ pub mod register;
 pub mod set;
 pub mod text;
 
-mod array;
-mod attributed_string;
-mod counter;
-mod crdt;
 mod error;
-mod local_value;
 mod map_tuple_vec;
-mod object;
-mod op;
 mod replica;
 mod sequence;
-mod serializer;
-mod value;
 mod vlq;
 
-pub use crdt::CRDT;
 pub use traits::{CrdtValue, CrdtRemoteOp};
 pub use error::Error;
 pub use replica::Replica;
-pub use value::IntoValue;
-pub use value::Value;
-pub use local_value::LocalValue;
-pub use op::NestedLocalOp;
-pub use op::NestedRemoteOp;
 
+pub use counter::Counter;
 pub use json::Json;
 pub use list::List;
 pub use map::Map;
