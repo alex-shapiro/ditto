@@ -545,6 +545,7 @@ fn validate_site_list_op(op: &list::RemoteOp<JsonValue>, site: u32) -> Result<()
 #[cfg(test)]
 mod tests {
     use super::*;
+    use rmp_serde;
 
     #[test]
     fn test_from_str() {
@@ -976,6 +977,68 @@ mod tests {
         let remote_op = crdt1.object_remove("", "bar").unwrap();
         assert!(crdt2.execute_remote(&remote_op).is_some());
         assert!(crdt2.execute_remote(&remote_op).is_none());
+    }
+
+    #[test]
+    fn test_serialize() {
+        let crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+
+        let s_json = serde_json::to_string(&crdt1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&crdt1).unwrap();
+        let crdt2: Json = serde_json::from_str(&s_json).unwrap();
+        let crdt3: Json = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(crdt1 == crdt2);
+        assert!(crdt1 == crdt3);
+    }
+
+    #[test]
+    fn test_serialize_value() {
+        let crdt = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+
+        let s_json = serde_json::to_string(crdt.value()).unwrap();
+        let s_msgpack = rmp_serde::to_vec(crdt.value()).unwrap();
+        let value2: JsonValue = serde_json::from_str(&s_json).unwrap();
+        let value3: JsonValue = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(*crdt.value() == value2);
+        assert!(*crdt.value() == value3);
+    }
+
+    #[test]
+    fn test_serialize_remote_op() {
+        let mut crdt = Json::from_str(r#"{"foo":{}}"#).unwrap();
+        let remote_op1 = crdt.object_insert("/foo", "bar".to_owned(), json!({
+            "a": [[1.0],["hello everyone!"],{"x": 3.0}],
+            "b": {"cat": true, "dog": false}
+        })).unwrap();
+
+        let s_json = serde_json::to_string(&remote_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
+        let remote_op2: RemoteOp = serde_json::from_str(&s_json).unwrap();
+        let remote_op3: RemoteOp = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(remote_op1 == remote_op2);
+        assert!(remote_op1 == remote_op3);
+    }
+
+    #[test]
+    fn test_serialize_local_op() {
+        let mut crdt1 = Json::from_str(r#"{"foo":{}}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 2);
+        let remote_op = crdt1.object_insert("/foo", "bar".to_owned(), json!({
+            "a": [[1.0],["hello everyone!"],{"x": 3.0}],
+            "b": {"cat": true, "dog": false}
+        })).unwrap();
+        let local_op1 = crdt2.execute_remote(&remote_op).unwrap();
+
+        let s_json = serde_json::to_string(&local_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
+        let local_op2: LocalOp = serde_json::from_str(&s_json).unwrap();
+        let local_op3: LocalOp = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(local_op1 == local_op2);
+        assert!(local_op1 == local_op3);
     }
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {
