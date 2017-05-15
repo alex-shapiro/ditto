@@ -3,7 +3,30 @@ Ditto
 
 Ditto is a CRDT library focusing on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs, all of which present a consistent interface for generating local ops, processing remote ops, serializing, and deserializing. All CRDTs are tombstoneless.
 
-For usage examples, take a look at the integration tests.
+## Usage
+
+```rust
+use ditto::{Crdt, List};
+
+// site 1 creates the CRDT and sends its original value to site 2.
+let mut list1: List<u32> = List::new();
+let mut list2: List<u32> = List::from_value(list1.clone_value(), 2);
+
+// each site concurrently inserts a different number at index 0
+let remote_op1 = list1.insert(0, 7).unwrap();
+let remote_op2 = list2.insert(0, 11).unwrap();
+
+// each site executes the other's op
+let _ = list1.execute_remote(&remote_op2).unwrap();
+let _ = list2.execute_remote(&remote_op1).unwrap();
+
+// now the two sites have lists that contain either [7,11]
+// or [11, 7]. In either case, the lists have the same order.
+assert!(list1.value() == list2.value());
+assert!(list1.value)
+```
+
+For more examples, take a look at the integration tests.
 
 ## CRDT Types
 
@@ -21,7 +44,7 @@ For usage examples, take a look at the integration tests.
 
 ## Notes
 
-Although Ditto manages a CRDT's site, it does not provide *site allocation* or any other networking feature. Site allocation in particular must be handled carefully; if two or more clients use the same site concurrently you WILL have consistency errors.
+Although Ditto CRDTs handle pre-site operations and site addition gracefully, they do not provide site allocation or any other networking feature. Site allocation in particular must be handled carefully; if two or more clients use the same site concurrently you WILL have consistency errors.
 
 Ditto CRDTs are all op-based. Therefore, all remote operations received from some site **S** must be executed in the order that they were generated at **S**. Out-of-order remote execution WILL lead to consistency errors.
 
