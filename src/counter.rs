@@ -1,54 +1,95 @@
+//! A `Counter` stores an incrementable float value.
+
+use Error;
 use Replica;
-use op::local::{LocalOp, Increment};
-use op::remote::IncrementCounter;
+use map_tuple_vec;
+use traits::*;
 use std::collections::HashMap;
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Counter {
-    pub value: f64,
-    pub site_counters: HashMap<u32, u32>,
+    value: CounterValue,
+    replica: Replica,
+    awaiting_site: Vec<RemoteOp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct CounterValue {
+    value: f64,
+    #[serde(with = "map_tuple_vec")]
+    site_counters: HashMap<u32, u32>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RemoteOp {
+    amount: f64,
+    replica: Replica,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct LocalOp {
+    amount: f64,
 }
 
 impl Counter {
+
+    crdt_impl!(Counter, CounterValue);
+
     pub fn new(value: f64) -> Self {
-        Counter{value: value, site_counters: HashMap::new()}
+        let replica = Replica::new(1, 0);
+        let value = CounterValue{value: value, site_counters: HashMap::new()};
+        Counter{value, replica, awaiting_site: vec![]}
     }
 
-    pub fn increment(&mut self, amount: f64, replica: &Replica) -> IncrementCounter {
+    pub fn increment(&mut self, amount: f64) -> Result<RemoteOp, Error> {
+        let op = self.value.increment(amount, &self.replica);
+        self.after_op(op)
+    }
+}
+
+impl CounterValue {
+    pub fn increment(&mut self, amount: f64, replica: &Replica) -> RemoteOp {
         self.value += amount;
-        let mut site_counter = self.site_counters.entry(replica.site).or_insert(replica.counter);
-        *site_counter = replica.counter;
-        IncrementCounter{amount: amount, replica: replica.clone()}
+        let _ = self.site_counters.insert(replica.site, replica.counter);
+        RemoteOp{amount: amount, replica: replica.clone()}
     }
 
-    pub fn execute_remote(&mut self, op: &IncrementCounter) -> Option<LocalOp> {
-        let is_duplicate =
-            match self.site_counters.get(&op.replica.site) {
-                Some(counter) => *counter >= op.replica.counter,
-                None => false,
-            };
+    pub fn execute_remote(&mut self, op: &RemoteOp) -> Option<LocalOp> {
+        let _ = try_opt!(
+            self.site_counters
+            .get(&op.replica.site)
+            .and_then(|counter| if *counter >= op.replica.counter { Some(()) } else { None }));
 
-        if is_duplicate {
-            None
-        } else {
-            self.value += op.amount;
-            self.site_counters.insert(op.replica.site, op.replica.counter);
-            Some(LocalOp::Increment(Increment::new(op.amount)))
-        }
+        self.value += op.amount;
+        let _ = self.site_counters.insert(op.replica.site, op.replica.counter);
+        Some(LocalOp{amount: op.amount})
+    }
+}
+
+impl CrdtValue for CounterValue {
+    type LocalValue = f64;
+    type RemoteOp = RemoteOp;
+    type LocalOp = LocalOp;
+
+    fn local_value(&self) -> f64 {
+        self.value
     }
 
-    pub fn replicas_vec(&self) -> Vec<Replica> {
-        let mut replicas = Vec::with_capacity(self.site_counters.len());
-        for (site, counter) in &self.site_counters {
-            replicas.push(Replica::new(*site, *counter))
-        }
-        replicas
-    }
-
-    pub fn update_site(&mut self, _: &IncrementCounter, site: u32) {
+    fn add_site(&mut self, _: &RemoteOp, site: u32) {
         if let Some(counter) = self.site_counters.remove(&0) {
             self.site_counters.insert(site, counter);
         }
+    }
+}
+
+impl CrdtRemoteOp for RemoteOp {
+    fn add_site(&mut self, site: u32) {
+        self.replica.site = site;
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        try_assert!(self.replica.site == site, Error::InvalidRemoteOp);
+        Ok(())
     }
 }
 
