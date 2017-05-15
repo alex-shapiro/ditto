@@ -1038,9 +1038,7 @@ mod tests {
     }
 
     fn local_json(json_value: &JsonValue) -> String {
-        let x = serde_json::to_string(&json_value.local_value()).unwrap();
-        println!("{:?}", &x);
-        x
+        serde_json::to_string(&json_value.local_value()).unwrap()
     }
 
     fn map_insert_op_fields(remote_op: RemoteOp) -> (String, map::Element<JsonValue>, Vec<Replica>) {
