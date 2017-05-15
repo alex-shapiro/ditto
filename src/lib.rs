@@ -46,7 +46,7 @@ mod value;
 mod vlq;
 
 pub use crdt::CRDT;
-pub use traits::{Crdt, CrdtValue, CrdtRemoteOp};
+pub use traits::{CrdtValue, CrdtRemoteOp};
 pub use error::Error;
 pub use replica::Replica;
 pub use value::IntoValue;

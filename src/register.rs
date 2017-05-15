@@ -33,6 +33,8 @@ struct Element<T: Clone>(Replica, T);
 
 impl<T: Clone> Register<T> {
 
+    crdt_impl!(Register, RegisterValue<T>);
+
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.
     pub fn new(value: T) -> Self {
@@ -56,10 +58,6 @@ impl<T: Clone> Register<T> {
         let remote_op = self.value.update(new_value, &self.replica);
         self.after_op(remote_op)
     }
-}
-
-impl<T: Clone> Crdt for Register<T> {
-    crdt_impl!(Register, RegisterValue<T>);
 }
 
 impl<T: Clone> RegisterValue<T> {

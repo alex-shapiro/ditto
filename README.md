@@ -6,7 +6,7 @@ Ditto is a CRDT library focusing on simplicity. It contains `Register`, `Set`, `
 ## Usage
 
 ```rust
-use ditto::{Crdt, List};
+use ditto::List;
 
 // site 1 creates the CRDT and sends its original value to site 2.
 let mut list1: List<u32> = List::new();

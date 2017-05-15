@@ -4,7 +4,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate rmp_serde as rmps;
 
-use ditto::{Json, List, Map, Register, Set, Text, Crdt};
+use ditto::{Json, List, Map, Register, Set, Text};
 use ditto::{list, map, set};
 
 #[test]

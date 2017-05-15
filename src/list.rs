@@ -34,6 +34,8 @@ pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
 
+    crdt_impl!(List, ListValue<T>);
+
     /// Constructs and returns a new list.
     /// Th list has site 1 and counter 0.
     pub fn new() -> Self {
@@ -72,10 +74,6 @@ impl<T: Clone> List<T> {
         let remote_op = self.value.remove(index)?;
         self.after_op(remote_op)
     }
-}
-
-impl<T: Clone> Crdt for List<T> {
-    crdt_impl!(List, ListValue<T>);
 }
 
 impl<T: Clone> ListValue<T> {

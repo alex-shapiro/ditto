@@ -75,6 +75,8 @@ pub trait IntoJson {
 
 impl Json {
 
+    crdt_impl!(Json, JsonValue);
+
     /// Constructs and returns a new `Json` CRDT from a JSON string.
     /// The crdt has site 1 and counter 0.
     pub fn from_str(json_str: &str) -> Result<Self, Error> {
@@ -145,17 +147,6 @@ impl Json {
         let remote_op = self.value.string_replace(pointer, index, len, text, &self.replica)?;
         self.after_op(remote_op)
     }
-
-    fn after_op(&mut self, op: RemoteOp) -> Result<RemoteOp, Error> {
-        self.replica.counter += 1;
-        if self.replica.site != 0 { return Ok(op) }
-        self.awaiting_site.push(op);
-        Err(Error::AwaitingSite)
-    }
-}
-
-impl Crdt for Json {
-    crdt_impl!(Json, JsonValue);
 }
 
 impl JsonValue {

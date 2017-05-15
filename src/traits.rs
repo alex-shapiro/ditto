@@ -1,82 +1,53 @@
 use Error;
 
-/// Required functions for CRDT implementation.
-pub trait Crdt: Sized {
-    type Value: CrdtValue;
-
-    /// Returns the CRDT's site.
-    fn site(&self) -> u32;
-
-    /// Returns a reference to the CRDT's inner value
-    fn value(&self) -> &Self::Value;
-
-    /// Clones the CRDT's inner value.
-    fn clone_value(&self) -> Self::Value;
-
-    /// Constructs a new CRDT from an inner value and a site.
-    fn from_value(value: Self::Value, site: u32) -> Self;
-
-    /// Consumes the CRDT and returns the equivalent local value.
-    fn local_value(&self) -> <Self::Value as CrdtValue>::LocalValue;
-
-    /// Executes a remote op and returns the equivalent local op.
-    /// This function assumes that the op only inserts values from the
-    /// correct site; for untrusted ops use `validate_and_execute_remote`.
-    fn execute_remote(&mut self, op: &<Self::Value as CrdtValue>::RemoteOp) -> Option<<Self::Value as CrdtValue>::LocalOp>;
-
-    /// Validates a remote op's site, then executes it and returns
-    /// the equivalent local op.
-    fn validate_and_execute_remote(&mut self, op: &<Self::Value as CrdtValue>::RemoteOp, site: u32) -> Result<Option<<Self::Value as CrdtValue>::LocalOp>, Error>;
-
-    /// Called after any successful local op.
-    fn after_op(&mut self, op: <Self::Value as CrdtValue>::RemoteOp) -> Result<<Self::Value as CrdtValue>::RemoteOp, Error>;
-
-    /// Updates the CRDT's site and executes any awaiting ops.
-    fn add_site(&mut self, site: u32) -> Result<Vec<<Self::Value as CrdtValue>::RemoteOp>, Error>;
-}
-
-/// The standard implementation for a CRDT.
+/// The standard implementation for a CRDT. It is implemented
+/// as a macro rather than a trait because (1) the implementation
+/// is identical for all CRDTs, and (2) it frees the user from
+/// having to import a trait whenever they use a CRDT.
 macro_rules! crdt_impl {
     ($tipe:ident, $value:ty) => {
-        type Value = $value;
 
-        fn site(&self) -> u32 {
+        /// Returns the CRDT's site
+        pub fn site(&self) -> u32 {
             self.replica.site
         }
 
-        fn value(&self) -> &Self::Value {
+        /// Returns a reference to the CRDT's inner value
+        pub fn value(&self) -> &$value {
             &self.value
         }
 
-        fn clone_value(&self) -> Self::Value {
+        /// Clones the CRDT's inner value.
+        pub fn clone_value(&self) -> $value {
             self.value.clone()
         }
 
-        fn from_value(value: Self::Value, site: u32) -> Self {
+        /// Constructs a new CRDT from an inner value and a site.
+        pub fn from_value(value: $value, site: u32) -> Self {
             $tipe{replica: Replica::new(site, 0), value: value, awaiting_site: vec![]}
         }
 
-        fn local_value(&self) -> <Self::Value as CrdtValue>::LocalValue {
+        /// Returns the CRDT value's equivalent local value.
+        pub fn local_value(&self) -> <$value as CrdtValue>::LocalValue {
             self.value.local_value()
         }
 
-        fn execute_remote(&mut self, op: &<Self::Value as CrdtValue>::RemoteOp) -> Option<<Self::Value as CrdtValue>::LocalOp> {
+        /// Executes a remote op and returns the equivalent local op.
+        /// This function assumes that the op only inserts values from the
+        /// correct site; for untrusted ops use `validate_and_execute_remote`.
+        pub fn execute_remote(&mut self, op: &<$value as CrdtValue>::RemoteOp) -> Option<<$value as CrdtValue>::LocalOp> {
             self.value.execute_remote(op)
         }
 
-        fn validate_and_execute_remote(&mut self, op: &<Self::Value as CrdtValue>::RemoteOp, site: u32) -> Result<Option<<Self::Value as CrdtValue>::LocalOp>, Error> {
+        /// Validates a remote op's site, then executes it and returns
+        /// the equivalent local op.
+        pub fn validate_and_execute_remote(&mut self, op: &<$value as CrdtValue>::RemoteOp, site: u32) -> Result<Option<<$value as CrdtValue>::LocalOp>, Error> {
             let _ = op.validate_site(site)?;
             Ok(self.value.execute_remote(op))
         }
 
-        fn after_op(&mut self, op: <Self::Value as CrdtValue>::RemoteOp) -> Result<<Self::Value as CrdtValue>::RemoteOp, Error> {
-            self.replica.counter += 1;
-            if self.replica.site != 0 { return Ok(op) }
-            self.awaiting_site.push(op);
-            Err(Error::AwaitingSite)
-        }
-
-        fn add_site(&mut self, site: u32) -> Result<Vec<<Self::Value as CrdtValue>::RemoteOp>, Error> {
+        /// Updates the CRDT's site and returns any cached ops.
+        pub fn add_site(&mut self, site: u32) -> Result<Vec<<$value as CrdtValue>::RemoteOp>, Error> {
             use std::mem;
 
             if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
@@ -89,6 +60,13 @@ macro_rules! crdt_impl {
             }
 
             Ok(ops)
+        }
+
+        fn after_op(&mut self, op: <$value as CrdtValue>::RemoteOp) -> Result<<$value as CrdtValue>::RemoteOp, Error> {
+            self.replica.counter += 1;
+            if self.replica.site != 0 { return Ok(op) }
+            self.awaiting_site.push(op);
+            Err(Error::AwaitingSite)
         }
     };
 }

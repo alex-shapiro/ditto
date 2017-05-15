@@ -71,6 +71,8 @@ impl<V> Ord for Element<V> {
 
 impl<K: Key, V: Value> Map<K, V> {
 
+    crdt_impl!(Map, MapValue<K,V>);
+
     /// Constructs and returns a new map.
     /// The map has site 1 and counter 0.
     pub fn new() -> Self {
@@ -106,10 +108,6 @@ impl<K: Key, V: Value> Map<K, V> {
         let remote_op = self.value.remove(key)?;
         self.after_op(remote_op)
     }
-}
-
-impl<K: Key, V: Value> Crdt for Map<K,V> {
-    crdt_impl!(Map, MapValue<K,V>);
 }
 
 impl<K: Key, V: Value> MapValue<K, V> {

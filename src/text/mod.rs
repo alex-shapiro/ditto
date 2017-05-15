@@ -37,6 +37,8 @@ pub enum LocalChange {
 
 impl Text {
 
+    crdt_impl!(Text, TextValue);
+
     /// Constructs and returns a new `Text` crdt.
     /// The crdt has site 1 and counter 0.
     pub fn new() -> Self {
@@ -76,10 +78,6 @@ impl Text {
         let op = self.value.replace(index, len, text, &self.replica)?;
         self.after_op(op)
     }
-}
-
-impl Crdt for Text {
-    crdt_impl!(Text, TextValue);
 }
 
 impl RemoteOp {
