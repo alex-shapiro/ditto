@@ -101,6 +101,13 @@ impl CrdtRemoteOp for RemoteOp {
             if uid.site == 0 { uid.site = site; }
         }
     }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        for element in &self.inserts {
+            try_assert!(element.uid.site == site, Error::InvalidRemoteOp);
+        }
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -146,7 +153,7 @@ mod tests {
         assert!(text.len() == 8);
         assert!(text.local_value() == "I  going");
         assert!(text.replica.counter == 2);
-        assert!(remote_op1.inserts[0] == remote_op2.removes[0]);
+        assert!(remote_op1.inserts[0].uid == remote_op2.removes[0]);
         assert!(remote_op2.inserts[0].text == "I ");
         assert!(remote_op2.inserts[1].text == " going");
     }
@@ -212,7 +219,7 @@ mod tests {
 
         assert!(remote_op1.inserts[0].uid.site == 7);
         assert!(remote_op2.inserts[0].uid.site == 7);
-        assert!(remote_op3.removes[0].uid.site == 7);
+        assert!(remote_op3.removes[0].site == 7);
         assert!(remote_op3.inserts[0].uid.site == 7);
     }
 

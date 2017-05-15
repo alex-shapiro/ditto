@@ -163,6 +163,14 @@ impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
             element.1.add_site_to_all(site);
         }
     }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        for element in self.0.iter() {
+            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            try!(element.1.validate_site_for_all(site));
+        }
+        Ok(())
+    }
 }
 
 impl<T> CrdtRemoteOp for RemoteOp<T> {
@@ -171,6 +179,16 @@ impl<T> CrdtRemoteOp for RemoteOp<T> {
             RemoteOp::Insert(Element(ref mut uid, _)) => uid.site = site,
             RemoteOp::Remove(ref mut uid) => {
                 if uid.site == 0 { uid.site = site };
+            }
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove(_) => Ok(()),
+            RemoteOp::Insert(Element(ref uid, _)) => {
+                try_assert!(uid.site == site, Error::InvalidRemoteOp);
+                Ok(())
             }
         }
     }
@@ -202,7 +220,7 @@ mod tests {
         let op = list.insert(1, 456).unwrap();
         let _  = list.insert(2, 789).unwrap();
 
-        let Element(uid, _) = get_elt(op);
+        let Element(uid, _) = get_insert_elt(op);
         assert!(list.value.find_index(&uid) == Ok(1));
         assert!(list.value.find_index(&*uid::MIN) == Err(0));
         assert!(list.value.find_index(&*uid::MAX) == Err(3));
@@ -220,9 +238,9 @@ mod tests {
         assert!(list.value.0[1].1 == 456);
         assert!(list.value.0[2].1 == 123);
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
-        let element3 = get_elt(op3);
+        let element1 = get_insert_elt(op1);
+        let element2 = get_insert_elt(op2);
+        let element3 = get_insert_elt(op3);
 
         assert!(element1.1 == 123 && element2.1 == 456 && element3.1 == 789);
         assert!(*uid::MAX > element1.0);
@@ -242,9 +260,9 @@ mod tests {
         assert!(list.value.0[1].1 == 456);
         assert!(list.value.0[2].1 == 789);
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
-        let element3 = get_elt(op3);
+        let element1 = get_insert_elt(op1);
+        let element2 = get_insert_elt(op2);
+        let element3 = get_insert_elt(op3);
 
         assert!(*uid::MIN < element1.0);
         assert!(element1.0 < element2.0);
@@ -263,9 +281,9 @@ mod tests {
         assert!(list.value.0[1].1 == 789);
         assert!(list.value.0[2].1 == 456);
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
-        let element3 = get_elt(op3);
+        let element1 = get_insert_elt(op1);
+        let element2 = get_insert_elt(op2);
+        let element3 = get_insert_elt(op3);
 
         assert!(*uid::MIN < element1.0);
         assert!(element1.0 < element3.0);
@@ -288,13 +306,13 @@ mod tests {
         let _   = list.insert(2, 789).unwrap();
         let op2 = list.remove(1).unwrap();
 
-        let element1 = get_elt(op1);
-        let element2 = get_elt(op2);
+        let element = get_insert_elt(op1);
+        let uid     = get_remove_uid(op2);
 
         assert!(list.len() == 2);
         assert!(list.value.0[0].1 == 123);
         assert!(list.value.0[1].1 == 789);
-        assert!(element1 == element2);
+        assert!(element.0 == uid);
     }
 
     #[test]
@@ -371,14 +389,14 @@ mod tests {
         let _ = list.remove(0);
         let mut remote_ops = list.add_site(12).unwrap().into_iter();
 
-        let element1 = get_elt(remote_ops.next().unwrap());
-        let element2 = get_elt(remote_ops.next().unwrap());
-        let element3 = get_elt(remote_ops.next().unwrap());
+        let element1 = get_insert_elt(remote_ops.next().unwrap());
+        let element2 = get_insert_elt(remote_ops.next().unwrap());
+        let uid3     = get_remove_uid(remote_ops.next().unwrap());
 
         assert!(list.value.0[0].0.site == 12);
         assert!(element1.0.site == 12);
         assert!(element2.0.site == 12);
-        assert!(element3.0.site == 12);
+        assert!(uid3.site == 12);
     }
 
     #[test]
@@ -447,10 +465,18 @@ mod tests {
         assert!(local_op1 == local_op3);
     }
 
-    fn get_elt<T>(remote_op: RemoteOp<T>) -> Element<T> {
+    fn get_insert_elt<T>(remote_op: RemoteOp<T>) -> Element<T> {
         match remote_op {
             RemoteOp::Insert(element) => element,
-            RemoteOp::Remove(element) => element,
+            RemoteOp::Remove(_) => panic!(),
         }
     }
+
+    fn get_remove_uid<T>(remote_op: RemoteOp<T>) -> UID {
+        match remote_op {
+            RemoteOp::Remove(uid) => uid,
+            RemoteOp::Insert(_) => panic!(),
+        }
+    }
+
 }

@@ -173,6 +173,16 @@ impl<T: SetElement> CrdtRemoteOp for RemoteOp<T> {
             }
         }
     }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove{..} => Ok(()),
+            RemoteOp::Insert{ref replica, ..} => {
+                try_assert!(replica.site == site, Error::InvalidRemoteOp);
+                Ok(())
+            }
+        }
+    }
 }
 
 pub fn remove_replicas(replicas: &mut Vec<Replica>, removed: &[Replica]) {

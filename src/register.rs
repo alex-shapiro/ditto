@@ -128,6 +128,11 @@ impl<T: Clone> CrdtRemoteOp for RemoteOp<T> {
             if replica.site == 0 { replica.site = site };
         }
     }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        try_assert!(self.insert.0.site == site, Error::InvalidRemoteOp);
+        Ok(())
+    }
 }
 
 #[cfg(test)]
@@ -154,8 +159,7 @@ mod tests {
         assert!(register.get() == &42);
         assert!(register.replica.counter == 2);
         assert!(op.remove.len() == 1);
-        assert!(op.remove[0].0 == Replica{site: 1, counter: 0});
-        assert!(op.remove[0].1.clone() == 8142);
+        assert!(op.remove[0] == Replica{site: 1, counter: 0});
         assert!(op.insert.0 == Replica{site: 1, counter: 1});
         assert!(op.insert.1.clone() == 42);
     }

@@ -7,6 +7,14 @@ macro_rules! try_opt {
     )
 }
 
+macro_rules! try_assert {
+    ($assertion:expr, $err:expr) => {
+        if !$assertion {
+            return Err($err)
+        }
+    }
+}
+
 macro_rules! some {
     ($e:expr) => (
         match $e {
@@ -15,3 +23,4 @@ macro_rules! some {
         }
     )
 }
+

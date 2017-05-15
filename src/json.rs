@@ -364,6 +364,14 @@ impl CrdtRemoteOp for RemoteOp {
             RemoteOpInner::String(ref mut op) => op.add_site(site),
         }
     }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        match self.op {
+            RemoteOpInner::Object(ref op) => validate_site_map_op(op, site),
+            RemoteOpInner::Array(ref op) => validate_site_list_op(op, site),
+            RemoteOpInner::String(ref op) => op.validate_site(site),
+        }
+    }
 }
 
 impl AddSiteToAll for JsonValue {
@@ -373,6 +381,15 @@ impl AddSiteToAll for JsonValue {
             JsonValue::Array(ref mut l) => l.add_site_to_all(site),
             JsonValue::String(ref mut s) => s.add_site_to_all(site),
             _ => return,
+        }
+    }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            JsonValue::Object(ref m) => m.validate_site_for_all(site),
+            JsonValue::Array(ref l) => l.validate_site_for_all(site),
+            JsonValue::String(ref s) => s.validate_site_for_all(site),
+            _ => Ok(())
         }
     }
 }
@@ -505,6 +522,26 @@ fn add_site_list_op(op: &mut list::RemoteOp<JsonValue>, site: u32) {
     }
 }
 
+fn validate_site_map_op(op: &map::RemoteOp<String, JsonValue>, site: u32) -> Result<(), Error> {
+    match *op {
+        map::RemoteOp::Remove{..} => Ok(()),
+        map::RemoteOp::Insert{ref element, ..} => {
+            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            element.1.validate_site_for_all(site)
+        }
+    }
+}
+
+fn validate_site_list_op(op: &list::RemoteOp<JsonValue>, site: u32) -> Result<(), Error> {
+    match *op {
+        list::RemoteOp::Remove(_) => Ok(()),
+        list::RemoteOp::Insert(ref element) => {
+            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            element.1.validate_site_for_all(site)
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -563,7 +600,7 @@ mod tests {
         assert!(key == "foo");
         assert!(element.0 == Replica::new(1,2));
         assert!(element.1 == JsonValue::Number(4.6));
-        assert!(removed[0].0 == Replica::new(1,1));
+        assert!(removed[0] == Replica::new(1,1));
     }
 
     #[test]
@@ -597,8 +634,7 @@ mod tests {
         let (key, removed) = map_remove_op_fields(remote_op);
         assert!(key == "def");
         assert!(removed.len() == 1);
-        assert!(removed[0].0 == Replica::new(1,0));
-        assert!(removed[0].1 == JsonValue::Bool(false));
+        assert!(removed[0] == Replica::new(1,0));
     }
 
     #[test]
@@ -659,10 +695,10 @@ mod tests {
     fn test_array_remove() {
         let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
         let remote_op = crdt.array_remove("/things/1", 2).unwrap();
-        let element = list_remove_op_element(remote_op);
+        let uid = list_remove_op_uid(remote_op);
         assert!(nested_value(&mut crdt, "/things/1/2").is_none());
         assert!(crdt.replica.counter == 2);
-        assert!(local_json(&element.1) == r#""hi""#);
+        assert!(uid.site == 1 && uid.counter == 0);
     }
 
     #[test]
@@ -684,9 +720,9 @@ mod tests {
         assert!(crdt2.array_remove("/things", 1).unwrap_err() == Error::AwaitingSite);
 
         let remote_op = crdt2.awaiting_site.pop().unwrap();
-        let element = list_remove_op_element(remote_op);
+        let uid = list_remove_op_uid(remote_op);
         assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Number(2.0));
-        assert!(local_json(&element.1) == r#"[true,false,"hi"]"#);
+        assert!(uid.site == 1 && uid.counter == 0);
     }
 
     #[test]
@@ -731,7 +767,7 @@ mod tests {
         let remote_op = text_remote_op(remote_op);
 
         assert!(local_json(crdt.value()) == r#"[5.0,"hlo"]"#);
-        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.removes.len() == 1);
         assert!(remote_op.inserts[0].text == "h");
         assert!(remote_op.inserts[1].text == "lo");
     }
@@ -756,7 +792,7 @@ mod tests {
         assert!(local_json(crdt.value()) == r#"[5.0,"hlo"]"#);
 
         let remote_op = text_remote_op(crdt.awaiting_site.pop().unwrap());
-        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.removes.len() == 1);
         assert!(remote_op.inserts[0].text == "h");
         assert!(remote_op.inserts[1].text == "lo");
     }
@@ -767,7 +803,7 @@ mod tests {
         let remote_op = crdt.string_replace("/1", 1, 2, "åⱡ".to_owned()).unwrap();
         let remote_op = text_remote_op(remote_op);
         assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
-        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.removes.len() == 1);
         assert!(remote_op.inserts[0].text == "h");
         assert!(remote_op.inserts[1].text == "åⱡ");
         assert!(remote_op.inserts[2].text == "lo");
@@ -793,7 +829,7 @@ mod tests {
         assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
 
         let remote_op = text_remote_op(crdt.awaiting_site.pop().unwrap());
-        assert!(remote_op.removes[0].text == "hello");
+        assert!(remote_op.removes.len() == 1);
         assert!(remote_op.inserts[0].text == "h");
         assert!(remote_op.inserts[1].text == "åⱡ");
         assert!(remote_op.inserts[2].text == "lo");
@@ -843,34 +879,94 @@ mod tests {
 
     #[test]
     fn test_add_site() {
-        // let mut crdt = Json::from_str("{}").unwrap();
-        // let _ = crdt.object_insert("", "foo", vec![1.0]).unwrap();
-        // let _ = crdt.array_insert("", "foo", 0, "hello").unwrap();
-        // let _ = crdt.text_insert("/foo/0", 5, " everybody").unwrap();
-        // let mut remote_ops = crdt.add_site(11).unwrap().into_iter();
+        let crdt1 = Json::from_str(r#"{"foo":[1,2,3],"bar":"hello"}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let _ = crdt2.object_insert("","baz".to_owned(), json!({"abc":[true, false, 84.0]}));
+        let _ = crdt2.array_insert("/baz/abc", 1, 61.0);
+        let _ = crdt2.string_insert("/bar", 5, " everyone!".to_owned());
+        let _ = crdt2.string_remove("/bar", 0, 1);
+        let _ = crdt2.array_remove("/baz/abc", 2);
+        let _ = crdt2.object_remove("", "foo");
 
-        // let nested_value = nested_value(&mut crdt, "/foo/0")
+        let mut remote_ops = crdt2.add_site(11).unwrap().into_iter();
 
-        // assert!(crdt.replica.site == 11);
-        // assert!(crdt.value.get_nested_local())
+        assert!(crdt2.local_value() == json!({"bar":"ello everyone!", "baz":{"abc":[true, 61.0, 84.0]}}));
+        assert!(crdt2.site() == 11);
 
-        // let (_, element, _) = map_insert_op_fields(remote_ops.next().unwrap());
-        // assert!(element.0.site == 11);
+        // check that the CRDT's elements have the correct sites
 
-        // let element = list_insert_op_element(remote_ops.next().unwrap());
-        // assert!(element.0.site == 11);
+        {
+            let map = as_map(&crdt2.value);
+            assert!(map.inner.get("foo").is_none());
+            assert!(map.inner.get("bar").unwrap()[0].0.site == 1);
+            assert!(map.inner.get("baz").unwrap()[0].0.site == 11);
+        }
+        {
+            let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());
+            let mut text_elements = text.0.into_iter();
+            assert!(text_elements.next().unwrap().uid.site == 11);
+            assert!(text_elements.next().unwrap().uid.site == 11);
+        }
+        {
+            let list = as_list(nested_value(&mut crdt2, "/baz/abc").unwrap());
+            assert!(list.0[0].0.site == 11);
+            assert!(list.0[1].0.site == 11);
+            assert!(list.0[2].0.site == 11);
+        }
 
-        // let element = text_remote_op(remote_ops.next().unwrap());
-        // assert!(element.site == 11);
+        // check that the remote ops' elements have the correct sites
+        let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
+        assert!(element.0.site == 11);
+        assert!(element.1.validate_site_for_all(11).is_ok());
+        assert!(replicas.is_empty());
+
+        let element = list_insert_op_element(remote_ops.next().unwrap());
+        assert!(element.0.site == 11);
+        assert!(element.1.validate_site_for_all(11).is_ok());
+
+        let element = text_remote_op(remote_ops.next().unwrap());
+        assert!(element.removes.is_empty());
+        assert!(element.inserts[0].uid.site == 11);
+
+        let element = text_remote_op(remote_ops.next().unwrap());
+        assert!(element.removes[0].site == 1);
+        assert!(element.inserts[0].uid.site == 11);
+
+        let uid = list_remove_op_uid(remote_ops.next().unwrap());
+        assert!(uid.site == 11);
+
+        let (_, replicas) = map_remove_op_fields(remote_ops.next().unwrap());
+        assert!(replicas[0].site == 1);
+    }
+
+    #[test]
+    fn test_add_site_nested() {
+        let crdt1 = Json::from_str("{}").unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
+        let _ = crdt2.object_insert("", "foo".to_owned(), json!({
+            "a": [[1.0],["hello everyone!"],{"x": 3.0}],
+            "b": {"cat": true, "dog": false}
+        }));
+
+        let mut remote_ops = crdt2.add_site(22).unwrap().into_iter();
+        assert!(crdt2.site() == 22);
+
+        let object = nested_value(&mut crdt2, "/foo").unwrap();
+        assert!(object.validate_site_for_all(22).is_ok());
+
+        let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
+        assert!(element.0.site == 22);
+        assert!(element.1.validate_site_for_all(22).is_ok());
+        assert!(replicas.is_empty());
     }
 
     #[test]
     fn test_add_site_already_has_site() {
         let mut crdt = Json::from_str("{}").unwrap();
-        let _ = crdt.object_insert("", "foo", vec![1.0]).unwrap();
-        let _ = crdt.array_insert("", "foo", 0, "hello").unwrap();
-        let _ = crdt.text_insert("/foo/0", 5, " everybody").unwrap();
-        assert!(crdt.add_site(11).unwrap_err() == Error::AlreadyHasSite);
+        let _ = crdt.object_insert("", "foo".to_owned(), vec![1.0]).unwrap();
+        let _ = crdt.array_insert("/foo", 0, "hello").unwrap();
+        let _ = crdt.string_insert("/foo/0", 5, " everybody!".to_owned()).unwrap();
+        assert!(crdt.add_site(33).unwrap_err() == Error::AlreadyHasSite);
     }
 
     #[test]
@@ -893,14 +989,14 @@ mod tests {
         x
     }
 
-    fn map_insert_op_fields(remote_op: RemoteOp) -> (String, map::Element<JsonValue>, Vec<map::Element<JsonValue>>) {
+    fn map_insert_op_fields(remote_op: RemoteOp) -> (String, map::Element<JsonValue>, Vec<Replica>) {
         match remote_op.op {
             RemoteOpInner::Object(map::RemoteOp::Insert{key: k, element: e, removed: r}) => (k, e, r),
             _ => panic!(),
         }
     }
 
-    fn map_remove_op_fields(remote_op: RemoteOp) -> (String, Vec<map::Element<JsonValue>>) {
+    fn map_remove_op_fields(remote_op: RemoteOp) -> (String, Vec<Replica>) {
         match remote_op.op {
             RemoteOpInner::Object(map::RemoteOp::Remove{key: k, removed: r}) => (k, r),
             _ => panic!(),
@@ -914,9 +1010,9 @@ mod tests {
         }
     }
 
-    fn list_remove_op_element(remote_op: RemoteOp) -> list::Element<JsonValue> {
+    fn list_remove_op_uid(remote_op: RemoteOp) -> sequence::uid::UID {
         match remote_op.op {
-            RemoteOpInner::Array(list::RemoteOp::Remove(element)) => element,
+            RemoteOpInner::Array(list::RemoteOp::Remove(uid)) => uid,
             _ => panic!(),
         }
     }
@@ -928,4 +1024,24 @@ mod tests {
         }
     }
 
+    fn as_map(json_value: &JsonValue) -> &MapValue<String, JsonValue> {
+        match *json_value {
+            JsonValue::Object(ref map_value) => map_value,
+            _ => panic!(),
+        }
+    }
+
+    fn as_list(json_value: &JsonValue) -> &ListValue<JsonValue> {
+        match *json_value {
+            JsonValue::Array(ref list_value) => list_value,
+            _ => panic!(),
+        }
+    }
+
+    fn as_text(json_value: &JsonValue) -> &TextValue {
+        match *json_value {
+            JsonValue::String(ref text_value) => text_value,
+            _ => panic!(),
+        }
+    }
 }

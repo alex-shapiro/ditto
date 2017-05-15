@@ -252,6 +252,16 @@ impl<K: Key, V: Value + AddSiteToAll> AddSiteToAll for MapValue<K,V> {
             }
         }
     }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        for elements in self.inner.values() {
+            for element in elements.iter() {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try!(element.1.validate_site_for_all(site));
+            }
+        }
+        Ok(())
+    }
 }
 
 impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
@@ -267,6 +277,16 @@ impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
                 for replica in removed {
                     if replica.site == 0 { replica.site = site; }
                 }
+            }
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove{..} => Ok(()),
+            RemoteOp::Insert{ref element, ..} => {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                Ok(())
             }
         }
     }
@@ -308,14 +328,13 @@ mod tests {
         let mut map: Map<u32, String> = Map::new();
         let _ = map.insert(123, "abc".to_owned()).unwrap();
         let remote_op2 = map.insert(123, "def".to_owned()).unwrap();
-        let (key2, element2, removed2) = insert_fields(remote_op2);
+        let (key, element, removed) = insert_fields(remote_op2);
 
         assert!(map.get(&123).unwrap() == "def");
-        assert!(key2 == 123);
-        assert!(element2.0 == Replica::new(1,1));
-        assert!(element2.1 == "def");
-        assert!(removed2[0].0 == Replica::new(1,0));
-        assert!(removed2[0].1 == "abc");
+        assert!(key == 123);
+        assert!(element.0 == Replica::new(1,1));
+        assert!(element.1 == "def");
+        assert!(removed[0] == Replica::new(1,0));
     }
 
     #[test]
@@ -342,8 +361,7 @@ mod tests {
 
         assert!(map.get(&true).is_none());
         assert!(key == true);
-        assert!(removed[0].0 == Replica::new(1,0));
-        assert!(removed[0].1 == 3);
+        assert!(removed[0] == Replica::new(1,0));
     }
 
     #[test]
@@ -463,7 +481,7 @@ mod tests {
 
         assert!(key1 == 10 && elt1.0 == Replica::new(5,0) && elt1.1 == 56 && removed1.is_empty());
         assert!(key2 == 20 && elt2.0 == Replica::new(5,1) && elt2.1 == 57 && removed2.is_empty());
-        assert!(key3 == 10 && removed3.len() == 1 && removed3[0].0 == Replica::new(5,0));
+        assert!(key3 == 10 && removed3.len() == 1 && removed3[0] == Replica::new(5,0));
     }
 
     #[test]
@@ -532,14 +550,14 @@ mod tests {
         assert!(local_op1 == local_op3);
     }
 
-    fn insert_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Element<V>, Vec<Element<V>>) {
+    fn insert_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Element<V>, Vec<Replica>) {
         match remote_op {
             RemoteOp::Insert{key, element, removed} => (key, element, removed),
             _ => panic!(),
         }
     }
 
-    fn remove_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Vec<Element<V>>) {
+    fn remove_fields<K, V>(remote_op: RemoteOp<K, V>) -> (K, Vec<Replica>) {
         match remote_op {
             RemoteOp::Remove{key, removed} => (key, removed),
             _ => panic!(),
