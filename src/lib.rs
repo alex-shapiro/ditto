@@ -39,7 +39,7 @@ mod vlq;
 
 pub use traits::{CrdtValue, CrdtRemoteOp};
 pub use error::Error;
-pub use replica::Replica;
+pub use replica::{Replica, Tombstones};
 
 pub use counter::Counter;
 pub use json::Json;
