@@ -78,6 +78,11 @@ impl Text {
         let op = self.value.replace(index, len, text, &self.replica)?;
         self.after_op(op)
     }
+
+    /// Merges two Text CRDTs.
+    pub fn merge(&mut self, other: Text) {
+        self.value.merge(other.value)
+    }
 }
 
 impl RemoteOp {
@@ -201,6 +206,29 @@ mod tests {
         assert!(text2.execute_remote(&remote_op).is_some());
         assert!(text2.execute_remote(&remote_op).is_none());
         assert!(text1.value() == text2.value());
+    }
+
+    #[test]
+    fn test_merge() {
+        let mut text1 = Text::new();
+        let _ = text1.insert(0, "the ".to_owned());
+        let _ = text1.insert(4, "quick ".to_owned());
+        let _ = text1.insert(10, "brown ".to_owned());
+        let _ = text1.insert(16, "fox".to_owned());
+        let _ = text1.remove(4, 6);
+
+        let mut text2 = Text::from_value(text1.clone_value(), 2);
+        let _ = text2.remove(4, 6);
+        let _ = text2.insert(4, "yellow ".to_owned());
+        let _ = text1.insert(4, "slow ".to_owned());
+
+        let text3 = text1.clone();
+        text1.merge(text2.clone());
+        text2.merge(text3);
+
+        assert!(text1.value == text2.value);
+        assert!(text1.local_value() == "the yellow slow fox" || text1.local_value() == "the slow yellow fox");
+        assert!(text1.value.1.contains_pair(1, 2));
     }
 
     #[test]

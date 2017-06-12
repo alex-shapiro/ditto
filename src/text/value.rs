@@ -2,8 +2,7 @@
 //! and replace text in very large strings. TextValues
 //! are indexed by unicode character.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use super::btree::BTree;
 use super::element::{self, Element};
 use super::{RemoteOp, LocalOp, LocalChange};
@@ -12,13 +11,13 @@ use traits::{CrdtValue, AddSiteToAll};
 use char_fns::CharFns;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextValue(pub BTree);
+pub struct TextValue(pub BTree, pub Tombstones);
 
 impl TextValue {
 
     /// Constructs a new, empty TextValue.
     pub fn new() -> Self {
-        TextValue(BTree::new())
+        TextValue(BTree::new(), Tombstones::new())
     }
 
     /// Returns the number of unicode characters in the TextValue.
@@ -59,7 +58,12 @@ impl TextValue {
         };
 
         for e in &inserts { let _ = self.0.insert(e.clone()); }
-        let removes = removes.into_iter().map(|e| e.uid).collect();
+        let removes: Vec<UID> = removes.into_iter().map(|e| e.uid).collect();
+
+        for uid in &removes {
+            self.1.insert_pair(uid.site, uid.counter);
+        }
+
         Ok(RemoteOp{inserts: inserts, removes: removes})
     }
 
@@ -105,7 +109,12 @@ impl TextValue {
         };
 
         for e in &inserts { let _ = self.0.insert(e.clone()); }
-        let removes = removes.into_iter().map(|e| e.uid).collect();
+        let removes: Vec<UID> = removes.into_iter().map(|e| e.uid).collect();
+
+        for uid in &removes {
+            self.1.insert_pair(uid.site, uid.counter);
+        }
+
         Ok(RemoteOp{inserts: inserts, removes: removes})
     }
 
@@ -135,6 +144,8 @@ impl TextValue {
                 let element = self.0.remove(&uid).expect("Element must exist!");
                 changes.push(LocalChange::Remove{index: char_index, len: element.len});
             }
+
+            self.1.insert_pair(uid.site, uid.counter);
         }
 
         for element in &op.inserts {
@@ -148,6 +159,28 @@ impl TextValue {
             0 => None,
             _ => Some(LocalOp{changes: changes})
         }
+    }
+
+    pub fn merge(&mut self, other: TextValue) {
+        let removed_uids: Vec<UID> = self.0.into_iter()
+            .filter(|e| other.0.get_index(&e.uid).is_none() && other.1.contains_pair(e.uid.site, e.uid.counter))
+            .map(|e| e.uid.clone())
+            .collect();
+
+        let new_elements: Vec<Element> = other.0.into_iter()
+            .filter(|e| self.0.get_index(&e.uid).is_none() && !self.1.contains_pair(e.uid.site, e.uid.counter))
+            .map(|e| e.clone())
+            .collect();
+
+        for uid in removed_uids {
+            let _ = self.0.remove(&uid);
+        }
+
+        for element in new_elements.into_iter() {
+            let _ = self.0.insert(element);
+        }
+
+        self.1.merge(other.1);
     }
 
     fn remove_at(&mut self, index: usize) -> Result<(Element, usize), Error> {
