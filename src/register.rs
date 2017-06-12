@@ -122,12 +122,12 @@ impl<T: Clone> RegisterValue<T> {
             .into_iter()
             .filter(|element|
                 other.elements.binary_search_by(|e| e.0.cmp(&element.0)).is_ok() ||
-                !other.tombstones.includes(&element.0))
+                !other.tombstones.contains(&element.0))
             .collect();
 
         for element in other.elements.into_iter() {
             if let Err(index) = self.elements.binary_search_by(|e| e.0.cmp(&element.0)) {
-                if !self.tombstones.includes(&element.0) {
+                if !self.tombstones.contains(&element.0) {
                     self.elements.insert(index, element);
                 }
             }

@@ -26,7 +26,7 @@ impl Tombstones {
         Tombstones{inner: HashMap::new()}
     }
 
-    pub fn includes(&self, replica: &Replica) -> bool {
+    pub fn contains(&self, replica: &Replica) -> bool {
         match self.inner.get(&replica.site) {
             Some(counter) => *counter >= replica.counter,
             None => false,
