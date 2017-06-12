@@ -467,7 +467,7 @@ impl IntoJson for bool {
 
 fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
     if let map::RemoteOp::Insert{ref key, ref element, ..} = *op {
-        let elements = some!(map_value.inner.get_mut(key));
+        let elements = some!(map_value.elements.get_mut(key));
         let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
         let ref mut element = elements[index];
         element.0.site = site;
@@ -889,9 +889,9 @@ mod tests {
 
         {
             let map = as_map(&crdt2.value);
-            assert!(map.inner.get("foo").is_none());
-            assert!(map.inner.get("bar").unwrap()[0].0.site == 1);
-            assert!(map.inner.get("baz").unwrap()[0].0.site == 11);
+            assert!(map.elements.get("foo").is_none());
+            assert!(map.elements.get("bar").unwrap()[0].0.site == 1);
+            assert!(map.elements.get("baz").unwrap()[0].0.site == 11);
         }
         {
             let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());

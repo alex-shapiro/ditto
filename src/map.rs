@@ -1,8 +1,7 @@
 //! A `Map` stores a collection of key-value pairs.
 //! The values in the map are immutable.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use map_tuple_vec;
 use traits::*;
 
@@ -31,7 +30,8 @@ pub struct Map<K: Key, V: Value> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct MapValue<K: Key, V: Value> {
     #[serde(with = "map_tuple_vec")]
-    pub inner: HashMap<K, Vec<Element<V>>>,
+    pub elements: HashMap<K, Vec<Element<V>>>,
+    tombstones: Tombstones,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -83,12 +83,12 @@ impl<K: Key, V: Value> Map<K, V> {
 
     /// Returns true iff the map has the key.
     pub fn contains_key(&self, key: &K) -> bool {
-        self.value.inner.contains_key(key)
+        self.value.elements.contains_key(key)
     }
 
     /// Returns a reference to the value corresponding to the key.
     pub fn get(&self, key: &K) -> Option<&V> {
-        self.value.inner.get(key).and_then(|elements| Some(&elements[0].1))
+        self.value.elements.get(key).and_then(|elements| Some(&elements[0].1))
     }
 
     /// Inserts a key-value pair into the map and returns a remote
@@ -108,23 +108,28 @@ impl<K: Key, V: Value> Map<K, V> {
         let op = self.value.remove(key)?;
         self.after_op(op)
     }
+
+    /// Merges two Maps into one.
+    pub fn merge(&mut self, other: Map<K,V>) {
+        self.value.merge(other.value)
+    }
 }
 
 impl<K: Key, V: Value> MapValue<K, V> {
 
     /// Constructs and returns a new map value.
     pub fn new() -> Self {
-        MapValue{inner: HashMap::new()}
+        MapValue{elements: HashMap::new(), tombstones: Tombstones::new()}
     }
 
     /// Returns the number of key-value pairs in the map.
     pub fn len(&self) -> usize {
-        self.inner.len()
+        self.elements.len()
     }
 
     /// Returns an iterator over the key-value pairs in the map.
     pub fn iter(&self) -> hash_map::Iter<K,Vec<Element<V>>> {
-        self.inner.iter()
+        self.elements.iter()
     }
 
     /// Returns a mutable reference to the first element for the key.
@@ -133,7 +138,7 @@ impl<K: Key, V: Value> MapValue<K, V> {
         where Q: Hash + Eq,
               K: Borrow<Q>,
     {
-        let elements = try_opt!(self.inner.get_mut(key));
+        let elements = try_opt!(self.elements.get_mut(key));
         Some(&mut elements[0])
     }
 
@@ -143,7 +148,7 @@ impl<K: Key, V: Value> MapValue<K, V> {
         where Q: Hash + Eq,
               K: Borrow<Q>,
     {
-        let elements = try_opt!(self.inner.get_mut(key));
+        let elements = try_opt!(self.elements.get_mut(key));
         let index = try_opt!(elements.binary_search_by(|e| e.0.cmp(replica)).ok());
         Some(&mut elements[index])
     }
@@ -154,12 +159,12 @@ impl<K: Key, V: Value> MapValue<K, V> {
     /// value was already identical, it returns an AlreadyExists
     /// error.
     pub fn insert(&mut self, key: K, value: V, replica: &Replica) -> Result<RemoteOp<K, V>, Error> {
-        if let Some(values) = self.inner.get(&key) {
+        if let Some(values) = self.elements.get(&key) {
             if values[0].1 == value { return Err(Error::AlreadyExists) }
         }
 
         let element = Element(replica.clone(), value.clone());
-        let old_elements = self.inner.entry(key.clone()).or_insert(vec![]);
+        let old_elements = self.elements.entry(key.clone()).or_insert(vec![]);
         let new_elements = vec![element.clone()];
         let removed_elements = mem::replace(old_elements, new_elements);
         let removed = removed_elements.into_iter().map(|e| e.0).collect();
@@ -173,8 +178,13 @@ impl<K: Key, V: Value> MapValue<K, V> {
         where Q: Hash + Eq + ToOwned<Owned = K>,
               K: Borrow<Q>,
     {
-        let removed_elements = self.inner.remove(key).ok_or(Error::DoesNotExist)?;
+        let removed_elements = self.elements.remove(key).ok_or(Error::DoesNotExist)?;
         let removed = removed_elements.into_iter().map(|e| e.0).collect();
+
+        for replica in &removed {
+            self.tombstones.insert(replica);
+        }
+
         Ok(RemoteOp::Remove{key: key.to_owned(), removed})
     }
 
@@ -182,8 +192,12 @@ impl<K: Key, V: Value> MapValue<K, V> {
     pub fn execute_remote(&mut self, op: &RemoteOp<K, V>) -> Option<LocalOp<K, V>> {
         match *op {
             RemoteOp::Insert{ref key, ref element, ref removed} => {
-                let elements = self.inner.entry(key.clone()).or_insert(vec![]);
+                let elements = self.elements.entry(key.clone()).or_insert(vec![]);
                 remove_replicas(elements, removed);
+
+                for replica in removed {
+                    self.tombstones.insert(replica);
+                }
 
                 let index = try_opt!(elements.binary_search_by(|e| e.0.cmp(&element.0)).err());
                 elements.insert(index, element.clone());
@@ -195,10 +209,14 @@ impl<K: Key, V: Value> MapValue<K, V> {
             }
             RemoteOp::Remove{ref key, ref removed} => {
                 let first_remaining_element = {
-                    let elements = try_opt!(self.inner.get_mut(key));
+                    let elements = try_opt!(self.elements.get_mut(key));
                     remove_replicas(elements, removed);
                     elements.first().and_then(|e| Some(e.1.clone()))
                 };
+
+                for replica in removed {
+                    self.tombstones.insert(replica);
+                }
 
                 if let Some(value) = first_remaining_element {
                     Some(LocalOp::Insert{key: key.clone(), value: value})
@@ -208,6 +226,47 @@ impl<K: Key, V: Value> MapValue<K, V> {
                 }
             }
         }
+    }
+
+    /// Merges two MapValues into one.
+    pub fn merge(&mut self, mut other: MapValue<K,V>) {
+        let self_elements = mem::replace(&mut self.elements, HashMap::new());
+
+        for (key, elements) in self_elements {
+            let elements =
+                if let Some(other_elements) = other.elements.remove(&key) {
+                    let mut self_elements: Vec<Element<V>> =
+                        elements.into_iter()
+                        .filter(|e| other_elements.contains(&e) || !other.tombstones.contains(&e.0))
+                        .collect();
+
+                    let mut other_elements =
+                        other_elements.into_iter()
+                        .filter(|e| !self_elements.contains(&e) && !self.tombstones.contains(&e.0))
+                        .collect();
+
+                    self_elements.append(&mut other_elements);
+                    self_elements.sort();
+                    self_elements
+                } else {
+                    elements.into_iter().filter(|e| !other.tombstones.contains(&e.0)).collect()
+                };
+
+            if !elements.is_empty() {
+                self.elements.insert(key, elements);
+            }
+        }
+
+        for (key, elements) in other.elements.into_iter() {
+            let elements: Vec<Element<V>> = elements.into_iter()
+                .filter(|e| !self.tombstones.contains(&e.0)).collect();
+
+            if !elements.is_empty() {
+                self.elements.insert(key, elements);
+            }
+        }
+
+        self.tombstones.merge(other.tombstones);
     }
 }
 
@@ -226,7 +285,7 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
 
     fn local_value(&self) -> HashMap<K, V> {
         let mut hash_map = HashMap::new();
-        for (key, elements) in self.inner.iter() {
+        for (key, elements) in self.elements.iter() {
             hash_map.insert(key.clone(), elements[0].1.clone());
         }
         hash_map
@@ -234,7 +293,7 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
 
     fn add_site(&mut self, op: &RemoteOp<K,V>, site: u32) {
         if let RemoteOp::Insert{ref key, ref element, ..} = *op {
-            let elements = some!(self.inner.get_mut(key));
+            let elements = some!(self.elements.get_mut(key));
             let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
             elements[index].0.site = site;
         }
@@ -243,7 +302,7 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
 
 impl<K: Key, V: Value + AddSiteToAll> AddSiteToAll for MapValue<K,V> {
     fn add_site_to_all(&mut self, site: u32) {
-        for elements in self.inner.values_mut() {
+        for elements in self.elements.values_mut() {
             for element in elements.iter_mut() {
                 element.0.site = site;
                 element.1.add_site_to_all(site);
@@ -252,7 +311,7 @@ impl<K: Key, V: Value + AddSiteToAll> AddSiteToAll for MapValue<K,V> {
     }
 
     fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-        for elements in self.inner.values() {
+        for elements in self.elements.values() {
             for element in elements.iter() {
                 try_assert!(element.0.site == site, Error::InvalidRemoteOp);
                 try!(element.1.validate_site_for_all(site));
@@ -460,6 +519,42 @@ mod tests {
         let _ = map2.execute_remote(&remote_op1).unwrap();
         let _ = map2.execute_remote(&remote_op2).unwrap();
         assert!(map2.execute_remote(&remote_op2).is_none());
+    }
+
+    #[test]
+    fn test_merge() {
+        let mut map1: Map<u32, bool> = Map::new();
+        let _ = map1.insert(1, true);
+        let _ = map1.insert(2, true);
+        let _ = map1.remove(&2);
+        let _ = map1.insert(3, true);
+
+        let mut map2 = Map::from_value(map1.clone_value(), 2);
+        let _ = map2.remove(&3);
+        let _ = map2.insert(4, true);
+        let _ = map2.remove(&4);
+        let _ = map2.insert(5, true);
+        let _ = map1.insert(4, true);
+        let _ = map1.insert(5, true);
+        let map3 = map1.clone();
+
+        map1.merge(map2.clone());
+        map2.merge(map3.clone());
+
+        assert!(map1.value == map2.value);
+        assert!(map1.contains_key(&1));
+        assert!(!map1.contains_key(&2));
+        assert!(!map1.contains_key(&3));
+        assert!(map1.contains_key(&4));
+        assert!(map1.contains_key(&5));
+
+        assert!(map1.value.elements[&1][0].0 == Replica{site: 1, counter: 0});
+        assert!(map1.value.elements[&4][0].0 == Replica{site: 1, counter: 4});
+        assert!(map1.value.elements[&5][0].0 == Replica{site: 1, counter: 5});
+        assert!(map1.value.elements[&5][1].0 == Replica{site: 2, counter: 3});
+
+        assert!(map1.value.tombstones.contains(&Replica{site: 1, counter: 3}));
+        assert!(map1.value.tombstones.contains(&Replica{site: 2, counter: 1}));
     }
 
     #[test]
