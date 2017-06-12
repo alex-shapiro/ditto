@@ -478,7 +478,7 @@ fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<
 fn add_site_list(list_value: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
     if let list::RemoteOp::Insert(list::Element(ref uid, _)) = *op {
         let index = some!(list_value.find_index(uid).ok());
-        let ref mut element = list_value.0[index];
+        let ref mut element = list_value.elements[index];
         element.0.site = site;
         element.1.add_site_to_all(site);
     }
@@ -901,9 +901,9 @@ mod tests {
         }
         {
             let list = as_list(nested_value(&mut crdt2, "/baz/abc").unwrap());
-            assert!(list.0[0].0.site == 11);
-            assert!(list.0[1].0.site == 11);
-            assert!(list.0[2].0.site == 11);
+            assert!(list.elements[0].0.site == 11);
+            assert!(list.elements[1].0.site == 11);
+            assert!(list.elements[2].0.site == 11);
         }
 
         // check that the remote ops' elements have the correct sites

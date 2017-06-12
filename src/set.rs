@@ -400,7 +400,7 @@ mod tests {
     }
 
     #[test]
-    fn merge() {
+    fn test_merge() {
         let mut set1: Set<u32> = Set::new();
         let _ = set1.insert(1);
         let _ = set1.insert(2);
@@ -421,8 +421,8 @@ mod tests {
         assert!(set1.value.elements[&1] == vec![Replica{site: 1, counter: 0}]);
         assert!(set1.value.elements[&3] == vec![Replica{site: 1, counter: 3}]);
         assert!(set1.value.elements[&4] == vec![Replica{site: 2, counter: 1}]);
-        assert!(set1.value.tombstones.contains(&Replica{site: 1, counter: 1}));
-        assert!(set1.value.tombstones.contains(&Replica{site: 2, counter: 0}));
+        assert!(set1.value.tombstones.contains_pair(1, 1));
+        assert!(set1.value.tombstones.contains_pair(2, 0));
     }
 
     #[test]

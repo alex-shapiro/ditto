@@ -553,8 +553,8 @@ mod tests {
         assert!(map1.value.elements[&5][0].0 == Replica{site: 1, counter: 5});
         assert!(map1.value.elements[&5][1].0 == Replica{site: 2, counter: 3});
 
-        assert!(map1.value.tombstones.contains(&Replica{site: 1, counter: 3}));
-        assert!(map1.value.tombstones.contains(&Replica{site: 2, counter: 1}));
+        assert!(map1.value.tombstones.contains_pair(1, 3));
+        assert!(map1.value.tombstones.contains_pair(2, 1));
     }
 
     #[test]
