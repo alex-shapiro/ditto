@@ -220,27 +220,23 @@ impl<K: Key, V: Value> MapValue<K, V> {
         let self_elements = mem::replace(&mut self.0, HashMap::new());
 
         for (key, elements) in self_elements {
-            let elements =
-                if let Some(other_elements) = other.0.remove(&key) {
-                    let mut self_elements: Vec<Element<V>> =
-                        elements.into_iter()
-                        .filter(|e| other_elements.contains(&e) || !other_tombstones.contains(&e.0))
-                        .collect();
+            let other_elements = other.0.remove(&key).unwrap_or(vec![]);
 
-                    let mut other_elements =
-                        other_elements.into_iter()
-                        .filter(|e| !self_elements.contains(&e) && !self_tombstones.contains(&e.0))
-                        .collect();
+            let mut self_elements: Vec<Element<V>> =
+                elements.into_iter()
+                .filter(|e| other_elements.contains(&e) || !other_tombstones.contains(&e.0))
+                .collect();
 
-                    self_elements.append(&mut other_elements);
-                    self_elements.sort();
-                    self_elements
-                } else {
-                    elements.into_iter().filter(|e| !other_tombstones.contains(&e.0)).collect()
-                };
+            let mut other_elements =
+                other_elements.into_iter()
+                .filter(|e| !self_elements.contains(&e) && !self_tombstones.contains(&e.0))
+                .collect();
 
-            if !elements.is_empty() {
-                self.0.insert(key, elements);
+            self_elements.append(&mut other_elements);
+            self_elements.sort();
+
+            if !self_elements.is_empty() {
+                self.0.insert(key, self_elements);
             }
         }
 
