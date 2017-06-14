@@ -240,7 +240,7 @@ impl<K: Key, V: Value> MapValue<K, V> {
             }
         }
 
-        for (key, elements) in other.0.into_iter() {
+        for (key, elements) in other.0 {
             let elements: Vec<Element<V>> = elements.into_iter()
                 .filter(|e| !self_tombstones.contains(&e.0)).collect();
 
