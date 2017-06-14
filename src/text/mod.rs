@@ -4,8 +4,7 @@ mod value;
 mod element;
 mod btree;
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 pub use self::value::TextValue;
 use self::element::Element;
 use sequence::uid::UID;
@@ -15,7 +14,14 @@ use traits::*;
 pub struct Text {
     value: TextValue,
     replica: Replica,
+    tombstones: Tombstones,
     awaiting_site: Vec<RemoteOp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct TextState {
+    value: TextValue,
+    tombstones: Tombstones,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -37,14 +43,15 @@ pub enum LocalChange {
 
 impl Text {
 
-    crdt_impl!(Text, TextValue);
+    crdt_impl!(Text, TextState, TextState, TextValue);
 
     /// Constructs and returns a new `Text` crdt.
     /// The crdt has site 1 and counter 0.
     pub fn new() -> Self {
         let replica = Replica::new(1, 0);
         let value = TextValue::new();
-        Text{replica, value, awaiting_site: vec![]}
+        let tombstones = Tombstones::new();
+        Text{replica, value, tombstones, awaiting_site: vec![]}
     }
 
     /// Returns the number of unicode characters in the text.
@@ -78,11 +85,6 @@ impl Text {
         let op = self.value.replace(index, len, text, &self.replica)?;
         self.after_op(op)
     }
-
-    /// Merges two Text CRDTs.
-    pub fn merge(&mut self, other: Text) {
-        self.value.merge(other.value)
-    }
 }
 
 impl RemoteOp {
@@ -96,6 +98,12 @@ impl RemoteOp {
 }
 
 impl CrdtRemoteOp for RemoteOp {
+    fn deleted_replicas(&self) -> Vec<Replica> {
+        self.removes.iter()
+            .map(|uid| Replica{site: uid.site, counter: uid.counter})
+            .collect()
+    }
+
     fn add_site(&mut self, site: u32) {
         for element in &mut self.inserts {
             element.uid.site = site;
@@ -222,13 +230,14 @@ mod tests {
         let _ = text2.insert(4, "yellow ".to_owned());
         let _ = text1.insert(4, "slow ".to_owned());
 
-        let text3 = text1.clone();
-        text1.merge(text2.clone());
-        text2.merge(text3);
-
+        let text1_state = text1.clone_state();
+        text1.merge(text2.clone_state());
+        text2.merge(text1_state);
         assert!(text1.value == text2.value);
+        assert!(text1.tombstones == text2.tombstones);
+
         assert!(text1.local_value() == "the yellow slow fox" || text1.local_value() == "the slow yellow fox");
-        assert!(text1.value.1.contains_pair(1, 2));
+        assert!(text1.tombstones.contains_pair(1, 2));
     }
 
     #[test]

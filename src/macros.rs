@@ -33,3 +33,11 @@ macro_rules! some {
     )
 }
 
+macro_rules! ok {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => v,
+            _ => return,
+        }
+    }
+}

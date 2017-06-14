@@ -1,8 +1,7 @@
 //! A `Json` CRDT stores any value that can be represented
 //! as JSON - objects, arrays, text, numbers, bools, and null.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use list::{self, ListValue};
 use map::{self, MapValue};
 use text::{self, TextValue};
@@ -18,7 +17,14 @@ use std::str::FromStr;
 pub struct Json {
     value: JsonValue,
     replica: Replica,
+    tombstones: Tombstones,
     awaiting_site: Vec<RemoteOp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonState {
+    value: JsonValue,
+    tombstones: Tombstones,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,7 +81,7 @@ pub trait IntoJson {
 
 impl Json {
 
-    crdt_impl!(Json, JsonValue);
+    crdt_impl!(Json, JsonState, JsonState, JsonValue);
 
     /// Constructs and returns a new `Json` CRDT from a JSON string.
     /// The crdt has site 1 and counter 0.
@@ -83,8 +89,9 @@ impl Json {
         let mut replica = Replica::new(1, 0);
         let local_json: SJValue = serde_json::from_str(json_str)?;
         let value = local_json.into_json(&replica)?;
+        let tombstones = Tombstones::new();
         replica.counter += 1;
-        Ok(Json{value, replica, awaiting_site: vec![]})
+        Ok(Json{value, replica, tombstones, awaiting_site: vec![]})
     }
 
     /// Inserts a key-value pair into an object in the Json CRDT and
@@ -218,6 +225,18 @@ impl JsonValue {
         }
     }
 
+    pub fn merge(&mut self, other: JsonValue, self_tombstones: &mut Tombstones, other_tombstones: Tombstones) {
+        match other {
+            JsonValue::Object(other_map) =>
+                ok!(self.as_map()).merge(other_map, self_tombstones, other_tombstones),
+            JsonValue::Array(other_list) =>
+                ok!(self.as_list()).merge(other_list, self_tombstones, other_tombstones),
+            JsonValue::String(other_text) =>
+                ok!(self.as_text()).merge(other_text, self_tombstones, other_tombstones),
+            _ => (),
+        }
+    }
+
     fn get_nested_local(&mut self, pointer: &str) -> Result<(&mut JsonValue, Vec<RemoteUID>), Error> {
         if !(pointer.is_empty() || pointer.starts_with("/")) {
             return Err(Error::DoesNotExist)
@@ -335,6 +354,14 @@ impl CrdtValue for JsonValue {
 }
 
 impl CrdtRemoteOp for RemoteOp {
+    fn deleted_replicas(&self) -> Vec<Replica> {
+        match self.op {
+            RemoteOpInner::Object(ref op) => op.deleted_replicas(),
+            RemoteOpInner::Array(ref op) => op.deleted_replicas(),
+            RemoteOpInner::String(ref op) => op.deleted_replicas(),
+        }
+    }
+
     fn add_site(&mut self, site: u32) {
         // update sites in the pointer
         for uid in self.pointer.iter_mut() {
@@ -467,7 +494,7 @@ impl IntoJson for bool {
 
 fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
     if let map::RemoteOp::Insert{ref key, ref element, ..} = *op {
-        let elements = some!(map_value.elements.get_mut(key));
+        let elements = some!(map_value.0.get_mut(key));
         let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
         let ref mut element = elements[index];
         element.0.site = site;
@@ -478,7 +505,7 @@ fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<
 fn add_site_list(list_value: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
     if let list::RemoteOp::Insert(list::Element(ref uid, _)) = *op {
         let index = some!(list_value.find_index(uid).ok());
-        let ref mut element = list_value.elements[index];
+        let ref mut element = list_value.0[index];
         element.0.site = site;
         element.1.add_site_to_all(site);
     }
@@ -889,9 +916,9 @@ mod tests {
 
         {
             let map = as_map(&crdt2.value);
-            assert!(map.elements.get("foo").is_none());
-            assert!(map.elements.get("bar").unwrap()[0].0.site == 1);
-            assert!(map.elements.get("baz").unwrap()[0].0.site == 11);
+            assert!(map.0.get("foo").is_none());
+            assert!(map.0.get("bar").unwrap()[0].0.site == 1);
+            assert!(map.0.get("baz").unwrap()[0].0.site == 11);
         }
         {
             let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());
@@ -901,9 +928,9 @@ mod tests {
         }
         {
             let list = as_list(nested_value(&mut crdt2, "/baz/abc").unwrap());
-            assert!(list.elements[0].0.site == 11);
-            assert!(list.elements[1].0.site == 11);
-            assert!(list.elements[2].0.site == 11);
+            assert!(list.0[0].0.site == 11);
+            assert!(list.0[1].0.site == 11);
+            assert!(list.0[2].0.site == 11);
         }
 
         // check that the remote ops' elements have the correct sites

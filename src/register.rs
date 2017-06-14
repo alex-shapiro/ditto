@@ -10,14 +10,18 @@ use std::mem;
 pub struct Register<T: Clone> {
     value: RegisterValue<T>,
     replica: Replica,
+    tombstones: Tombstones,
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RegisterValue<T: Clone>{
-    elements: Vec<Element<T>>,
+pub struct RegisterState<T: Clone> {
+    value: RegisterValue<T>,
     tombstones: Tombstones,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RegisterValue<T: Clone>(Vec<Element<T>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RemoteOp<T: Clone> {
@@ -30,20 +34,27 @@ pub struct LocalOp<T> {
     pub new_value: T,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Element<T: Clone>(Replica, T);
+
+impl<T: Clone> PartialEq for Element<T> {
+    fn eq(&self, other: &Element<T>) -> bool {
+        self.0 == other.0
+    }
+}
 
 impl<T: Clone> Register<T> {
 
-    crdt_impl!(Register, RegisterValue<T>);
+    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterValue<T>);
 
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.
     pub fn new(value: T) -> Self {
         let mut replica = Replica::new(1, 0);
         let value = RegisterValue::new(value, &replica);
+        let tombstones = Tombstones::new();
         replica.counter += 1;
-        Register{value, replica, awaiting_site: vec![]}
+        Register{value, replica, tombstones, awaiting_site: vec![]}
     }
 
     /// Returns the register's site.
@@ -60,10 +71,6 @@ impl<T: Clone> Register<T> {
         let op = self.value.update(new_value, &self.replica);
         self.after_op(op)
     }
-
-    pub fn merge(&mut self, other: RegisterValue<T>) {
-        self.value.merge(other)
-    }
 }
 
 impl<T: Clone> RegisterValue<T> {
@@ -71,25 +78,20 @@ impl<T: Clone> RegisterValue<T> {
     /// Returns a new register value.
     pub fn new(value: T, replica: &Replica) -> Self {
         let element = Element(replica.clone(), value);
-        RegisterValue{elements: vec![element], tombstones: Tombstones::new()}
+        RegisterValue(vec![element])
     }
 
     /// Returns a reference to the register's value.
     pub fn get(&self) -> &T {
-        &self.elements[0].1
+        &self.0[0].1
     }
 
     /// Updates the register's value and returns a remote op
     /// that can be sent to remote sites for replication.
     pub fn update(&mut self, new_value: T, replica: &Replica) -> RemoteOp<T> {
         let insert = Element(replica.clone(), new_value);
-        let removed_elements = mem::replace(&mut self.elements, vec![insert.clone()]);
+        let removed_elements = mem::replace(&mut self.0, vec![insert.clone()]);
         let remove = removed_elements.into_iter().map(|e| e.0).collect();
-
-        for replica in &remove {
-            self.tombstones.insert(replica);
-        }
-
         RemoteOp{ remove, insert }
     }
 
@@ -98,16 +100,15 @@ impl<T: Clone> RegisterValue<T> {
     /// value, returns None.
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         for replica in &op.remove {
-            if let Ok(index) = self.elements.binary_search_by(|e| e.0.cmp(&replica)) {
-                let element = self.elements.remove(index);
-                self.tombstones.insert(&element.0);
+            if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&replica)) {
+                let _ = self.0.remove(index);
             }
         }
 
-        if let Err(index) = self.elements.binary_search_by(|e| e.0.cmp(&op.insert.0)) {
-            self.elements.insert(index, op.insert.clone());
+        if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)) {
+            self.0.insert(index, op.insert.clone());
             if index == 0 {
-                let new_value = self.elements[0].1.clone();
+                let new_value = self.0[0].1.clone();
                 return Some(LocalOp{new_value})
             }
         }
@@ -116,24 +117,22 @@ impl<T: Clone> RegisterValue<T> {
     }
 
     /// Merges two RegisterValues into one.
-    pub fn merge(&mut self, other: RegisterValue<T>) {
-        self.elements =
-            mem::replace(&mut self.elements, vec![])
+    pub fn merge(&mut self, other: RegisterValue<T>, tombstones: &mut Tombstones, other_tombstones: Tombstones) {
+        self.0 =
+            mem::replace(&mut self.0, vec![])
             .into_iter()
-            .filter(|element|
-                other.elements.binary_search_by(|e| e.0.cmp(&element.0)).is_ok() ||
-                !other.tombstones.contains(&element.0))
+            .filter(|e| other.0.contains(e) || !other_tombstones.contains(&e.0))
             .collect();
 
-        for element in other.elements.into_iter() {
-            if let Err(index) = self.elements.binary_search_by(|e| e.0.cmp(&element.0)) {
-                if !self.tombstones.contains(&element.0) {
-                    self.elements.insert(index, element);
+        for element in other.0 {
+            if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&element.0)) {
+                if !tombstones.contains(&element.0) {
+                    self.0.insert(index, element);
                 }
             }
         }
 
-        self.tombstones.merge(other.tombstones);
+        tombstones.merge(other_tombstones);
     }
 }
 
@@ -143,16 +142,20 @@ impl<T: Clone> CrdtValue for RegisterValue<T> {
     type LocalOp = LocalOp<T>;
 
     fn local_value(&self) -> T {
-        self.elements[0].1.clone()
+        self.0[0].1.clone()
     }
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
-        let index = some!(self.elements.binary_search_by(|e| e.0.cmp(&op.insert.0)).ok());
-        self.elements[index].0.site = site;
+        let index = some!(self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)).ok());
+        self.0[index].0.site = site;
     }
 }
 
 impl<T: Clone> CrdtRemoteOp for RemoteOp<T> {
+    fn deleted_replicas(&self) -> Vec<Replica> {
+        self.remove.clone()
+    }
+
     fn add_site(&mut self, site: u32) {
         self.insert.0.site = site;
         for replica in &mut self.remove {
@@ -177,9 +180,9 @@ mod tests {
         let register: Register<i64> = Register::new(8142);
         assert!(register.get() == &8142);
         assert!(register.replica.counter == 1);
-        assert!(register.value.elements.len() == 1);
-        assert!(register.value.elements[0].0 == Replica{site: 1, counter: 0});
-        assert!(register.value.elements[0].1.clone() == 8142);
+        assert!(register.value.0.len() == 1);
+        assert!(register.value.0[0].0 == Replica{site: 1, counter: 0});
+        assert!(register.value.0[0].1.clone() == 8142);
     }
 
     #[test]
@@ -204,7 +207,7 @@ mod tests {
         let local_op = register2.execute_remote(&remote_op).unwrap();
 
         assert!(register2.get() == &"b");
-        assert!(register2.value.elements.len() == 1);
+        assert!(register2.value.0.len() == 1);
         assert!(local_op.new_value == "b");
     }
 
@@ -220,7 +223,7 @@ mod tests {
 
         assert!(register3.execute_remote(&remote_op2).is_none());
         assert!(register3.get() == &"b");
-        assert!(register3.value.elements.len() == 2);
+        assert!(register3.value.0.len() == 2);
         assert!(local_op.new_value == "b");
     }
 
@@ -234,7 +237,7 @@ mod tests {
 
         assert!(register2.execute_remote(&remote_op).is_none());
         assert!(register2.get() == &"b");
-        assert!(register2.value.elements.len() == 1);
+        assert!(register2.value.0.len() == 1);
         assert!(local_op.new_value == "b");
     }
 
@@ -244,11 +247,11 @@ mod tests {
         let mut register2 = Register::from_value(register1.clone_value(), 2);
         let _ = register1.update(456);
         let _ = register2.update(789);
-        register1.merge(register2.value);
+        register1.merge(register2.clone_state());
 
-        assert!(register1.value.elements.len() == 2);
-        assert!(register1.value.elements[0].1 == 456);
-        assert!(register1.value.elements[1].1 == 789);
+        assert!(register1.value.0.len() == 2);
+        assert!(register1.value.0[0].1 == 456);
+        assert!(register1.value.0[1].1 == 789);
     }
 
     #[test]

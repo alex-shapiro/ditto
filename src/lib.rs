@@ -23,7 +23,6 @@ extern crate rmp_serde;
 #[macro_use] mod macros;
 #[macro_use] mod traits;
 
-pub mod counter;
 pub mod json;
 pub mod list;
 pub mod map;
@@ -41,7 +40,6 @@ pub use traits::{CrdtValue, CrdtRemoteOp};
 pub use error::Error;
 pub use replica::{Replica, Tombstones};
 
-pub use counter::Counter;
 pub use json::Json;
 pub use list::List;
 pub use map::Map;
