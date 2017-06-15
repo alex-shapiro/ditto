@@ -10,8 +10,8 @@ use ditto::{list, map, set};
 #[test]
 fn test_list() {
     let mut list1: List<i64> = List::new();
-    let mut list2: List<i64> = List::from_value(list1.clone_value(), 2);
-    let mut list3: List<i64> = List::from_value(list1.clone_value(), 3);
+    let mut list2: List<i64> = List::from_state(list1.clone_state(), 2);
+    let mut list3: List<i64> = List::from_state(list1.clone_state(), 3);
 
     let remote_op1 = list1.insert(0, 5).unwrap();
     let remote_op2 = list2.insert(0, 10).unwrap();
@@ -44,8 +44,8 @@ fn test_list() {
 #[test]
 fn test_map() {
     let mut map1: Map<i32, bool> = Map::new();
-    let mut map2: Map<i32, bool> = Map::from_value(map1.clone_value(), 2);
-    let mut map3: Map<i32, bool> = Map::from_value(map1.clone_value(), 3);
+    let mut map2: Map<i32, bool> = Map::from_state(map1.clone_state(), 2);
+    let mut map3: Map<i32, bool> = Map::from_state(map1.clone_state(), 3);
 
     let remote_op1 = map1.insert(0, true).unwrap();
     let remote_op2 = map2.insert(0, false).unwrap();
@@ -78,8 +78,8 @@ fn test_map() {
 #[test]
 fn test_register() {
     let mut register1: Register<u32> = Register::new(56);
-    let mut register2: Register<u32> = Register::from_value(register1.clone_value(), 2);
-    let mut register3: Register<u32> = Register::from_value(register1.clone_value(), 3);
+    let mut register2: Register<u32> = Register::from_state(register1.clone_state(), 2);
+    let mut register3: Register<u32> = Register::from_state(register1.clone_state(), 3);
 
     let remote_op1 = register2.update(41).unwrap();
     let remote_op2 = register1.update(32).unwrap();
@@ -107,8 +107,8 @@ fn test_register() {
 #[test]
 fn test_set() {
     let mut set1: Set<i32> = Set::new();
-    let mut set2: Set<i32> = Set::from_value(set1.clone_value(), 2);
-    let mut set3: Set<i32> = Set::from_value(set1.clone_value(), 3);
+    let mut set2: Set<i32> = Set::from_state(set1.clone_state(), 2);
+    let mut set3: Set<i32> = Set::from_state(set1.clone_state(), 3);
 
     let remote_op1 = set1.insert(10).unwrap();
     let remote_op2 = set2.insert(10).unwrap();
@@ -142,8 +142,8 @@ fn test_set() {
 #[test]
 fn test_text() {
     let mut text1 = Text::new();
-    let mut text2 = Text::from_value(text1.clone_value(), 2);
-    let mut text3 = Text::from_value(text1.clone_value(), 3);
+    let mut text2 = Text::from_state(text1.clone_state(), 2);
+    let mut text3 = Text::from_state(text1.clone_state(), 3);
 
     let remote_op1 = text1.insert(0, "Hello! ".to_owned()).unwrap();
     let remote_op2 = text2.insert(0, "Bonjour. ".to_owned()).unwrap();
@@ -163,8 +163,8 @@ fn test_text() {
 #[test]
 fn test_json() {
     let mut crdt1 = Json::from_str("{}").unwrap();
-    let mut crdt2 = Json::from_value(crdt1.clone_value(), 2);
-    let mut crdt3 = Json::from_value(crdt1.clone_value(), 3);
+    let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
+    let mut crdt3 = Json::from_state(crdt1.clone_state(), 3);
 
     let remote_op1 = crdt1.object_insert("", "foo".to_owned(), 1.0).unwrap();
     let remote_op2 = crdt2.object_insert("", "foo".to_owned(), 2.0).unwrap();

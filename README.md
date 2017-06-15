@@ -10,7 +10,7 @@ use ditto::List;
 
 // site 1 creates the CRDT and sends its original value to site 2.
 let mut list1: List<u32> = List::new();
-let mut list2: List<u32> = List::from_value(list1.clone_value(), 2);
+let mut list2: List<u32> = List::from_state(list1.clone_state(), 2);
 
 // each site concurrently inserts a different number at index 0
 let remote_op1 = list1.insert(0, 7).unwrap();

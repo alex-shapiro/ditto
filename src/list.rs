@@ -404,7 +404,7 @@ mod tests {
 
     #[test]
     fn test_insert_remove_awaiting_site() {
-        let mut list: List<i64> = List::from_value(ListValue::new(), 0);
+        let mut list: List<i64> = List::from_state(List::new().clone_state(), 0);
         assert!(list.insert(0, 123).unwrap_err() == Error::AwaitingSite);
         assert!(list.len() == 1);
         assert!(list.awaiting_site.len() == 1);
@@ -495,7 +495,7 @@ mod tests {
 
     #[test]
     fn test_add_site() {
-        let mut list: List<u32> = List::from_value(ListValue::new(), 0);
+        let mut list: List<u32> = List::from_state(List::new().clone_state(), 0);
         let _ = list.insert(0, 51);
         let _ = list.insert(1, 52);
         let _ = list.remove(0);
@@ -513,7 +513,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut list: List<u32> = List::from_value(ListValue::new(), 12);
+        let mut list: List<u32> = List::from_state(List::new().clone_state(), 12);
         let _ = list.insert(0, 51);
         let _ = list.insert(1, 52);
         let _ = list.remove(0);
@@ -590,5 +590,4 @@ mod tests {
             RemoteOp::Insert(_) => panic!(),
         }
     }
-
 }

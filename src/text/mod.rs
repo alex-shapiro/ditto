@@ -179,7 +179,7 @@ mod tests {
 
     #[test]
     fn test_insert_remove_awaiting_site() {
-        let mut text = Text::from_value(TextValue::new(), 0);
+        let mut text = Text::from_state(Text::new().clone_state(), 0);
         assert!(text.insert(0, "Hello".to_owned()).unwrap_err() == Error::AwaitingSite);
         assert!(text.remove(0, 1).unwrap_err() == Error::AwaitingSite);
         assert!(text.local_value() == "ello");
@@ -191,7 +191,7 @@ mod tests {
     #[test]
     fn test_execute_remote() {
         let mut text1 = Text::new();
-        let mut text2 = Text::from_value(text1.clone_value(), 0);
+        let mut text2 = Text::from_state(text1.clone_state(), 0);
 
         let remote_op1 = text1.insert(0, "hello".to_owned()).unwrap();
         let remote_op2 = text1.remove(0, 1).unwrap();
@@ -209,7 +209,7 @@ mod tests {
     #[test]
     fn test_execute_remote_dupe() {
         let mut text1 = Text::new();
-        let mut text2 = Text::from_value(text1.clone_value(), 0);
+        let mut text2 = Text::from_state(text1.clone_state(), 0);
         let remote_op = text1.insert(0, "hello".to_owned()).unwrap();
         assert!(text2.execute_remote(&remote_op).is_some());
         assert!(text2.execute_remote(&remote_op).is_none());
@@ -225,7 +225,7 @@ mod tests {
         let _ = text1.insert(16, "fox".to_owned());
         let _ = text1.remove(4, 6);
 
-        let mut text2 = Text::from_value(text1.clone_value(), 2);
+        let mut text2 = Text::from_state(text1.clone_state(), 2);
         let _ = text2.remove(4, 6);
         let _ = text2.insert(4, "yellow ".to_owned());
         let _ = text1.insert(4, "slow ".to_owned());
@@ -242,7 +242,7 @@ mod tests {
 
     #[test]
     fn test_add_site() {
-        let mut text = Text::from_value(TextValue::new(), 0);
+        let mut text = Text::from_state(Text::new().clone_state(), 0);
         let _ = text.insert(0, "hello".to_owned());
         let _ = text.insert(5, "there".to_owned());
         let _ = text.remove(4, 1);
@@ -260,7 +260,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut text = Text::from_value(TextValue::new(), 123);
+        let mut text = Text::from_state(Text::new().clone_state(), 123);
         let _ = text.insert(0, "hello".to_owned()).unwrap();
         let _ = text.insert(5, "there".to_owned()).unwrap();
         let _ = text.remove(4, 1).unwrap();
@@ -315,7 +315,7 @@ mod tests {
     #[test]
     fn test_serialize_local_op() {
         let mut text1 = Text::new();
-        let mut text2 = Text::from_value(text1.clone_value(), 2);
+        let mut text2 = Text::from_state(text1.clone_state(), 2);
         let remote_op1 = text1.insert(0, "hello".to_owned()).unwrap();
         let remote_op2 = text1.insert(2, "bonjour".to_owned()).unwrap();
         let _ = text2.execute_remote(&remote_op1).unwrap();

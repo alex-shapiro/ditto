@@ -18,22 +18,6 @@ macro_rules! crdt_impl {
         }
 
         /// Clones the CRDT's inner value.
-        pub fn clone_value(&self) -> $value {
-            self.value.clone()
-        }
-
-        /// Constructs a new CRDT from a value and a site.
-        /// This CRDT cannot be used for state-based  merges.
-        pub fn from_value(value: $value, site: u32) -> Self {
-            $tipe{
-                replica: Replica{site, counter: 0},
-                value: value,
-                tombstones: Tombstones::new(),
-                awaiting_site: vec![],
-            }
-        }
-
-        /// Clones the CRDT's inner value.
         pub fn clone_state(&self) -> $state {
             $state_ident{value: self.value.clone(), tombstones: self.tombstones.clone()}
         }

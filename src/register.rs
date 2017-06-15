@@ -212,8 +212,8 @@ mod tests {
     #[test]
     fn test_execute_remote_concurrent() {
         let mut register1: Register<&'static str> = Register::new("a");
-        let mut register2: Register<&'static str> = Register::from_value(register1.clone_value(), 2);
-        let mut register3: Register<&'static str> = Register::from_value(register1.clone_value(), 3);
+        let mut register2: Register<&'static str> = Register::from_state(register1.clone_state(), 2);
+        let mut register3: Register<&'static str> = Register::from_state(register1.clone_state(), 3);
 
         let remote_op1 = register1.update("b").unwrap();
         let remote_op2 = register2.update("c").unwrap();
@@ -228,7 +228,7 @@ mod tests {
     #[test]
     fn test_execute_remote_dupe() {
         let mut register1: Register<&'static str> = Register::new("a");
-        let mut register2 = Register::from_value(register1.clone_value(), 2);
+        let mut register2 = Register::from_state(register1.clone_state(), 2);
 
         let remote_op = register1.update("b").unwrap();
         let local_op = register2.execute_remote(&remote_op).unwrap();
@@ -242,7 +242,7 @@ mod tests {
     #[test]
     fn test_merge() {
         let mut register1 = Register::new(123);
-        let mut register2 = Register::from_value(register1.clone_value(), 2);
+        let mut register2 = Register::from_state(register1.clone_state(), 2);
         let _ = register1.update(456);
         let _ = register2.update(789);
         register1.merge(register2.clone_state());
@@ -255,7 +255,7 @@ mod tests {
     #[test]
     fn test_add_site() {
         let mut register1 = Register::new(123);
-        let mut register2 = Register::from_value(register1.clone_value(), 0);
+        let mut register2 = Register::from_state(register1.clone_state(), 0);
         assert!(register2.update(456).unwrap_err() == Error::AwaitingSite);
 
         let remote_ops = register2.add_site(2).unwrap();
@@ -266,7 +266,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut register = Register::from_value(RegisterValue::new(123, &Replica{site: 42, counter: 0}), 42);
+        let mut register = Register::from_state(Register::new(123).clone_state(), 42);
         assert!(register.add_site(44).unwrap_err() == Error::AlreadyHasSite);
     }
 
