@@ -1,11 +1,11 @@
-use Error;
+use {Error, Replica, Tombstones};
 
 /// The standard implementation for a CRDT. It is implemented
 /// as a macro rather than a trait because (1) the implementation
 /// is identical for all CRDTs, and (2) it frees the user from
 /// having to import a trait whenever they use a CRDT.
 macro_rules! crdt_impl {
-    ($tipe:ident, $value:ty) => {
+    ($tipe:ident, $state_ident:ident, $state:ty, $value:ty) => {
 
         /// Returns the CRDT's site
         pub fn site(&self) -> u32 {
@@ -22,9 +22,30 @@ macro_rules! crdt_impl {
             self.value.clone()
         }
 
-        /// Constructs a new CRDT from an inner value and a site.
+        /// Constructs a new CRDT from a value and a site.
+        /// This CRDT cannot be used for state-based  merges.
         pub fn from_value(value: $value, site: u32) -> Self {
-            $tipe{replica: Replica::new(site, 0), value: value, awaiting_site: vec![]}
+            $tipe{
+                replica: Replica{site, counter: 0},
+                value: value,
+                tombstones: Tombstones::new(),
+                awaiting_site: vec![],
+            }
+        }
+
+        /// Clones the CRDT's inner value.
+        pub fn clone_state(&self) -> $state {
+            $state_ident{value: self.value.clone(), tombstones: self.tombstones.clone()}
+        }
+
+        /// Constructs a new CRDT from a state and a site.
+        pub fn from_state(state: $state, site: u32) -> Self {
+            $tipe{
+                replica: Replica{site, counter: 0},
+                value: state.value,
+                tombstones: state.tombstones,
+                awaiting_site: vec![],
+            }
         }
 
         /// Returns the CRDT value's equivalent local value.
@@ -36,6 +57,7 @@ macro_rules! crdt_impl {
         /// This function assumes that the op only inserts values from the
         /// correct site; for untrusted ops use `validate_and_execute_remote`.
         pub fn execute_remote(&mut self, op: &<$value as CrdtValue>::RemoteOp) -> Option<<$value as CrdtValue>::LocalOp> {
+            for replica in op.deleted_replicas() { self.tombstones.insert(&replica) };
             self.value.execute_remote(op)
         }
 
@@ -43,7 +65,13 @@ macro_rules! crdt_impl {
         /// the equivalent local op.
         pub fn validate_and_execute_remote(&mut self, op: &<$value as CrdtValue>::RemoteOp, site: u32) -> Result<Option<<$value as CrdtValue>::LocalOp>, Error> {
             let _ = op.validate_site(site)?;
-            Ok(self.value.execute_remote(op))
+            Ok(self.execute_remote(op))
+        }
+
+        /// Merges remote CRDT state with the local CRDT.
+        pub fn merge(&mut self, other: $state) {
+            self.value.merge(other.value, &self.tombstones, &other.tombstones);
+            self.tombstones.merge(other.tombstones);
         }
 
         /// Updates the CRDT's site and returns any cached ops.
@@ -64,6 +92,7 @@ macro_rules! crdt_impl {
 
         fn after_op(&mut self, op: <$value as CrdtValue>::RemoteOp) -> Result<<$value as CrdtValue>::RemoteOp, Error> {
             self.replica.counter += 1;
+            for replica in op.deleted_replicas() { self.tombstones.insert(&replica) };
             if self.replica.site != 0 { return Ok(op) }
             self.awaiting_site.push(op);
             Err(Error::AwaitingSite)
@@ -84,8 +113,18 @@ pub trait CrdtValue {
     fn add_site(&mut self, op: &Self::RemoteOp, site: u32);
 }
 
+/// Functions for nested CRDT values.
+pub trait NestedValue {
+    /// Merges nested CRDT values.
+    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);
+}
+
 /// Required functions for CRDT remote ops.
 pub trait CrdtRemoteOp {
+
+    /// Returns a Vec of all replicas deleted by the op.
+    fn deleted_replicas(&self) -> Vec<Replica>;
+
     /// Adds a site to all elements in the op with site 0.
     fn add_site(&mut self, site: u32);
 

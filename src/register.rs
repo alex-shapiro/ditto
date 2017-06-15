@@ -2,8 +2,7 @@
 //! The container may update the value it holds, but the
 //! value itself is immutable.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use traits::*;
 use std::mem;
 
@@ -11,7 +10,14 @@ use std::mem;
 pub struct Register<T: Clone> {
     value: RegisterValue<T>,
     replica: Replica,
+    tombstones: Tombstones,
     awaiting_site: Vec<RemoteOp<T>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct RegisterState<T: Clone> {
+    value: RegisterValue<T>,
+    tombstones: Tombstones,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -28,20 +34,27 @@ pub struct LocalOp<T> {
     pub new_value: T,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct Element<T: Clone>(Replica, T);
+
+impl<T: Clone> PartialEq for Element<T> {
+    fn eq(&self, other: &Element<T>) -> bool {
+        self.0 == other.0
+    }
+}
 
 impl<T: Clone> Register<T> {
 
-    crdt_impl!(Register, RegisterValue<T>);
+    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterValue<T>);
 
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.
     pub fn new(value: T) -> Self {
         let mut replica = Replica::new(1, 0);
         let value = RegisterValue::new(value, &replica);
+        let tombstones = Tombstones::new();
         replica.counter += 1;
-        Register{value, replica, awaiting_site: vec![]}
+        Register{value, replica, tombstones, awaiting_site: vec![]}
     }
 
     /// Returns the register's site.
@@ -102,6 +115,23 @@ impl<T: Clone> RegisterValue<T> {
 
         None
     }
+
+    /// Merges two RegisterValues into one.
+    pub fn merge(&mut self, other: RegisterValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        self.0 =
+            mem::replace(&mut self.0, vec![])
+            .into_iter()
+            .filter(|e| other.0.contains(e) || !other_tombstones.contains(&e.0))
+            .collect();
+
+        for element in other.0 {
+            if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&element.0)) {
+                if !self_tombstones.contains(&element.0) {
+                    self.0.insert(index, element);
+                }
+            }
+        }
+    }
 }
 
 impl<T: Clone> CrdtValue for RegisterValue<T> {
@@ -120,6 +150,10 @@ impl<T: Clone> CrdtValue for RegisterValue<T> {
 }
 
 impl<T: Clone> CrdtRemoteOp for RemoteOp<T> {
+    fn deleted_replicas(&self) -> Vec<Replica> {
+        self.remove.clone()
+    }
+
     fn add_site(&mut self, site: u32) {
         self.insert.0.site = site;
         for replica in &mut self.remove {
@@ -203,6 +237,19 @@ mod tests {
         assert!(register2.get() == &"b");
         assert!(register2.value.0.len() == 1);
         assert!(local_op.new_value == "b");
+    }
+
+    #[test]
+    fn test_merge() {
+        let mut register1 = Register::new(123);
+        let mut register2 = Register::from_value(register1.clone_value(), 2);
+        let _ = register1.update(456);
+        let _ = register2.update(789);
+        register1.merge(register2.clone_state());
+
+        assert!(register1.value.0.len() == 2);
+        assert!(register1.value.0[0].1 == 456);
+        assert!(register1.value.0[1].1 == 789);
     }
 
     #[test]

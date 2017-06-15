@@ -1,8 +1,7 @@
 //! A `Set` stores a collection of distinct elements.
 //! The elements in the set are immutable.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use map_tuple_vec;
 use traits::*;
 
@@ -10,6 +9,7 @@ use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
+use std::mem;
 
 pub trait SetElement: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
@@ -19,14 +19,19 @@ impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 pub struct Set<T: SetElement> {
     value: SetValue<T>,
     replica: Replica,
+    tombstones: Tombstones,
     awaiting_site: Vec<RemoteOp<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct SetValue<T: SetElement>{
-    #[serde(with = "map_tuple_vec")]
-    inner: HashMap<T, Vec<Replica>>,
+#[serde(bound(deserialize = ""))]
+pub struct SetState<T: SetElement>{
+    value: SetValue<T>,
+    tombstones: Tombstones,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct SetValue<T: SetElement>(#[serde(with = "map_tuple_vec")] pub HashMap<T, Vec<Replica>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<T> {
@@ -42,14 +47,15 @@ pub enum LocalOp<T> {
 
 impl<T: SetElement> Set<T> {
 
-    crdt_impl!(Set, SetValue<T>);
+    crdt_impl!(Set, SetState, SetState<T>, SetValue<T>);
 
     /// Constructs and returns a new set CRDT.
     /// The set has site 1 and counter 0.
     pub fn new() -> Self {
         let replica = Replica::new(1, 0);
         let value = SetValue::new();
-        Set{replica, value, awaiting_site: vec![]}
+        let tombstones = Tombstones::new();
+        Set{replica, value, tombstones, awaiting_site: vec![]}
     }
 
     /// Returns true iff the set contains the value.
@@ -80,20 +86,20 @@ impl<T: SetElement> SetValue<T> {
 
     /// Constructs and returns a new set value.
     pub fn new() -> Self {
-        SetValue{inner: HashMap::new()}
+        SetValue(HashMap::new())
     }
 
     /// Returns true if the set contains the value.
     pub fn contains(&self, value: &T) -> bool {
-        self.inner.contains_key(value)
+        self.0.contains_key(value)
     }
 
     /// Inserts a value into the set and returns an op that can
     /// be sent to remote sites for replication. If the set already
     /// contains the value, it returns an AlreadyExists error.
     pub fn insert(&mut self, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
-        if self.inner.contains_key(&value) { return Err(Error::AlreadyExists) }
-        self.inner.insert(value.clone(), vec![replica.clone()]);
+        if self.0.contains_key(&value) { return Err(Error::AlreadyExists) }
+        self.0.insert(value.clone(), vec![replica.clone()]);
         Ok(RemoteOp::Insert{value, replica: replica.clone()})
     }
 
@@ -101,7 +107,7 @@ impl<T: SetElement> SetValue<T> {
     /// be sent to remote sites for replication. If the set does
     /// not contain the value, it returns a DoesNotExist error.
     pub fn remove(&mut self, value: &T) -> Result<RemoteOp<T>, Error> {
-        let replicas = self.inner.remove(value).ok_or(Error::DoesNotExist)?;
+        let replicas = self.0.remove(value).ok_or(Error::DoesNotExist)?;
         Ok(RemoteOp::Remove{value: value.clone(), replicas})
     }
 
@@ -109,7 +115,7 @@ impl<T: SetElement> SetValue<T> {
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         match *op {
             RemoteOp::Insert{ref value, ref replica} => {
-                let replicas = self.inner.entry(value.clone()).or_insert(vec![]);
+                let replicas = self.0.entry(value.clone()).or_insert(vec![]);
                 let index = try_opt!(replicas.binary_search_by(|r| r.cmp(replica)).err());
                 replicas.insert(index, replica.clone());
                 if replicas.len() == 1 {
@@ -120,17 +126,52 @@ impl<T: SetElement> SetValue<T> {
             }
             RemoteOp::Remove{ref value, ref replicas} => {
                 let should_remove_value = {
-                    let existing_replicas = try_opt!(self.inner.get_mut(value));
+                    let existing_replicas = try_opt!(self.0.get_mut(value));
                     remove_replicas(existing_replicas, replicas);
                     existing_replicas.is_empty()
                 };
 
                 if should_remove_value {
-                    self.inner.remove(value);
+                    self.0.remove(value);
                     Some(LocalOp::Remove(value.clone()))
                 } else {
                     None
                 }
+            }
+        }
+    }
+
+    /// Merges two SetValues into one.
+    pub fn merge(&mut self, mut other: SetValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        let self_elements = mem::replace(&mut self.0, HashMap::new());
+
+        for (key, replicas) in self_elements {
+            let other_replicas = other.0.remove(&key).unwrap_or(vec![]);
+
+            let mut replicas: Vec<Replica> =
+                replicas.into_iter()
+                .filter(|r| other_replicas.contains(&r) || !other_tombstones.contains(&r))
+                .collect();
+
+            let mut other_replicas =
+                other_replicas.into_iter()
+                .filter(|r| !replicas.contains(&r) && !self_tombstones.contains(&r))
+                .collect();
+
+            replicas.append(&mut other_replicas);
+            replicas.sort();
+
+            if !replicas.is_empty() {
+                self.0.insert(key, replicas);
+            }
+        }
+
+        for (key, replicas) in other.0.into_iter() {
+            let replicas: Vec<Replica> = replicas.into_iter()
+                .filter(|r| !self_tombstones.contains(r)).collect();
+
+            if !replicas.is_empty() {
+                self.0.insert(key, replicas);
             }
         }
     }
@@ -143,7 +184,7 @@ impl<T: SetElement> CrdtValue for SetValue<T> {
 
     fn local_value(&self) -> HashSet<T> {
         let mut hash_set = HashSet::new();
-        for key in self.inner.keys() {
+        for key in self.0.keys() {
             hash_set.insert(key.clone());
         }
         hash_set
@@ -151,7 +192,7 @@ impl<T: SetElement> CrdtValue for SetValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert{ref value, ref replica} = *op {
-            let ref mut replicas = some!(self.inner.get_mut(value));
+            let ref mut replicas = some!(self.0.get_mut(value));
             let index = some!(replicas.binary_search_by(|r| r.cmp(replica)).ok());
             replicas[index].site = site;
         }
@@ -159,6 +200,13 @@ impl<T: SetElement> CrdtValue for SetValue<T> {
 }
 
 impl<T: SetElement> CrdtRemoteOp for RemoteOp<T> {
+    fn deleted_replicas(&self) -> Vec<Replica> {
+        match *self {
+            RemoteOp::Remove{ref replicas, ..} => replicas.clone(),
+            _ => vec![],
+        }
+    }
+
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert{ref mut replica, ..} => {
@@ -289,7 +337,7 @@ mod tests {
         let _         = set2.insert(22).unwrap();
 
         assert!(set2.execute_remote(&remote_op).is_none());
-        assert!(set2.value.inner.get(&22).unwrap().len() == 2);
+        assert!(set2.value.0.get(&22).unwrap().len() == 2);
     }
 
     #[test]
@@ -300,7 +348,7 @@ mod tests {
 
         assert!(set2.execute_remote(&remote_op).is_some());
         assert!(set2.execute_remote(&remote_op).is_none());
-        assert!(set2.value.inner.get(&22).unwrap().len() == 1);
+        assert!(set2.value.0.get(&22).unwrap().len() == 1);
     }
 
     #[test]
@@ -349,6 +397,37 @@ mod tests {
     }
 
     #[test]
+    fn test_merge() {
+        let mut set1: Set<u32> = Set::new();
+        let _ = set1.insert(1);
+        let _ = set1.insert(2);
+        let _ = set1.remove(&2);
+
+        let mut set2 = Set::from_value(set1.clone_value(), 2);
+        let _ = set1.insert(3);
+        let _ = set2.insert(3);
+        let _ = set2.insert(4);
+        let _ = set2.remove(&3);
+
+        let set1_state = set1.clone_state();
+        set1.merge(set2.clone_state());
+        set2.merge(set1_state);
+        assert!(set1.value == set2.value);
+        assert!(set1.tombstones == set2.tombstones);
+
+        assert!(set1.contains(&1));
+        assert!(!set1.contains(&2));
+        assert!(set1.contains(&3));
+        assert!(set1.contains(&4));
+
+        assert!(set1.value.0[&1] == vec![Replica{site: 1, counter: 0}]);
+        assert!(set1.value.0[&3] == vec![Replica{site: 1, counter: 3}]);
+        assert!(set1.value.0[&4] == vec![Replica{site: 2, counter: 1}]);
+        assert!(set1.tombstones.contains_pair(1, 1));
+        assert!(set1.tombstones.contains_pair(2, 0));
+    }
+
+    #[test]
     fn test_add_site() {
         let mut set: Set<u64> = Set::from_value(Set::new().clone_value(), 0);
         let _ = set.insert(10);
@@ -360,7 +439,7 @@ mod tests {
         let (value2, replica2) = insert_fields(remote_ops.next().unwrap());
         let (value3, replicas) = remove_fields(remote_ops.next().unwrap());
 
-        assert!(set.value.inner.get(&20).unwrap()[0].site == 5);
+        assert!(set.value.0.get(&20).unwrap()[0].site == 5);
         assert!(value1 == 10 && replica1 == Replica::new(5, 0));
         assert!(value2 == 20 && replica2 == Replica::new(5, 1));
         assert!(value3 == 10 && replicas == vec![Replica::new(5, 0)]);

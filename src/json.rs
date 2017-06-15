@@ -1,8 +1,7 @@
 //! A `Json` CRDT stores any value that can be represented
 //! as JSON - objects, arrays, text, numbers, bools, and null.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use list::{self, ListValue};
 use map::{self, MapValue};
 use text::{self, TextValue};
@@ -18,7 +17,14 @@ use std::str::FromStr;
 pub struct Json {
     value: JsonValue,
     replica: Replica,
+    tombstones: Tombstones,
     awaiting_site: Vec<RemoteOp>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct JsonState {
+    value: JsonValue,
+    tombstones: Tombstones,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,7 +81,7 @@ pub trait IntoJson {
 
 impl Json {
 
-    crdt_impl!(Json, JsonValue);
+    crdt_impl!(Json, JsonState, JsonState, JsonValue);
 
     /// Constructs and returns a new `Json` CRDT from a JSON string.
     /// The crdt has site 1 and counter 0.
@@ -83,8 +89,9 @@ impl Json {
         let mut replica = Replica::new(1, 0);
         let local_json: SJValue = serde_json::from_str(json_str)?;
         let value = local_json.into_json(&replica)?;
+        let tombstones = Tombstones::new();
         replica.counter += 1;
-        Ok(Json{value, replica, awaiting_site: vec![]})
+        Ok(Json{value, replica, tombstones, awaiting_site: vec![]})
     }
 
     /// Inserts a key-value pair into an object in the Json CRDT and
@@ -218,6 +225,10 @@ impl JsonValue {
         }
     }
 
+    pub fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        self.nested_merge(other, self_tombstones, other_tombstones)
+    }
+
     fn get_nested_local(&mut self, pointer: &str) -> Result<(&mut JsonValue, Vec<RemoteUID>), Error> {
         if !(pointer.is_empty() || pointer.starts_with("/")) {
             return Err(Error::DoesNotExist)
@@ -294,6 +305,21 @@ impl JsonValue {
     }
 }
 
+impl NestedValue for JsonValue {
+    fn nested_merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        match other {
+            JsonValue::Object(other_map) =>
+                ok!(self.as_map()).nested_merge(other_map, self_tombstones, other_tombstones),
+            JsonValue::Array(other_list) =>
+                ok!(self.as_list()).nested_merge(other_list, self_tombstones, other_tombstones),
+            JsonValue::String(other_text) =>
+                ok!(self.as_text()).merge(other_text, self_tombstones, other_tombstones),
+            _ => (),
+        }
+    }
+}
+
+
 impl CrdtValue for JsonValue {
     type RemoteOp = RemoteOp;
     type LocalOp = LocalOp;
@@ -335,6 +361,14 @@ impl CrdtValue for JsonValue {
 }
 
 impl CrdtRemoteOp for RemoteOp {
+    fn deleted_replicas(&self) -> Vec<Replica> {
+        match self.op {
+            RemoteOpInner::Object(ref op) => op.deleted_replicas(),
+            RemoteOpInner::Array(ref op) => op.deleted_replicas(),
+            RemoteOpInner::String(ref op) => op.deleted_replicas(),
+        }
+    }
+
     fn add_site(&mut self, site: u32) {
         // update sites in the pointer
         for uid in self.pointer.iter_mut() {
@@ -467,7 +501,7 @@ impl IntoJson for bool {
 
 fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
     if let map::RemoteOp::Insert{ref key, ref element, ..} = *op {
-        let elements = some!(map_value.inner.get_mut(key));
+        let elements = some!(map_value.0.get_mut(key));
         let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
         let ref mut element = elements[index];
         element.0.site = site;
@@ -870,6 +904,29 @@ mod tests {
     }
 
     #[test]
+    fn test_merge() {
+        let mut crdt1 = Json::from_str(r#"{"x":[{"a": 1},{"b": 2},{"c":true},{"d":false}]}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 2);
+        let _ = crdt1.object_insert("/x/0", "e".to_owned(), 222.0);
+        let _ = crdt1.object_insert("/x/3", "e".to_owned(), 333.0);
+        let _ = crdt1.array_remove("/x", 2);
+        let _ = crdt2.object_insert("/x/1", "e".to_owned(), 444.0);
+        let _ = crdt2.array_remove("/x", 3);
+
+        let crdt1_state = crdt1.clone_state();
+        crdt1.merge(crdt2.clone_state());
+        crdt2.merge(crdt1_state);
+
+        println!("{:?}", &crdt1.value);
+        println!("{:?}", &crdt2.value);
+        println!("{:?}", &crdt1.local_value());
+
+        assert!(crdt1.value == crdt2.value);
+        assert!(crdt1.tombstones == crdt2.tombstones);
+        assert!(crdt1.local_value() == json!({"x":[{"a": 1.0, "e": 222.0}, {"b": 2.0, "e": 444.0}]}));
+    }
+
+    #[test]
     fn test_add_site() {
         let crdt1 = Json::from_str(r#"{"foo":[1,2,3],"bar":"hello"}"#).unwrap();
         let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
@@ -889,9 +946,9 @@ mod tests {
 
         {
             let map = as_map(&crdt2.value);
-            assert!(map.inner.get("foo").is_none());
-            assert!(map.inner.get("bar").unwrap()[0].0.site == 1);
-            assert!(map.inner.get("baz").unwrap()[0].0.site == 11);
+            assert!(map.0.get("foo").is_none());
+            assert!(map.0.get("bar").unwrap()[0].0.site == 1);
+            assert!(map.0.get("baz").unwrap()[0].0.site == 11);
         }
         {
             let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());

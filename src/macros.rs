@@ -15,6 +15,15 @@ macro_rules! try_assert {
     }
 }
 
+macro_rules! unwrap_or {
+    ($e:expr, $else:expr) => {
+        match $e {
+            Some(v) => v,
+            None => return $else,
+        }
+    }
+}
+
 macro_rules! some {
     ($e:expr) => (
         match $e {
@@ -24,3 +33,11 @@ macro_rules! some {
     )
 }
 
+macro_rules! ok {
+    ($e:expr) => {
+        match $e {
+            Ok(v) => v,
+            _ => return,
+        }
+    }
+}

@@ -2,8 +2,7 @@
 //! and replace text in very large strings. TextValues
 //! are indexed by unicode character.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use super::btree::BTree;
 use super::element::{self, Element};
 use super::{RemoteOp, LocalOp, LocalChange};
@@ -147,6 +146,26 @@ impl TextValue {
         match changes.len() {
             0 => None,
             _ => Some(LocalOp{changes: changes})
+        }
+    }
+
+    pub fn merge(&mut self, other: TextValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        let removed_uids: Vec<UID> = self.0.into_iter()
+            .filter(|e| other.0.get_index(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .map(|e| e.uid.clone())
+            .collect();
+
+        let new_elements: Vec<Element> = other.0.into_iter()
+            .filter(|e| self.0.get_index(&e.uid).is_none() && !self_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .map(|e| e.clone())
+            .collect();
+
+        for uid in removed_uids {
+            let _ = self.0.remove(&uid);
+        }
+
+        for element in new_elements.into_iter() {
+            let _ = self.0.insert(element);
         }
     }
 

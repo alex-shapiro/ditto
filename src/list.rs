@@ -1,17 +1,25 @@
 //! A `List` stores an ordered sequence of elements.
 //! Elements in the list are immutable.
 
-use Error;
-use Replica;
+use {Error, Replica, Tombstones};
 use sequence::uid::{self, UID};
 use traits::*;
+use std::cmp::Ordering;
+use std::mem;
 use std::slice;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct List<T> {
     value: ListValue<T>,
     replica: Replica,
+    tombstones: Tombstones,
     awaiting_site: Vec<RemoteOp<T>>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+pub struct ListState<T> {
+    value: ListValue<T>,
+    tombstones: Tombstones,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -34,14 +42,15 @@ pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
 
-    crdt_impl!(List, ListValue<T>);
+    crdt_impl!(List, ListState, ListState<T>, ListValue<T>);
 
     /// Constructs and returns a new list.
     /// Th list has site 1 and counter 0.
     pub fn new() -> Self {
         let replica = Replica::new(1,0);
         let value = ListValue::new();
-        List{replica, value, awaiting_site: vec![]}
+        let tombstones = Tombstones::new();
+        List{replica, value, tombstones, awaiting_site: vec![]}
     }
 
     /// Returns the number of elements in the list.
@@ -131,6 +140,72 @@ impl<T: Clone> ListValue<T> {
             }
         }
     }
+
+    pub fn merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        let mut self_iter = mem::replace(&mut self.0, vec![]).into_iter();
+        let mut other_iter = other.0.into_iter();
+        let mut s_element = self_iter.next();
+        let mut o_element = other_iter.next();
+
+        while s_element.is_some() || o_element.is_some() {
+            match compare(s_element.as_ref(), o_element.as_ref()) {
+                Ordering::Equal => {
+                    self.0.push(mem::replace(&mut s_element, self_iter.next()).unwrap());
+                    o_element = other_iter.next();
+                }
+                Ordering::Less => {
+                    let element = mem::replace(&mut s_element, self_iter.next()).unwrap();
+                    if !other_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        self.0.push(element);
+                    }
+                }
+                Ordering::Greater => {
+                    let element = mem::replace(&mut o_element, other_iter.next()).unwrap();
+                    if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        self.0.push(element);
+                    }
+                }
+            }
+        }
+    }
+}
+
+impl<T: Clone + NestedValue> NestedValue for ListValue<T> {
+    fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        let mut self_iter = mem::replace(&mut self.0, vec![]).into_iter();
+        let mut other_iter = other.0.into_iter();
+        let mut s_element = self_iter.next();
+        let mut o_element = other_iter.next();
+
+        while s_element.is_some() || o_element.is_some() {
+            match compare(s_element.as_ref(), o_element.as_ref()) {
+                Ordering::Equal => {
+                    let mut elt1 = mem::replace(&mut s_element, self_iter.next()).unwrap();
+                    let elt2 = mem::replace(&mut o_element, other_iter.next()).unwrap();
+                    elt1.1.nested_merge(elt2.1, self_tombstones, other_tombstones);
+                    self.0.push(elt1);
+                }
+                Ordering::Less => {
+                    let element = mem::replace(&mut s_element, self_iter.next()).unwrap();
+                    if !other_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        self.0.push(element);
+                    }
+                }
+                Ordering::Greater => {
+                    let element = mem::replace(&mut o_element, other_iter.next()).unwrap();
+                    if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        self.0.push(element);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn compare<T>(e1: Option<&Element<T>>, e2: Option<&Element<T>>) -> Ordering {
+    let e1 = unwrap_or!(e1, Ordering::Greater);
+    let e2 = unwrap_or!(e2, Ordering::Less);
+    e1.0.cmp(&e2.0)
 }
 
 impl<T: Clone> CrdtValue for ListValue<T> {
@@ -163,7 +238,7 @@ impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
     }
 
     fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-        for element in self.0.iter() {
+        for element in &self.0 {
             try_assert!(element.0.site == site, Error::InvalidRemoteOp);
             try!(element.1.validate_site_for_all(site));
         }
@@ -172,6 +247,13 @@ impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
 }
 
 impl<T> CrdtRemoteOp for RemoteOp<T> {
+    fn deleted_replicas(&self) -> Vec<Replica> {
+        match *self {
+            RemoteOp::Remove(ref uid) => vec![Replica{site: uid.site, counter: uid.counter}],
+            _ => vec![],
+        }
+    }
+
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert(Element(ref mut uid, _)) => uid.site = site,
@@ -377,6 +459,38 @@ mod tests {
         let _ = list2.execute_remote(&remote_op2).unwrap();
         assert!(list2.execute_remote(&remote_op2).is_none());
         assert!(list2.len() == 0);
+    }
+
+    #[test]
+    fn test_merge() {
+        let mut list1 = List::new();
+        let _ = list1.insert(0, 3);
+        let _ = list1.insert(1, 6);
+        let _ = list1.insert(2, 9);
+        let _ = list1.remove(1);
+
+        let mut list2 = List::from_state(list1.clone_state(), 2);
+        let _ = list2.remove(0);
+        let _ = list2.insert(1, 12);
+        let _ = list2.insert(2, 15);
+        let _ = list1.remove(1);
+        let _ = list1.insert(1, 12);
+
+        let list1_state = list1.clone_state();
+        list1.merge(list2.clone_state());
+        list2.merge(list1_state);
+
+        assert!(list1.value == list2.value);
+        assert!(list1.tombstones == list2.tombstones);
+        assert!(list1.local_value() == vec![12, 12, 15]);
+
+        assert!(list1.value.0[0].0.site    == 1);
+        assert!(list1.value.0[0].0.counter == 5);
+        assert!(list1.value.0[1].0.site    == 2);
+        assert!(list1.value.0[1].0.counter == 1);
+        assert!(list1.value.0[2].0.site    == 2);
+        assert!(list1.value.0[2].0.counter == 2);
+        assert!(list1.tombstones.contains_pair(1,2));
     }
 
     #[test]
