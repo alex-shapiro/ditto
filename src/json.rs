@@ -904,6 +904,29 @@ mod tests {
     }
 
     #[test]
+    fn test_merge() {
+        let mut crdt1 = Json::from_str(r#"{"x":[{"a": 1},{"b": 2},{"c":true},{"d":false}]}"#).unwrap();
+        let mut crdt2 = Json::from_value(crdt1.clone_value(), 2);
+        let _ = crdt1.object_insert("/x/0", "e".to_owned(), 222.0);
+        let _ = crdt1.object_insert("/x/3", "e".to_owned(), 333.0);
+        let _ = crdt1.array_remove("/x", 2);
+        let _ = crdt2.object_insert("/x/1", "e".to_owned(), 444.0);
+        let _ = crdt2.array_remove("/x", 3);
+
+        let crdt1_state = crdt1.clone_state();
+        crdt1.merge(crdt2.clone_state());
+        crdt2.merge(crdt1_state);
+
+        println!("{:?}", &crdt1.value);
+        println!("{:?}", &crdt2.value);
+        println!("{:?}", &crdt1.local_value());
+
+        assert!(crdt1.value == crdt2.value);
+        assert!(crdt1.tombstones == crdt2.tombstones);
+        assert!(crdt1.local_value() == json!({"x":[{"a": 1.0, "e": 222.0}, {"b": 2.0, "e": 444.0}]}));
+    }
+
+    #[test]
     fn test_add_site() {
         let crdt1 = Json::from_str(r#"{"foo":[1,2,3],"bar":"hello"}"#).unwrap();
         let mut crdt2 = Json::from_value(crdt1.clone_value(), 0);
