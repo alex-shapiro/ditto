@@ -117,7 +117,7 @@ impl<T: Clone> RegisterValue<T> {
     }
 
     /// Merges two RegisterValues into one.
-    pub fn merge(&mut self, other: RegisterValue<T>, tombstones: &mut Tombstones, other_tombstones: Tombstones) {
+    pub fn merge(&mut self, other: RegisterValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         self.0 =
             mem::replace(&mut self.0, vec![])
             .into_iter()
@@ -126,13 +126,11 @@ impl<T: Clone> RegisterValue<T> {
 
         for element in other.0 {
             if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&element.0)) {
-                if !tombstones.contains(&element.0) {
+                if !self_tombstones.contains(&element.0) {
                     self.0.insert(index, element);
                 }
             }
         }
-
-        tombstones.merge(other_tombstones);
     }
 }
 

@@ -1,4 +1,4 @@
-use {Error, Replica};
+use {Error, Replica, Tombstones};
 
 /// The standard implementation for a CRDT. It is implemented
 /// as a macro rather than a trait because (1) the implementation
@@ -70,7 +70,8 @@ macro_rules! crdt_impl {
 
         /// Merges remote CRDT state with the local CRDT.
         pub fn merge(&mut self, other: $state) {
-            self.value.merge(other.value, &mut self.tombstones, other.tombstones);
+            self.value.merge(other.value, &self.tombstones, &other.tombstones);
+            self.tombstones.merge(other.tombstones);
         }
 
         /// Updates the CRDT's site and returns any cached ops.
@@ -110,6 +111,12 @@ pub trait CrdtValue {
 
     /// Adds a site to all elements affected by the remote op.
     fn add_site(&mut self, op: &Self::RemoteOp, site: u32);
+}
+
+/// Functions for nested CRDT values.
+pub trait NestedValue {
+    /// Merges nested CRDT values.
+    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);
 }
 
 /// Required functions for CRDT remote ops.

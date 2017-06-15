@@ -142,28 +142,24 @@ impl<T: SetElement> SetValue<T> {
     }
 
     /// Merges two SetValues into one.
-    pub fn merge(&mut self, mut other: SetValue<T>, self_tombstones: &mut Tombstones, other_tombstones: Tombstones) {
+    pub fn merge(&mut self, mut other: SetValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let self_elements = mem::replace(&mut self.0, HashMap::new());
 
         for (key, replicas) in self_elements {
-            let replicas =
-                if let Some(other_replicas) = other.0.remove(&key) {
-                    let mut self_replicas: Vec<Replica> =
-                        replicas.into_iter()
-                        .filter(|r| other_replicas.contains(&r) || !other_tombstones.contains(&r))
-                        .collect();
+            let other_replicas = other.0.remove(&key).unwrap_or(vec![]);
 
-                    let mut other_replicas =
-                        other_replicas.into_iter()
-                        .filter(|r| !self_replicas.contains(&r) && !self_tombstones.contains(&r))
-                        .collect();
+            let mut replicas: Vec<Replica> =
+                replicas.into_iter()
+                .filter(|r| other_replicas.contains(&r) || !other_tombstones.contains(&r))
+                .collect();
 
-                    self_replicas.append(&mut other_replicas);
-                    self_replicas.sort();
-                    self_replicas
-                } else {
-                    replicas.into_iter().filter(|r| !other_tombstones.contains(&r)).collect()
-                };
+            let mut other_replicas =
+                other_replicas.into_iter()
+                .filter(|r| !replicas.contains(&r) && !self_tombstones.contains(&r))
+                .collect();
+
+            replicas.append(&mut other_replicas);
+            replicas.sort();
 
             if !replicas.is_empty() {
                 self.0.insert(key, replicas);
@@ -178,8 +174,6 @@ impl<T: SetElement> SetValue<T> {
                 self.0.insert(key, replicas);
             }
         }
-
-        self_tombstones.merge(other_tombstones);
     }
 }
 

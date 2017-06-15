@@ -225,16 +225,8 @@ impl JsonValue {
         }
     }
 
-    pub fn merge(&mut self, other: JsonValue, self_tombstones: &mut Tombstones, other_tombstones: Tombstones) {
-        match other {
-            JsonValue::Object(other_map) =>
-                ok!(self.as_map()).merge(other_map, self_tombstones, other_tombstones),
-            JsonValue::Array(other_list) =>
-                ok!(self.as_list()).merge(other_list, self_tombstones, other_tombstones),
-            JsonValue::String(other_text) =>
-                ok!(self.as_text()).merge(other_text, self_tombstones, other_tombstones),
-            _ => (),
-        }
+    pub fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        self.nested_merge(other, self_tombstones, other_tombstones)
     }
 
     fn get_nested_local(&mut self, pointer: &str) -> Result<(&mut JsonValue, Vec<RemoteUID>), Error> {
@@ -312,6 +304,21 @@ impl JsonValue {
         }
     }
 }
+
+impl NestedValue for JsonValue {
+    fn nested_merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        match other {
+            JsonValue::Object(other_map) =>
+                ok!(self.as_map()).nested_merge(other_map, self_tombstones, other_tombstones),
+            JsonValue::Array(other_list) =>
+                ok!(self.as_list()).nested_merge(other_list, self_tombstones, other_tombstones),
+            JsonValue::String(other_text) =>
+                ok!(self.as_text()).merge(other_text, self_tombstones, other_tombstones),
+            _ => (),
+        }
+    }
+}
+
 
 impl CrdtValue for JsonValue {
     type RemoteOp = RemoteOp;

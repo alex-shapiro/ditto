@@ -216,7 +216,7 @@ impl<K: Key, V: Value> MapValue<K, V> {
     }
 
     /// Merges two MapValues into one.
-    pub fn merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &mut Tombstones, other_tombstones: Tombstones) {
+    pub fn merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let self_elements = mem::replace(&mut self.0, HashMap::new());
 
         for (key, elements) in self_elements {
@@ -248,9 +248,63 @@ impl<K: Key, V: Value> MapValue<K, V> {
                 self.0.insert(key, elements);
             }
         }
-
-        self_tombstones.merge(other_tombstones);
     }
+}
+
+impl<K: Key, V: Value + NestedValue> NestedValue for MapValue<K,V> {
+    fn nested_merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        let self_elements = mem::replace(&mut self.0, HashMap::new());
+
+        for (key, key_elements) in self_elements {
+            let mut new_elements = vec![];
+            let mut self_iter  = key_elements.into_iter();
+            let mut other_iter = other.0.remove(&key).unwrap_or(vec![]).into_iter();
+            let mut s_element  = self_iter.next();
+            let mut o_element  = other_iter.next();
+
+            while s_element.is_some() || o_element.is_some() {
+                match compare(s_element.as_ref(), o_element.as_ref()) {
+                    Ordering::Equal => {
+                        let mut elt1 = mem::replace(&mut s_element, self_iter.next()).unwrap();
+                        let elt2 = mem::replace(&mut o_element, other_iter.next()).unwrap();
+                        elt1.1.nested_merge(elt2.1, self_tombstones, other_tombstones);
+                        new_elements.push(elt1);
+                    }
+                    Ordering::Less => {
+                        let element = mem::replace(&mut s_element, self_iter.next()).unwrap();
+                        if !other_tombstones.contains_pair(element.0.site, element.0.counter) {
+                            new_elements.push(element);
+                        }
+                    }
+                    Ordering::Greater => {
+                        let element = mem::replace(&mut o_element, other_iter.next()).unwrap();
+                        if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
+                            new_elements.push(element);
+                        }
+                    }
+                }
+            }
+
+            if !new_elements.is_empty() {
+                self.0.insert(key, new_elements);
+            }
+        }
+
+        for (key, elements) in other.0 {
+            let elements: Vec<Element<V>> = elements.into_iter()
+                .filter(|e| !self_tombstones.contains(&e.0)).collect();
+
+            if !elements.is_empty() {
+                self.0.insert(key, elements);
+            }
+        }
+    }
+}
+
+fn compare<V>(e1: Option<&Element<V>>, e2: Option<&Element<V>>) -> Ordering {
+    let e1 = unwrap_or!(e1, Ordering::Greater);
+    let e2 = unwrap_or!(e2, Ordering::Less);
+    e1.0.cmp(&e2.0)
 }
 
 fn remove_replicas<V: Value>(elements: &mut Vec<Element<V>>, replicas: &[Replica]) {

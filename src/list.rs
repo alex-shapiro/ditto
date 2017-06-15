@@ -141,13 +141,7 @@ impl<T: Clone> ListValue<T> {
         }
     }
 
-    pub fn merge(&mut self, other: ListValue<T>, self_tombstones: &mut Tombstones, other_tombstones: Tombstones) {
-        fn compare<T>(e1: Option<&Element<T>>, e2: Option<&Element<T>>) -> Ordering {
-            let e1 = unwrap_or!(e1, Ordering::Greater);
-            let e2 = unwrap_or!(e2, Ordering::Less);
-            e1.0.cmp(&e2.0)
-        }
-
+    pub fn merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let mut self_iter = mem::replace(&mut self.0, vec![]).into_iter();
         let mut other_iter = other.0.into_iter();
         let mut s_element = self_iter.next();
@@ -173,9 +167,45 @@ impl<T: Clone> ListValue<T> {
                 }
             }
         }
-
-        self_tombstones.merge(other_tombstones)
     }
+}
+
+impl<T: Clone + NestedValue> NestedValue for ListValue<T> {
+    fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        let mut self_iter = mem::replace(&mut self.0, vec![]).into_iter();
+        let mut other_iter = other.0.into_iter();
+        let mut s_element = self_iter.next();
+        let mut o_element = other_iter.next();
+
+        while s_element.is_some() || o_element.is_some() {
+            match compare(s_element.as_ref(), o_element.as_ref()) {
+                Ordering::Equal => {
+                    let mut elt1 = mem::replace(&mut s_element, self_iter.next()).unwrap();
+                    let elt2 = mem::replace(&mut o_element, other_iter.next()).unwrap();
+                    elt1.1.nested_merge(elt2.1, self_tombstones, other_tombstones);
+                    self.0.push(elt1);
+                }
+                Ordering::Less => {
+                    let element = mem::replace(&mut s_element, self_iter.next()).unwrap();
+                    if !other_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        self.0.push(element);
+                    }
+                }
+                Ordering::Greater => {
+                    let element = mem::replace(&mut o_element, other_iter.next()).unwrap();
+                    if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        self.0.push(element);
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn compare<T>(e1: Option<&Element<T>>, e2: Option<&Element<T>>) -> Ordering {
+    let e1 = unwrap_or!(e1, Ordering::Greater);
+    let e2 = unwrap_or!(e2, Ordering::Less);
+    e1.0.cmp(&e2.0)
 }
 
 impl<T: Clone> CrdtValue for ListValue<T> {

@@ -149,7 +149,7 @@ impl TextValue {
         }
     }
 
-    pub fn merge(&mut self, other: TextValue, self_tombstones: &mut Tombstones, other_tombstones: Tombstones) {
+    pub fn merge(&mut self, other: TextValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let removed_uids: Vec<UID> = self.0.into_iter()
             .filter(|e| other.0.get_index(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
             .map(|e| e.uid.clone())
@@ -167,8 +167,6 @@ impl TextValue {
         for element in new_elements.into_iter() {
             let _ = self.0.insert(element);
         }
-
-        self_tombstones.merge(other_tombstones);
     }
 
     fn remove_at(&mut self, index: usize) -> Result<(Element, usize), Error> {
