@@ -40,9 +40,9 @@ pub use traits::{CrdtValue, CrdtRemoteOp};
 pub use error::Error;
 pub use replica::{Replica, Tombstones};
 
-pub use json::Json;
-pub use list::List;
-pub use map::Map;
-pub use register::{Register, RegisterValue};
-pub use set::Set;
-pub use text::Text;
+pub use json::{Json, JsonState};
+pub use list::{List, ListState};
+pub use map::{Map, MapState};
+pub use register::{Register, RegisterState};
+pub use set::{Set, SetState};
+pub use text::{Text, TextState};
