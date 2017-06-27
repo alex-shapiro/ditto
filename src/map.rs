@@ -7,7 +7,7 @@ use traits::*;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
-use std::borrow::Borrow;
+use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
 use std::collections::hash_map::{self, HashMap};
 use std::hash::Hash;
@@ -30,9 +30,9 @@ pub struct Map<K: Key, V: Value> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
-pub struct MapState<K: Key, V: Value> {
-    value: MapValue<K,V>,
-    tombstones: Tombstones,
+pub struct MapState<'a, K: Key + 'a, V: Value + 'a> {
+    value: Cow<'a, MapValue<K,V>>,
+    tombstones: Cow<'a, Tombstones>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -75,7 +75,7 @@ impl<V> Ord for Element<V> {
 
 impl<K: Key, V: Value> Map<K, V> {
 
-    crdt_impl!(Map, MapState, MapState<K,V>, MapValue<K,V>);
+    crdt_impl!(Map, MapState, MapState<K,V>, MapState<'static, K,V>, MapValue<K,V>);
 
     /// Constructs and returns a new map.
     /// The map has site 1 and counter 0.

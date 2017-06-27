@@ -4,6 +4,7 @@
 
 use {Error, Replica, Tombstones};
 use traits::*;
+use std::borrow::Cow;
 use std::mem;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -15,9 +16,9 @@ pub struct Register<T: Clone> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RegisterState<T: Clone> {
-    value: RegisterValue<T>,
-    tombstones: Tombstones,
+pub struct RegisterState<'a, T: Clone + 'a> {
+    value: Cow<'a, RegisterValue<T>>,
+    tombstones: Cow<'a, Tombstones>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -45,7 +46,7 @@ impl<T: Clone> PartialEq for Element<T> {
 
 impl<T: Clone> Register<T> {
 
-    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterValue<T>);
+    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterState<'static, T>, RegisterValue<T>);
 
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.

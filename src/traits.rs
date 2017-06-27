@@ -5,7 +5,7 @@ use {Error, Replica, Tombstones};
 /// is identical for all CRDTs, and (2) it frees the user from
 /// having to import a trait whenever they use a CRDT.
 macro_rules! crdt_impl {
-    ($tipe:ident, $state_ident:ident, $state:ty, $value:ty) => {
+    ($tipe:ident, $state_ident:ident, $state:ty, $state_static:ty, $value:ty) => {
 
         /// Returns the CRDT's site
         pub fn site(&self) -> u32 {
@@ -17,22 +17,36 @@ macro_rules! crdt_impl {
             &self.value
         }
 
+        /// Returns a borrowed CRDT state.
+        pub fn state(&self) -> $state {
+            $state_ident{
+                value: Cow::Borrowed(&self.value),
+                tombstones: Cow::Borrowed(&self.tombstones),
+            }
+        }
+
         /// Clones the CRDT's state.
-        pub fn clone_state(&self) -> $state {
-            $state_ident{value: self.value.clone(), tombstones: self.tombstones.clone()}
+        pub fn clone_state(&self) -> $state_static {
+            $state_ident{
+                value: Cow::Owned(self.value.clone()),
+                tombstones: Cow::Owned(self.tombstones.clone())
+            }
         }
 
         /// Consumes the CRDT and returns its state.
-        pub fn into_state(self) -> $state {
-            $state_ident {value: self.value, tombstones: self.tombstones}
+        pub fn into_state(self) -> $state_static {
+            $state_ident {
+                value: Cow::Owned(self.value),
+                tombstones: Cow::Owned(self.tombstones),
+            }
         }
 
         /// Constructs a new CRDT from a state and a site.
         pub fn from_state(state: $state, site: u32) -> Self {
             $tipe{
                 replica: Replica{site, counter: 0},
-                value: state.value,
-                tombstones: state.tombstones,
+                value: state.value.into_owned(),
+                tombstones: state.tombstones.into_owned(),
                 awaiting_site: vec![],
             }
         }
@@ -59,8 +73,8 @@ macro_rules! crdt_impl {
 
         /// Merges remote CRDT state with the local CRDT.
         pub fn merge(&mut self, other: $state) {
-            self.value.merge(other.value, &self.tombstones, &other.tombstones);
-            self.tombstones.merge(other.tombstones);
+            self.value.merge(other.value.into_owned(), &self.tombstones, &other.tombstones);
+            self.tombstones.merge(&other.tombstones);
         }
 
         /// Updates the CRDT's site and returns any cached ops.

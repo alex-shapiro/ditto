@@ -10,6 +10,8 @@ use self::element::Element;
 use sequence::uid::UID;
 use traits::*;
 
+use std::borrow::Cow;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Text {
     value: TextValue,
@@ -19,9 +21,9 @@ pub struct Text {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextState {
-    value: TextValue,
-    tombstones: Tombstones,
+pub struct TextState<'a> {
+    value: Cow<'a, TextValue>,
+    tombstones: Cow<'a, Tombstones>,
 }
 
 #[derive(Debug, Default, Clone, PartialEq, Serialize, Deserialize)]
@@ -43,7 +45,7 @@ pub enum LocalChange {
 
 impl Text {
 
-    crdt_impl!(Text, TextState, TextState, TextValue);
+    crdt_impl!(Text, TextState, TextState, TextState<'static>, TextValue);
 
     /// Constructs and returns a new `Text` crdt.
     /// The crdt has site 1 and counter 0.

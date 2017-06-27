@@ -4,6 +4,7 @@
 use {Error, Replica, Tombstones};
 use sequence::uid::{self, UID};
 use traits::*;
+use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::mem;
 use std::slice;
@@ -17,9 +18,9 @@ pub struct List<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ListState<T> {
-    value: ListValue<T>,
-    tombstones: Tombstones,
+pub struct ListState<'a, T: Clone + 'a> {
+    value: Cow<'a, ListValue<T>>,
+    tombstones: Cow<'a, Tombstones>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -42,7 +43,7 @@ pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
 
-    crdt_impl!(List, ListState, ListState<T>, ListValue<T>);
+    crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
 
     /// Constructs and returns a new list.
     /// Th list has site 1 and counter 0.
