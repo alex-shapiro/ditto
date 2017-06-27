@@ -47,8 +47,10 @@ impl Tombstones {
         *entry = max(*entry, counter);
     }
 
-    pub fn merge(&mut self, other: Tombstones) {
-        for (site, counter) in other.0 {
+    pub fn merge(&mut self, other: &Tombstones) {
+        for (site, counter) in &other.0 {
+            let site = *site;
+            let counter = *counter;
             let entry = self.0.entry(site).or_insert(counter);
             *entry = max(*entry, counter);
         }

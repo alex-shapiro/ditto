@@ -9,6 +9,7 @@ use sequence;
 use traits::*;
 
 use serde_json::{self, Value as SJValue};
+use std::borrow::Cow;
 use std::collections::HashMap;
 use std::hash::Hash;
 use std::str::FromStr;
@@ -22,9 +23,9 @@ pub struct Json {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct JsonState {
-    value: JsonValue,
-    tombstones: Tombstones,
+pub struct JsonState<'a> {
+    value: Cow<'a, JsonValue>,
+    tombstones: Cow<'a, Tombstones>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -81,7 +82,7 @@ pub trait IntoJson {
 
 impl Json {
 
-    crdt_impl!(Json, JsonState, JsonState, JsonValue);
+    crdt_impl!(Json, JsonState, 'static JsonState, JsonValue);
 
     /// Constructs and returns a new `Json` CRDT from a JSON string.
     /// The crdt has site 1 and counter 0.

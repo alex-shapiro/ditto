@@ -7,6 +7,7 @@ use traits::*;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
+use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
 use std::mem;
@@ -25,9 +26,9 @@ pub struct Set<T: SetElement> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
-pub struct SetState<T: SetElement>{
-    value: SetValue<T>,
-    tombstones: Tombstones,
+pub struct SetState<'a, T: SetElement + 'a>{
+    value: Cow<'a, SetValue<T>>,
+    tombstones: Cow<'a, Tombstones>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -47,7 +48,7 @@ pub enum LocalOp<T> {
 
 impl<T: SetElement> Set<T> {
 
-    crdt_impl!(Set, SetState, SetState<T>, SetValue<T>);
+    crdt_impl!(Set, SetState, 'static SetState<T>, SetValue<T>);
 
     /// Constructs and returns a new set CRDT.
     /// The set has site 1 and counter 0.
