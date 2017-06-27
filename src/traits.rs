@@ -25,6 +25,14 @@ macro_rules! crdt_impl {
             }
         }
 
+        /// Clones the CRDT's state.
+        pub fn clone_state(&self) -> $state_static {
+            $state_ident{
+                value: Cow::Owned(self.value.clone()),
+                tombstones: Cow::Owned(self.tombstones.clone())
+            }
+        }
+
         /// Consumes the CRDT and returns its state.
         pub fn into_state(self) -> $state_static {
             $state_ident {
