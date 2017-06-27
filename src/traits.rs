@@ -26,8 +26,8 @@ macro_rules! crdt_impl {
         }
 
         /// Consumes the CRDT and returns its state.
-        pub fn into_state(self) -> $state {
-            $state_ident{
+        pub fn into_state(self) -> $state_static {
+            $state_ident {
                 value: Cow::Owned(self.value),
                 tombstones: Cow::Owned(self.tombstones),
             }

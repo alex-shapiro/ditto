@@ -82,7 +82,7 @@ pub trait IntoJson {
 
 impl Json {
 
-    crdt_impl!(Json, JsonState, 'static JsonState, JsonValue);
+    crdt_impl!(Json, JsonState, JsonState, JsonState<'static>, JsonValue);
 
     /// Constructs and returns a new `Json` CRDT from a JSON string.
     /// The crdt has site 1 and counter 0.

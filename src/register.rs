@@ -46,7 +46,7 @@ impl<T: Clone> PartialEq for Element<T> {
 
 impl<T: Clone> Register<T> {
 
-    crdt_impl!(Register, RegisterState, 'static RegisterState<T>, RegisterValue<T>);
+    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterState<'static, T>, RegisterValue<T>);
 
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.

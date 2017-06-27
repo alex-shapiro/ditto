@@ -48,7 +48,7 @@ pub enum LocalOp<T> {
 
 impl<T: SetElement> Set<T> {
 
-    crdt_impl!(Set, SetState, 'static SetState<T>, SetValue<T>);
+    crdt_impl!(Set, SetState, SetState<T>, SetState<'static, T>, SetValue<T>);
 
     /// Constructs and returns a new set CRDT.
     /// The set has site 1 and counter 0.

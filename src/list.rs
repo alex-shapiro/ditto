@@ -43,7 +43,7 @@ pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
 
-    crdt_impl!(List, ListState, 'static ListState<T>, ListValue<T>);
+    crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
 
     /// Constructs and returns a new list.
     /// Th list has site 1 and counter 0.

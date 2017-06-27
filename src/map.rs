@@ -75,7 +75,7 @@ impl<V> Ord for Element<V> {
 
 impl<K: Key, V: Value> Map<K, V> {
 
-    crdt_impl!(Map, MapState, 'static MapState<K,V>, MapValue<K,V>);
+    crdt_impl!(Map, MapState, MapState<K,V>, MapState<'static, K,V>, MapValue<K,V>);
 
     /// Constructs and returns a new map.
     /// The map has site 1 and counter 0.

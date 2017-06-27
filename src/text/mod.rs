@@ -45,7 +45,7 @@ pub enum LocalChange {
 
 impl Text {
 
-    crdt_impl!(Text, TextState, 'static TextState, TextValue);
+    crdt_impl!(Text, TextState, TextState, TextState<'static>, TextValue);
 
     /// Constructs and returns a new `Text` crdt.
     /// The crdt has site 1 and counter 0.
