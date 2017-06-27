@@ -17,9 +17,14 @@ macro_rules! crdt_impl {
             &self.value
         }
 
-        /// Clones the CRDT's inner value.
+        /// Clones the CRDT's state.
         pub fn clone_state(&self) -> $state {
             $state_ident{value: self.value.clone(), tombstones: self.tombstones.clone()}
+        }
+
+        /// Consumes the CRDT and returns its state.
+        pub fn into_state(self) -> $state {
+            $state_ident {value: self.value, tombstones: self.tombstones}
         }
 
         /// Constructs a new CRDT from a state and a site.
