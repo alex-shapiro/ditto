@@ -11,7 +11,7 @@ rmp-serde = "0.13"
 [dependencies]
 char_fns = "0.1"
 lazy_static = "0.2"
-num = "0.1.36"
+num = "0.1"
 rand = "0.3"
 rustc-serialize = "0.3"
 serde = "1.0"
