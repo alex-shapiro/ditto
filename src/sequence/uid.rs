@@ -16,13 +16,13 @@
 //! ahead of time is inherently coordinated, and UID bit
 //! size increases more slowly with the number of elements.
 
+use base64;
 use Error;
 use num::bigint::{BigUint, ToBigUint};
 use num::cast::ToPrimitive;
 use rand::distributions::{IndependentSample, Range};
 use rand;
 use Replica;
-use rustc_serialize::base64::{self, ToBase64, FromBase64};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use serde::de::{self, Visitor, SeqAccess};
 use std::cmp::{self, Ordering};
@@ -30,9 +30,9 @@ use std::fmt::{self, Debug};
 use std::str::FromStr;
 use vlq;
 
-const BASE_LEVEL: usize = 3;
+const BASE_LEVEL: usize = 9;
 const MAX_LEVEL:  usize = 32;
-const BOUNDARY:   usize = 10;
+const BOUNDARY:   usize = 7;
 
 #[derive(Clone,PartialEq,Eq)]
 pub struct UID {
@@ -61,9 +61,9 @@ impl UID {
     }
 
     pub fn between(uid1: &UID, uid2: &UID, replica: &Replica) -> Self {
-        let ref position1       = uid1.position;
-        let ref position2       = uid2.position;
-        let mut position        = big(1);
+        let ref position1        = uid1.position;
+        let ref position2        = uid2.position;
+        let mut position         = big(1);
         let mut significant_bits = 1;
 
         for level in BASE_LEVEL..(MAX_LEVEL+1) {
@@ -91,7 +91,7 @@ impl UID {
     fn get_pos(position: &BigUint, level: usize, significant_bits: usize) -> Option<usize> {
         let bits = position.bits();
         if bits >= significant_bits {
-            let insignificant_bits = position.bits() - significant_bits;
+            let insignificant_bits = bits - significant_bits;
             let level_mask = big((1 << level) - 1);
             let pos = (position >> insignificant_bits) & level_mask;
             Some(pos.to_usize().unwrap())
@@ -206,12 +206,7 @@ impl Debug for UID {
 
 impl ToString for UID {
     fn to_string(&self) -> String {
-        self.to_vlq().to_base64(base64::Config{
-            char_set: base64::CharacterSet::Standard,
-            newline: base64::Newline::LF,
-            pad: false,
-            line_length: None,
-        })
+        base64::encode_config(&self.to_vlq(), base64::URL_SAFE_NO_PAD)
     }
 }
 
@@ -219,7 +214,7 @@ impl FromStr for UID {
     type Err = Error;
 
     fn from_str(s: &str) -> Result<Self, Self::Err> {
-        let vlq = s.from_base64().map_err(|_| Error::DeserializeSequenceUID)?;
+        let vlq = base64::decode_config(s, base64::URL_SAFE_NO_PAD).map_err(|_| Error::DeserializeSequenceUID)?;
         UID::from_vlq(&vlq)
     }
 }
@@ -270,7 +265,7 @@ mod tests {
     #[test]
     fn test_min() {
         let uid = UID::min();
-        assert!(uid.position == big(0b1000));
+        assert!(uid.position == big(0b1_000000000));
         assert!(uid.site == 0);
         assert!(uid.counter == 0);
     }
@@ -278,31 +273,31 @@ mod tests {
     #[test]
     fn test_max() {
         let uid = UID::max();
-        assert!(uid.position == big(0b1111));
+        assert!(uid.position == big(0b1_111111111));
         assert!(uid.site == 4294967295);
         assert!(uid.counter == 4294967295);
     }
 
     #[test]
     fn test_ord() {
-        let uid1 = UID::min();
-        let uid2 = UID{position: big(0b10000101), site: 8, counter: 382};
-        let uid3 = UID{position: big(0b1010101), site: 1, counter: 5};
-        let uid4 = UID{position: big(0b1010101), site: 1, counter: 5};
-        let uid5 = UID{position: big(0b1101111), site: 4, counter: 4};
-        let uid6 = UID{position: big(0b11011111), site: 4, counter: 4};
-        let uid7 = UID::max();
+        let uid0 = UID::min();
+        let uid1 = UID{position: big(0b1_0000101001_1001010010), site: 8, counter: 382};
+        let uid2 = UID{position: big(0b1_0101010010), site: 1, counter: 5};
+        let uid3 = UID{position: big(0b1_0101010010), site: 1, counter: 5};
+        let uid4 = UID{position: big(0b1_1011110010), site: 4, counter: 4};
+        let uid5 = UID{position: big(0b1_1011111101), site: 4, counter: 4};
+        let uid6 = UID::max();
 
-        let mut uids: Vec<&UID> = vec![&uid5, &uid2, &uid6, &uid7, &uid1, &uid3, &uid4];
+        let mut uids: Vec<&UID> = vec![&uid4, &uid1, &uid5, &uid6, &uid0, &uid2, &uid3];
         uids.sort();
 
-        assert!(uids[0] == &uid1);
-        assert!(uids[1] == &uid2);
-        assert!(uids[2] == &uid3);
-        assert!(uids[3] == &uid3);
-        assert!(uids[4] == &uid5);
-        assert!(uids[5] == &uid6);
-        assert!(uids[6] == &uid7);
+        assert!(uids[0] == &uid0);
+        assert!(uids[1] == &uid1);
+        assert!(uids[2] == &uid2);
+        assert!(uids[3] == &uid2);
+        assert!(uids[4] == &uid4);
+        assert!(uids[5] == &uid5);
+        assert!(uids[6] == &uid6);
     }
 
     #[test]
@@ -311,79 +306,80 @@ mod tests {
         let uid2 = UID::max();
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
 
-        assert!(big(0b1_000) < uid.position);
-        assert!(big(0b1_111) > uid.position);
+        assert!(big(0b1_000000000) < uid.position);
+        assert!(big(0b1_111111111) > uid.position);
         assert!(uid.site == 3);
         assert!(uid.counter == 2);
     }
 
     #[test]
     fn test_between_basic() {
-        let uid1 = UID{position: big(0b1_010), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_100), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_011111110), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_100000000), site: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(uid.position == big(0b1011));
+        assert!(uid.position == big(0b1_011111111));
     }
 
     #[test]
     fn test_between_multi_level() {
-        let uid1 = UID{position: big(0b1_100_0001), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_100_0011), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_111110000), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_111110001), site: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(big(0b1_100_0010) == uid.position);
+        assert!(uid.position < big(0b1_111110000_1111111111));
+        assert!(uid.position > big(0b1_111110000_1111110111));
     }
 
     #[test]
     fn test_between_squeeze() {
-        let uid1 = UID{position: big(0b1_010_0100_00100), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_011_0101_00110), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_111110000_0011010100_10101010101), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_111110000_0011010110_10101010101), site: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(big(0b1_010_0100_00101) == uid.position);
+        assert!(uid.position == big(0b1_111110000_0011010101))
     }
 
     #[test]
     fn test_between_boundary_plus() {
-        let uid1 = UID{position: big(0b1_001_0001_00001), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_001_0001_11101), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_001100111_1001011010_00000000001), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_001100111_1001011010_11111000001), site: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(big(0b1_001_0001_00001) < uid.position);
-        assert!(big(0b1_001_0001_01101) > uid.position);
+        assert!(uid.position > big(0b1_001100111_1001011010_00000000001));
+        assert!(uid.position < big(0b1_001100111_1001011010_00000001001));
     }
 
     #[test]
     fn test_between_boundary_minus() {
-        let uid1 = UID{position: big(0b1_001_0001), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_001_1111), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_001100111_0000000001), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_001100111_1111000001), site: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(big(0b1_001_0100) < uid.position);
-        assert!(big(0b1_001_1111) > uid.position);
+        assert!(uid.position > big(0b1_001100111_1110111001));
+        assert!(uid.position < big(0b1_001100111_1111000001));
     }
 
     #[test]
     fn test_between_equals() {
-        let uid1 = UID{position: big(0b1_001_0001), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_001_0001), site: 2, counter: 1};
+        let uid1 = UID{position: big(0b1_001100111_0000000001), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_001100111_0000000001), site: 2, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(big(0b1_001_0001_00000) < uid.position);
-        assert!(big(0b1_001_0001_01011) > uid.position);
+        assert!(uid.position > big(0b1_001100111_0000000001_00000000000));
+        assert!(uid.position < big(0b1_001100111_0000000001_00000001000));
     }
 
     #[test]
     fn test_between_first_is_shorter() {
-        let uid1 = UID{position: big(0b1_001), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_001_0001), site: 2, counter: 1};
+        let uid1 = UID{position: big(0b1_001100111), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_001100111_0000000001), site: 2, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(big(0b1_001_0000_00000) < uid.position);
-        assert!(big(0b1_001_0000_01011) > uid.position);
+        assert!(uid.position > big(0b1_001100111_0000000000_00000000000));
+        assert!(uid.position < big(0b1_001100111_0000000000_00000001000));
     }
 
     #[test]
     fn test_between_first_is_longer() {
-        let uid1 = UID{position: big(0b1_001_0001), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_010), site: 2, counter: 1};
+        let uid1 = UID{position: big(0b1_001100111_0000000001), site: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_001101000), site: 2, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
-        assert!(big(0b1_001_0100) < uid.position);
-        assert!(big(0b1_001_1111) > uid.position);
+        assert!(uid.position > big(0b1_001100111_1111110111));
+        assert!(uid.position < big(0b1_001100111_1111111111));
     }
 
     #[test]
