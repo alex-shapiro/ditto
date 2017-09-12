@@ -96,7 +96,7 @@ impl Node {
                 }
             }
         }
-        unreachable!()
+        unreachable!("node: {:?}, index: {}", self, i);
     }
 
     fn get_index(&self, uid: &UID) -> Option<usize> {
@@ -341,7 +341,7 @@ impl Node {
 
     fn last_uid(&self) -> UID {
         let mut node = self;
-        while self.is_internal() { node = &node.children.last().expect("Child must exist!") }
+        while node.is_internal() { node = &node.children.last().expect("Child must exist!") }
         node.elements.last().expect("Element must exist!").uid.clone()
     }
 }
