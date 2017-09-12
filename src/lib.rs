@@ -27,13 +27,13 @@ pub mod json;
 pub mod list;
 pub mod map;
 pub mod register;
+pub mod sequence;
 pub mod set;
 pub mod text;
 
 mod error;
 mod map_tuple_vec;
 mod replica;
-mod sequence;
 mod vlq;
 
 pub use traits::{CrdtValue, CrdtRemoteOp};

@@ -39,7 +39,7 @@ impl TextValue {
 
         let removes = match offset {
             0 => vec![],
-            _ => vec![self.0.remove(&uid).expect("Element must exist!")],
+            _ => vec![self.0.remove(&uid).expect("Element must exist F!")],
         };
 
         let inserts = {
@@ -92,7 +92,7 @@ impl TextValue {
             }
 
             if removed_len > len {
-                let overremoved_elt = &removes.last().expect("Element must exist!");
+                let overremoved_elt = &removes.last().expect("Element must exist G!");
                 let offset = overremoved_elt.len + len - removed_len;
                 let (_, text) = overremoved_elt.text.char_split(offset);
                 let element = {
@@ -131,14 +131,14 @@ impl TextValue {
 
         for uid in &op.removes {
             if let Some(char_index) = self.0.get_index(&uid) {
-                let element = self.0.remove(&uid).expect("Element must exist!");
+                let element = self.0.remove(&uid).expect("Element must exist H!");
                 changes.push(LocalChange::Remove{index: char_index, len: element.len});
             }
         }
 
         for element in &op.inserts {
             if let Ok(_) = self.0.insert(element.clone()) {
-                let char_index = self.0.get_index(&element.uid).expect("Element must exist!");
+                let char_index = self.0.get_index(&element.uid).expect("Element must exist I!");
                 changes.push(LocalChange::Insert{index: char_index, text: element.text.clone()});
             }
         }

@@ -132,7 +132,7 @@ impl Node {
         let (median, new_child) = {
             let ref mut child = self.children[i];
             let elements = child.elements.split_off(B);
-            let median = child.elements.pop().expect("Element must exist!");
+            let median = child.elements.pop().expect("Element must exist A!");
             let children = match child.is_leaf() {
                 true  => vec![],
                 false => child.children.split_off(B),
@@ -225,7 +225,7 @@ impl Node {
             if self.child_has_spare_element(index) {
                 let ref mut prev = self.children[index];
                 let predecessor_uid = prev.last_uid();
-                let e = prev.remove(&predecessor_uid).expect("Element must exist!");
+                let e = prev.remove(&predecessor_uid).expect("Element must exist B!");
                 let removed_element = mem::replace(&mut self.elements[index], e);
                 self.len -= removed_element.len;
                 Some(removed_element)
@@ -233,7 +233,7 @@ impl Node {
             } else if self.child_has_spare_element(index+1) {
                 let ref mut next = self.children[index+1];
                 let successor_uid = next.first_uid();
-                let e = next.remove(&successor_uid).expect("Element must exist!");
+                let e = next.remove(&successor_uid).expect("Element must exist C!");
                 let removed_element = mem::replace(&mut self.elements[index], e);
                 self.len -= removed_element.len;
                 Some(removed_element)
@@ -300,7 +300,7 @@ impl Node {
     }
 
     fn pop_last(&mut self) -> (Element, Option<Self>) {
-        let element = self.elements.pop().expect("Element must exist!");
+        let element = self.elements.pop().expect("Element must exist D!");
         self.len -= element.len;
         if let Some(child) = self.children.pop() {
             self.len -= child.len;
@@ -342,7 +342,7 @@ impl Node {
     fn last_uid(&self) -> UID {
         let mut node = self;
         while node.is_internal() { node = &node.children.last().expect("Child must exist!") }
-        node.elements.last().expect("Element must exist!").uid.clone()
+        node.elements.last().expect("Element must exist E!").uid.clone()
     }
 }
 
