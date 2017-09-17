@@ -131,22 +131,19 @@ impl Node {
     fn split_child(&mut self, i: usize) {
         let (median, new_child) = {
             let ref mut child = self.children[i];
+
             let elements = child.elements.split_off(B);
-            let median = child.elements.pop().expect("Element must exist A!");
-            let children = match child.is_leaf() {
-                true  => vec![],
-                false => child.children.split_off(B),
-            };
+            let median   = child.elements.pop().expect("Element must exist A!");
+            let children = if child.is_leaf() { vec![] } else { child.children.split_off(B) };
 
-            let mut new_child_len = elements.iter().map(|e| e.len).sum();
-            new_child_len += children.iter().map(|e| e.len).sum();
-            let new_child = Node{
-                len: new_child_len,
-                elements: elements,
-                children: children,
-            };
+            let new_child_len =
+                elements.iter().fold(0, |sum, e| sum + e.len) +
+                children.iter().fold(0, |sum, e| sum + e.len);
 
-            child.len -= new_child.len + median.len;
+            let new_child = Node{len: new_child_len, elements, children};
+
+            child.len -= new_child_len + median.len;
+
             (median, new_child)
         };
 
@@ -183,17 +180,20 @@ impl Node {
     /// elements)
     fn insert(&mut self, elt: Element) -> Result<(), Error> {
         let mut index = self.elements.binary_search(&elt).err().ok_or(Error::DuplicateUID)?;
-        self.len += elt.len;
+        let elt_len = elt.len;
+
         if self.is_leaf() {
             self.elements.insert(index, elt);
-            Ok(())
         } else {
             if self.children[index].is_full() {
                 self.split_child(index);
                 if elt > self.elements[index] { index += 1 }
             }
-            self.children[index].insert(elt)
+            self.children[index].insert(elt)?;
         }
+
+        self.len += elt_len;
+        Ok(())
     }
 
     /// Delete an element from a tree, returning the removed element.
@@ -495,6 +495,24 @@ mod tests {
     }
 
     #[test]
+    fn insert_duplicate() {
+        let mut btree = BTree::new();
+
+        for _ in 0..300 {
+            insert_random(&mut btree, "I");
+        }
+
+        let element1 = remove_at(&mut btree, 50);
+        let element2 = element1.clone();
+
+        btree.insert(element1).unwrap();
+        assert!(btree.len() == 300);
+
+        btree.insert(element2).unwrap_err();
+        assert!(btree.len() == 300);
+    }
+
+    #[test]
     fn insert_emoji() {
         let mut btree = BTree::new();
         insert_at(&mut btree, 0, "hello");
@@ -519,6 +537,21 @@ mod tests {
         assert!(btree.root.is_leaf());
         assert!(btree.root.elements[0].text == "hello");
         assert!(btree.root.elements[1].text == "goodbye");
+    }
+
+    #[test]
+    fn remove_duplicate() {
+        let mut btree = BTree::new();
+
+        for _ in 0..300 {
+            insert_random(&mut btree, "I");
+        }
+
+        let element = remove_at(&mut btree, 100);
+        assert!(btree.len() == 299);
+
+        assert!(btree.remove(&element.uid).is_none());
+        assert!(btree.len() == 299);
     }
 
     #[test]
