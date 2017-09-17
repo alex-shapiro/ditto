@@ -131,22 +131,21 @@ impl Node {
     fn split_child(&mut self, i: usize) {
         let (median, new_child) = {
             let ref mut child = self.children[i];
+
             let elements = child.elements.split_off(B);
-            let median = child.elements.pop().expect("Element must exist A!");
-            let children = match child.is_leaf() {
-                true  => vec![],
-                false => child.children.split_off(B),
-            };
+            let median   = child.elements.pop().expect("Element must exist A!");
+            let children = if child.is_leaf() { vec![] } else { child.children.split_off(B) };
 
-            let mut new_child_len = elements.iter().map(|e| e.len).sum();
-            new_child_len += children.iter().map(|e| e.len).sum();
-            let new_child = Node{
-                len: new_child_len,
-                elements: elements,
-                children: children,
-            };
+            child.len =
+                child.elements.iter().fold(0, |sum, e| sum + e.len) +
+                child.children.iter().fold(0, |sum, e| sum + e.len);
 
-            child.len -= new_child.len + median.len;
+            let new_child_len =
+                elements.iter().fold(0, |sum, e| sum + e.len) +
+                children.iter().fold(0, |sum, e| sum + e.len);
+
+            let new_child = Node{len: new_child_len, elements, children};
+
             (median, new_child)
         };
 
