@@ -34,7 +34,7 @@ pub struct RemoteOp {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocalOp {
-    changes: Vec<LocalChange>,
+    pub changes: Vec<LocalChange>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
