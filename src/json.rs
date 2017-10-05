@@ -59,8 +59,8 @@ pub enum RemoteUID {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocalOp {
-    pointer: Vec<LocalUID>,
-    op: LocalOpInner,
+    pub pointer: Vec<LocalUID>,
+    pub op: LocalOpInner,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
