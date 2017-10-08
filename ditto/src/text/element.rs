@@ -1,4 +1,5 @@
 use char_fns::CharFns;
+use order_statistic_tree;
 use Replica;
 use sequence::uid::{self, UID};
 use std::cmp::Ordering;
@@ -55,6 +56,18 @@ impl PartialOrd for Element {
 impl Ord for Element {
     fn cmp(&self, other: &Element) -> Ordering {
         self.uid.cmp(&other.uid)
+    }
+}
+
+impl order_statistic_tree::Element for Element {
+    type Id = UID;
+
+    fn id(&self) -> &UID {
+        &self.uid
+    }
+
+    fn element_len(&self) -> usize {
+        self.len
     }
 }
 

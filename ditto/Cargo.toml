@@ -13,6 +13,7 @@ base64 = "0.6"
 char_fns = "0.1"
 lazy_static = "0.2"
 num = "0.1"
+order_statistic_tree = { path = "../order_statistic_tree" }
 rand = "0.3"
 serde = "1.0"
 serde_derive = "1.0"

@@ -3,7 +3,7 @@
 //! are indexed by unicode character.
 
 use {Error, Replica, Tombstones};
-use super::btree::BTree;
+use order_statistic_tree::Tree;
 use super::element::{self, Element};
 use super::{RemoteOp, LocalOp, LocalChange};
 use sequence::uid::UID;
@@ -11,13 +11,13 @@ use traits::{CrdtValue, AddSiteToAll};
 use char_fns::CharFns;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextValue(pub BTree);
+pub struct TextValue(pub Tree<Element>);
 
 impl TextValue {
 
     /// Constructs a new, empty TextValue.
     pub fn new() -> Self {
-        TextValue(BTree::new())
+        TextValue(Tree::new())
     }
 
     /// Returns the number of unicode characters in the TextValue.
@@ -33,7 +33,7 @@ impl TextValue {
         if text.is_empty() { return Err(Error::Noop) }
 
         let (uid, offset) = {
-            let (ref element, offset) = self.0.get_element(index)?;
+            let (ref element, offset) = self.get_element(index)?;
             (element.uid.clone(), offset)
         };
 
@@ -45,7 +45,7 @@ impl TextValue {
         let inserts = {
             let index = index - offset;
             let prev  = self.get_prev_element(index)?;
-            let (next, _) = self.0.get_element(index)?;
+            let (next, _) = self.get_element(index)?;
             if offset == 0 {
                 vec![Element::between(prev, next, text, replica)]
             } else {
@@ -84,7 +84,7 @@ impl TextValue {
         let mut inserts = vec![];
         if offset > 0 || removed_len > len {
             let prev = self.get_prev_element(border_index)?;
-            let (next, _) = self.0.get_element(border_index)?;
+            let (next, _) = self.get_element(border_index)?;
 
             if offset > 0 {
                 let (text, _) = removes[0].text.char_split(offset);
@@ -130,7 +130,7 @@ impl TextValue {
         let mut changes = Vec::with_capacity(op.inserts.len() + op.removes.len());
 
         for uid in &op.removes {
-            if let Some(char_index) = self.0.get_index(&uid) {
+            if let Some(char_index) = self.0.get_idx(&uid) {
                 let element = self.0.remove(&uid).expect("Element must exist H!");
                 changes.push(LocalChange::Remove{index: char_index, len: element.len});
             }
@@ -138,7 +138,7 @@ impl TextValue {
 
         for element in &op.inserts {
             if let Ok(_) = self.0.insert(element.clone()) {
-                let char_index = self.0.get_index(&element.uid).expect("Element must exist I!");
+                let char_index = self.0.get_idx(&element.uid).expect("Element must exist I!");
                 changes.push(LocalChange::Insert{index: char_index, text: element.text.clone()});
             }
         }
@@ -151,12 +151,12 @@ impl TextValue {
 
     pub fn merge(&mut self, other: TextValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let removed_uids: Vec<UID> = self.0.into_iter()
-            .filter(|e| other.0.get_index(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .filter(|e| other.0.get_idx(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
             .map(|e| e.uid.clone())
             .collect();
 
         let new_elements: Vec<Element> = other.0.into_iter()
-            .filter(|e| self.0.get_index(&e.uid).is_none() && !self_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .filter(|e| self.0.get_idx(&e.uid).is_none() && !self_tombstones.contains_pair(e.uid.site, e.uid.counter))
             .map(|e| e.clone())
             .collect();
 
@@ -171,7 +171,7 @@ impl TextValue {
 
     fn remove_at(&mut self, index: usize) -> Result<(Element, usize), Error> {
         let (uid, offset) = {
-            let (element, offset) = self.0.get_element(index)?;
+            let (element, offset) = self.0.get_elt(index)?;
             (element.uid.clone(), offset)
         };
         let element = self.0.remove(&uid).expect("Element must exist for UID!");
@@ -182,8 +182,15 @@ impl TextValue {
         if index == 0 {
             Ok(&*element::START)
         } else {
-            let (prev, _) = self.0.get_element(index-1)?;
-            Ok(prev)
+            Ok(self.0.get_elt(index-1)?.0)
+        }
+    }
+
+    fn get_element(&self, index: usize) -> Result<(&Element, usize), Error> {
+        if index == self.len() {
+            Ok((&*element::END, 0))
+        } else {
+            Ok(self.0.get_elt(index)?)
         }
     }
 }
@@ -537,17 +544,17 @@ mod tests {
         text.add_site(&op1, 4);
         text.add_site(&op2, 8);
 
-        let (e1, _) = text.0.get_element(0).unwrap();
+        let (e1, _) = text.get_element(0).unwrap();
         assert!(e1.uid.site == 4);
         assert!(e1.uid.counter == 1);
 
-        let (e2, _) = text.0.get_element(1).unwrap();
+        let (e2, _) = text.get_element(1).unwrap();
         assert!(e2.uid.site == 8);
         assert!(e2.uid.counter == 2);
     }
 
     fn elt_at<'a>(string: &'a TextValue, index: usize, text: &'static str) -> &'a Element {
-        let (element, offset) = string.0.get_element(index).expect("Element does not exist!");
+        let (element, offset) = string.get_element(index).expect("Element does not exist!");
         assert!(offset == 0);
         assert!(element.text == text);
         assert!(element.len == element.text.char_len());

@@ -17,10 +17,12 @@ const B: usize = 6;
 const MIN_LEN: usize = B - 1;
 const CAPACITY: usize = 2 * B - 1;
 
+#[derive(Debug, Clone, PartialEq)]
 pub struct Tree<T> {
     root: Node<T>,
 }
 
+#[derive(Debug, Clone, PartialEq)]
 struct Node<T> {
     len: usize,
     elements: Vec<T>,
