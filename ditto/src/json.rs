@@ -248,7 +248,7 @@ impl JsonValue {
                 }
                 &mut JsonValue::Array(ref mut list_value) => {
                     let index = usize::from_str(key)?;
-                    let mut element = list_value.get_mut(index).ok_or(Error::DoesNotExist)?;
+                    let mut element = list_value.0.get_mut_elt(index)?.0;
                     let uid = RemoteUID::Array(element.0.clone());
                     remote_pointer.push(uid);
                     value = Some(&mut element.1)
@@ -272,8 +272,8 @@ impl JsonValue {
                     Some(&mut element.1)
                 }
                 (&mut JsonValue::Array(ref mut list_value), &RemoteUID::Array(ref uid)) => {
-                    let index = try_opt!(list_value.find_index(uid).ok());
-                    let mut element = try_opt!(list_value.get_mut(index));
+                    let index = try_opt!(list_value.0.get_idx(uid));
+                    let element = try_opt!(list_value.0.lookup_mut(uid));
                     local_pointer.push(LocalUID::Array(index));
                     Some(&mut element.1)
                 }
@@ -512,10 +512,10 @@ fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<
 
 fn add_site_list(list_value: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
     if let list::RemoteOp::Insert(list::Element(ref uid, _)) = *op {
-        let index = some!(list_value.find_index(uid).ok());
-        let ref mut element = list_value.0[index];
+        let mut element = some!(list_value.0.remove(uid));
         element.0.site = site;
         element.1.add_site_to_all(site);
+        list_value.0.insert(element).unwrap();
     }
 }
 
@@ -731,7 +731,7 @@ mod tests {
     #[test]
     fn test_array_remove_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
-        assert!(crdt.array_remove("/things/5", 2).unwrap_err() == Error::DoesNotExist);
+        assert!(crdt.array_remove("/things/5", 2).unwrap_err() == Error::OutOfBounds);
     }
 
     #[test]
@@ -908,19 +908,15 @@ mod tests {
     fn test_merge() {
         let mut crdt1 = Json::from_str(r#"{"x":[{"a": 1},{"b": 2},{"c":true},{"d":false}]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
-        let _ = crdt1.object_insert("/x/0", "e".to_owned(), 222.0);
-        let _ = crdt1.object_insert("/x/3", "e".to_owned(), 333.0);
-        let _ = crdt1.array_remove("/x", 2);
-        let _ = crdt2.object_insert("/x/1", "e".to_owned(), 444.0);
-        let _ = crdt2.array_remove("/x", 3);
+        let _ = crdt1.object_insert("/x/0", "e".to_owned(), 222.0).unwrap();
+        let _ = crdt1.object_insert("/x/3", "e".to_owned(), 333.0).unwrap();
+        let _ = crdt1.array_remove("/x", 2).unwrap();
+        let _ = crdt2.object_insert("/x/1", "e".to_owned(), 444.0).unwrap();
+        let _ = crdt2.array_remove("/x", 3).unwrap();
 
         let crdt1_state = crdt1.clone_state();
         crdt1.merge(crdt2.clone_state());
         crdt2.merge(crdt1_state);
-
-        println!("{:?}", &crdt1.value);
-        println!("{:?}", &crdt2.value);
-        println!("{:?}", &crdt1.local_value());
 
         assert!(crdt1.value == crdt2.value);
         assert!(crdt1.tombstones == crdt2.tombstones);
@@ -953,15 +949,15 @@ mod tests {
         }
         {
             let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());
-            let mut text_elements = text.0.into_iter();
+            let mut text_elements = text.0.iter();
             assert!(text_elements.next().unwrap().uid.site == 11);
             assert!(text_elements.next().unwrap().uid.site == 11);
         }
         {
             let list = as_list(nested_value(&mut crdt2, "/baz/abc").unwrap());
-            assert!(list.0[0].0.site == 11);
-            assert!(list.0[1].0.site == 11);
-            assert!(list.0[2].0.site == 11);
+            assert!((list.0.get_elt(0).unwrap().0).0.site == 11);
+            assert!((list.0.get_elt(1).unwrap().0).0.site == 11);
+            assert!((list.0.get_elt(2).unwrap().0).0.site == 11);
         }
 
         // check that the remote ops' elements have the correct sites

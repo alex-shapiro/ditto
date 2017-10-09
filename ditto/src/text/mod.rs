@@ -2,7 +2,6 @@
 
 mod value;
 mod element;
-mod btree;
 
 use {Error, Replica, Tombstones};
 pub use self::value::TextValue;

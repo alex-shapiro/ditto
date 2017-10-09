@@ -1,0 +1,10 @@
+[package]
+name = "order_statistic_tree"
+version = "0.1.0"
+authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
+
+[dev_dependencies]
+rand = "0.3"
+
+[dependencies]
+serde = "1.0"
