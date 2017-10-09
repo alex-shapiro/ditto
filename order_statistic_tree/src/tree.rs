@@ -2,6 +2,7 @@
 //!
 //! * insert(e) inserts an element into the tree.
 //! * remove(id) removes an element from the tree.
+//! * lookup(id) finds an element in the tree.
 //! * get_elt(idx) finds the tree element at index i and the
 //!   distance from its beginning to idx.
 //! * get_idx(id) finds the start index of the tree element
@@ -77,6 +78,18 @@ impl<T: Element> Tree<T> {
         self.root.remove(id)
     }
 
+    /// Returns a refence to an element from the tree,
+    /// or None if the element is not in the tree.
+    pub fn lookup(&self, id: &T::Id) -> Option<&T> {
+        self.root.lookup(id)
+    }
+
+    /// Returns a mutable refence to an element from the tree,
+    /// or None if the element is not in the tree.
+    pub fn lookup_mut(&mut self, id: &T::Id) -> Option<&mut T> {
+        self.root.lookup_mut(id)
+    }
+
     /// Returns the element that contains the character at
     /// location `index`, as well as the offset of `index`
     /// within the element. Returns an error if the index
@@ -84,6 +97,11 @@ impl<T: Element> Tree<T> {
     pub fn get_elt(&self, idx: usize) -> Result<(&T, usize), Error> {
         if idx >= self.len() { return Err(Error::OutOfBounds) }
         Ok(self.root.get_elt(idx))
+    }
+
+    pub fn get_mut_elt(&mut self, idx: usize) -> Result<(&mut T, usize), Error> {
+        if idx >= self.len() { return Err(Error::OutOfBounds) }
+        Ok(self.root.get_mut_elt(idx))
     }
 
     /// Returns the start index of a tree element, or None
@@ -97,12 +115,43 @@ impl<T: Element> Tree<T> {
     pub fn iter(&self) -> Iter<T> {
         self.into_iter()
     }
+
+    pub fn into_iter(self) -> IntoIter<T> {
+        <Self as IntoIterator>::into_iter(self)
+    }
 }
 
 impl<T: Element> Node<T> {
 
     fn new() -> Self {
         Node{len: 0, elements: vec![], children: vec![]}
+    }
+
+    fn lookup(&self, id: &T::Id) -> Option<&T> {
+        match self.elements.binary_search_by(|elt| elt.id().cmp(id)) {
+            Ok(idx) => self.elements.get(idx),
+            Err(idx) => {
+                if self.is_internal() {
+                    self.children[idx].lookup(id)
+                } else {
+                    None
+                }
+            }
+        }
+    }
+
+    fn lookup_mut(&mut self, id: &T::Id) -> Option<&mut T> {
+        match self.elements.binary_search_by(|elt| elt.id().cmp(id)) {
+            Ok(idx) => self.elements.get_mut(idx),
+            Err(idx) => {
+                if self.is_internal() {
+                    let ref mut child = self.children[idx];
+                    child.lookup_mut(id)
+                } else {
+                    None
+                }
+            }
+        }
     }
 
     fn get_elt(&self, mut idx: usize) -> (&T, usize) {
@@ -115,6 +164,26 @@ impl<T: Element> Node<T> {
             let mut elements = self.elements.iter();
             for child in &self.children {
                 if idx < child.len { return child.get_elt(idx) }
+                else { idx -= child.len }
+                if let Some(element) = elements.next() {
+                    if idx < element.element_len() { return (element, idx) }
+                    else { idx -= element.element_len() }
+                }
+            }
+        }
+        unreachable!();
+    }
+
+    fn get_mut_elt(&mut self, mut idx: usize) -> (&mut T, usize) {
+        if self.is_leaf() {
+            for element in &mut self.elements {
+                if idx < element.element_len() { return (element, idx) }
+                else { idx -= element.element_len() }
+            }
+        } else {
+            let mut elements = self.elements.iter_mut();
+            for child in &mut self.children {
+                if idx < child.len { return child.get_mut_elt(idx) }
                 else { idx -= child.len }
                 if let Some(element) = elements.next() {
                     if idx < element.element_len() { return (element, idx) }
@@ -399,18 +468,6 @@ impl<'a, T: 'static + Element> IntoIterator for &'a Tree<T> {
     }
 }
 
-impl<'a, T: Element> FromIterator<T> for Tree<T> {
-    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
-        let mut tree: Tree<T> = Tree::new();
-
-        for element in iter {
-            let _ = tree.insert(element);
-        }
-
-        tree
-    }
-}
-
 impl<'a, T: Element> Iterator for Iter<'a, T> {
     type Item = &'a T;
 
@@ -433,6 +490,45 @@ impl<'a, T: Element> Iterator for Iter<'a, T> {
                 }
             }
         }
+    }
+}
+
+pub struct IntoIter<T: 'static> {
+    tree: Tree<T>,
+}
+
+impl<T: 'static + Element> IntoIterator for Tree<T> {
+    type Item = T;
+    type IntoIter = IntoIter<T>;
+
+    fn into_iter(self) -> Self::IntoIter {
+        IntoIter{tree: self}
+    }
+}
+
+impl<T: Element> Iterator for IntoIter<T> {
+    type Item = T;
+
+    fn next(&mut self) -> Option<Self::Item> {
+        let id = if let Ok((elt, _)) = self.tree.get_elt(0) {
+            elt.id().clone()
+        } else {
+            return None
+        };
+
+        self.tree.remove(&id)
+    }
+}
+
+impl<'a, T: Element> FromIterator<T> for Tree<T> {
+    fn from_iter<I: IntoIterator<Item=T>>(iter: I) -> Self {
+        let mut tree: Tree<T> = Tree::new();
+
+        for element in iter {
+            let _ = tree.insert(element);
+        }
+
+        tree
     }
 }
 

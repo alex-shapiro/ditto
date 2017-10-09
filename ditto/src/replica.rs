@@ -17,7 +17,6 @@ impl Replica {
     }
 }
 
-
 impl Tombstones {
     pub fn new() -> Self {
         Tombstones(HashMap::new())

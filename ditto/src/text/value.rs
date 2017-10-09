@@ -150,7 +150,7 @@ impl TextValue {
     }
 
     pub fn merge(&mut self, other: TextValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        let removed_uids: Vec<UID> = self.0.into_iter()
+        let removed_uids: Vec<UID> = self.0.iter()
             .filter(|e| other.0.get_idx(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
             .map(|e| e.uid.clone())
             .collect();
@@ -164,7 +164,7 @@ impl TextValue {
             let _ = self.0.remove(&uid);
         }
 
-        for element in new_elements.into_iter() {
+        for element in new_elements {
             let _ = self.0.insert(element);
         }
     }
@@ -202,7 +202,7 @@ impl CrdtValue for TextValue {
 
     fn local_value(&self) -> String {
         let mut string = String::with_capacity(self.0.len());
-        for element in self.0.into_iter() { string.push_str(&element.text) }
+        for element in self.0.iter() { string.push_str(&element.text) }
         string
     }
 
@@ -217,16 +217,15 @@ impl CrdtValue for TextValue {
 
 impl AddSiteToAll for TextValue {
     fn add_site_to_all(&mut self, site: u32) {
-        let uids: Vec<UID> = self.0.into_iter().map(|e| e.uid.clone()).collect();
-        for uid in uids {
-            let mut element = self.0.remove(&uid).expect("Element must exist");
+        let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
+        for mut element in old_tree {
             element.uid.site = site;
             let _ = self.0.insert(element);
         }
     }
 
     fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-        for element in self.0.into_iter() {
+        for element in self.0.iter() {
             try_assert!(element.uid.site == site, Error::InvalidRemoteOp);
         }
         Ok(())

@@ -2,15 +2,13 @@
 //! Elements in the list are immutable.
 
 use {Error, Replica, Tombstones};
+use order_statistic_tree::{self, Tree};
 use sequence::uid::{self, UID};
 use traits::*;
 use std::borrow::Cow;
-use std::cmp::Ordering;
-use std::mem;
-use std::slice;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct List<T> {
+pub struct List<T: 'static> {
     value: ListValue<T>,
     replica: Replica,
     tombstones: Tombstones,
@@ -18,13 +16,13 @@ pub struct List<T> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ListState<'a, T: Clone + 'a> {
+pub struct ListState<'a, T: Clone + 'a + 'static> {
     value: Cow<'a, ListValue<T>>,
     tombstones: Cow<'a, Tombstones>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct ListValue<T>(pub Vec<Element<T>>);
+pub struct ListValue<T: 'static>(pub Tree<Element<T>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum RemoteOp<T> {
@@ -41,7 +39,7 @@ pub enum LocalOp<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Element<T>(pub UID, pub T);
 
-impl<T: Clone> List<T> {
+impl<T: Clone + ::std::fmt::Debug> List<T> {
 
     crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
 
@@ -62,7 +60,8 @@ impl<T: Clone> List<T> {
     /// Returns a reference to the element at position `index`.
     /// Returns None if the index is out-of-bounds.
     pub fn get(&self, index: usize) -> Option<&T> {
-        self.value.0.get(index).and_then(|element| Some(&element.1))
+        let element = try_opt!(self.value.0.get_elt(index).ok()).0;
+        Some(&element.1)
     }
 
     /// Inserts an element at position `index` within the list,
@@ -88,19 +87,11 @@ impl<T: Clone> List<T> {
 
 impl<T: Clone> ListValue<T> {
     pub fn new() -> Self {
-        ListValue(vec![])
+        ListValue(Tree::new())
     }
 
-    pub fn iter(&self) -> slice::Iter<Element<T>> {
+    pub fn iter(&self) -> order_statistic_tree::Iter<Element<T>> {
         self.0.iter()
-    }
-
-    pub fn find_index(&self, uid: &UID) -> Result<usize, usize> {
-        self.0.binary_search_by(|element| element.0.cmp(uid))
-    }
-
-    pub fn get_mut(&mut self, index: usize) -> Option<&mut Element<T>> {
-        self.0.get_mut(index)
     }
 
     pub fn insert(&mut self, index: usize, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
@@ -108,19 +99,19 @@ impl<T: Clone> ListValue<T> {
         if index > max_index { return Err(Error::OutOfBounds) }
 
         let uid = {
-            let uid1 = if index == 0 { &*uid::MIN } else { &self.0[index-1].0 };
-            let uid2 = if index == max_index { &*uid::MAX } else { &self.0[index].0 };
+            let uid1 = if index == 0 { &*uid::MIN } else { &(self.0.get_elt(index-1)?.0).0 };
+            let uid2 = if index == max_index { &*uid::MAX } else { &(self.0.get_elt(index)?.0).0 };
             UID::between(uid1, uid2, replica)
         };
 
         let element = Element(uid, value);
-        self.0.insert(index, element.clone());
+        self.0.insert(element.clone())?;
         Ok(RemoteOp::Insert(element))
     }
 
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
-        if index >= self.0.len() { return Err(Error::OutOfBounds) }
-        let element = self.0.remove(index);
+        let uid = (self.0.get_elt(index)?.0).0.clone();
+        let element = self.0.remove(&uid).unwrap();
         Ok(RemoteOp::Remove(element.0))
     }
 
@@ -129,84 +120,62 @@ impl<T: Clone> ListValue<T> {
     pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
         match *op {
             RemoteOp::Insert(ref element) => {
-                let index = try_opt!(self.find_index(&element.0).err());
-                self.0.insert(index, element.clone());
+                try_opt!(self.0.insert(element.clone()).ok());
+                let index = self.0.get_idx(&element.0).unwrap();
                 let value = element.1.clone();
-                Some(LocalOp::Insert{index: index, value: value})
+                Some(LocalOp::Insert{index, value})
             }
             RemoteOp::Remove(ref uid) => {
-                let index = try_opt!(self.find_index(&uid).ok());
-                self.0.remove(index);
-                Some(LocalOp::Remove{index: index})
+                let index = try_opt!(self.0.get_idx(uid));
+                let _ = self.0.remove(&uid).unwrap();
+                Some(LocalOp::Remove{index})
             }
         }
     }
 
     pub fn merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        let mut self_iter = mem::replace(&mut self.0, vec![]).into_iter();
-        let mut other_iter = other.0.into_iter();
-        let mut s_element = self_iter.next();
-        let mut o_element = other_iter.next();
+        let removed_uids: Vec<UID> = self.0.iter()
+            .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site, e.0.counter))
+            .map(|e| e.0.clone())
+            .collect();
 
-        while s_element.is_some() || o_element.is_some() {
-            match compare(s_element.as_ref(), o_element.as_ref()) {
-                Ordering::Equal => {
-                    self.0.push(mem::replace(&mut s_element, self_iter.next()).unwrap());
-                    o_element = other_iter.next();
-                }
-                Ordering::Less => {
-                    let element = mem::replace(&mut s_element, self_iter.next()).unwrap();
-                    if !other_tombstones.contains_pair(element.0.site, element.0.counter) {
-                        self.0.push(element);
-                    }
-                }
-                Ordering::Greater => {
-                    let element = mem::replace(&mut o_element, other_iter.next()).unwrap();
-                    if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
-                        self.0.push(element);
-                    }
-                }
-            }
+        let new_elements: Vec<Element<T>> = other.0.iter()
+            .filter(|e| self.0.get_idx(&e.0).is_none() && !self_tombstones.contains_pair(e.0.site, e.0.counter))
+            .map(|e| e.clone())
+            .collect();
+
+        for uid in removed_uids {
+            let _ = self.0.remove(&uid);
+        }
+
+        for element in new_elements {
+            let _ = self.0.insert(element);
         }
     }
 }
 
 impl<T: Clone + NestedValue> NestedValue for ListValue<T> {
     fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        let mut self_iter = mem::replace(&mut self.0, vec![]).into_iter();
-        let mut other_iter = other.0.into_iter();
-        let mut s_element = self_iter.next();
-        let mut o_element = other_iter.next();
+        {
+            let removed_uids: Vec<UID> = self.0.iter()
+                .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site, e.0.counter))
+                .map(|e| e.0.clone())
+                .collect();
 
-        while s_element.is_some() || o_element.is_some() {
-            match compare(s_element.as_ref(), o_element.as_ref()) {
-                Ordering::Equal => {
-                    let mut elt1 = mem::replace(&mut s_element, self_iter.next()).unwrap();
-                    let elt2 = mem::replace(&mut o_element, other_iter.next()).unwrap();
-                    elt1.1.nested_merge(elt2.1, self_tombstones, other_tombstones);
-                    self.0.push(elt1);
-                }
-                Ordering::Less => {
-                    let element = mem::replace(&mut s_element, self_iter.next()).unwrap();
-                    if !other_tombstones.contains_pair(element.0.site, element.0.counter) {
-                        self.0.push(element);
-                    }
-                }
-                Ordering::Greater => {
-                    let element = mem::replace(&mut o_element, other_iter.next()).unwrap();
-                    if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
-                        self.0.push(element);
-                    }
-                }
+            for uid in removed_uids {
+                let _ = self.0.remove(&uid);
+            }
+        }
+
+        for element in other.0.into_iter() {
+            if self.0.lookup(&element.0).is_some() {
+                let self_element = self.0.lookup_mut(&element.0).unwrap();
+                self_element.1.nested_merge(element.1, self_tombstones, other_tombstones);
+            } else if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
+                let _ = self.0.insert(element);
             }
         }
     }
-}
-
-fn compare<T>(e1: Option<&Element<T>>, e2: Option<&Element<T>>) -> Ordering {
-    let e1 = unwrap_or!(e1, Ordering::Greater);
-    let e2 = unwrap_or!(e2, Ordering::Less);
-    e1.0.cmp(&e2.0)
 }
 
 impl<T: Clone> CrdtValue for ListValue<T> {
@@ -224,17 +193,20 @@ impl<T: Clone> CrdtValue for ListValue<T> {
 
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert(Element(ref uid, _)) = *op {
-            let index = some!(self.find_index(uid).ok());
-            self.0[index].0.site = site;
+            let mut element = some!(self.0.remove(uid));
+            element.0.site = site;
+            let _ = self.0.insert(element);
         }
     }
 }
 
 impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
     fn add_site_to_all(&mut self, site: u32) {
-        for element in self.0.iter_mut() {
+        let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
+        for mut element in old_tree {
             element.0.site = site;
             element.1.add_site_to_all(site);
+            let _ = self.0.insert(element);
         }
     }
 
@@ -244,6 +216,14 @@ impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
             try!(element.1.validate_site_for_all(site));
         }
         Ok(())
+    }
+}
+
+impl<T> order_statistic_tree::Element for Element<T> {
+    type Id = UID;
+
+    fn id(&self) -> &UID {
+        &self.0
     }
 }
 
@@ -302,9 +282,9 @@ mod tests {
         let _  = list.insert(2, 789).unwrap();
 
         let Element(uid, _) = get_insert_elt(op);
-        assert!(list.value.find_index(&uid) == Ok(1));
-        assert!(list.value.find_index(&*uid::MIN) == Err(0));
-        assert!(list.value.find_index(&*uid::MAX) == Err(3));
+        assert!(list.value.0.get_idx(&uid) == Some(1));
+        assert!(list.value.0.get_idx(&*uid::MIN) == None);
+        assert!(list.value.0.get_idx(&*uid::MAX) == None);
     }
 
     #[test]
@@ -315,9 +295,9 @@ mod tests {
         let op3 = list.insert(0, 789).unwrap();
 
         assert!(list.len() == 3);
-        assert!(list.value.0[0].1 == 789);
-        assert!(list.value.0[1].1 == 456);
-        assert!(list.value.0[2].1 == 123);
+        assert!(element_at(&list, 0).1 == 789);
+        assert!(element_at(&list, 1).1 == 456);
+        assert!(element_at(&list, 2).1 == 123);
 
         let element1 = get_insert_elt(op1);
         let element2 = get_insert_elt(op2);
@@ -337,9 +317,9 @@ mod tests {
         let op2 = list.insert(1, 456).unwrap();
         let op3 = list.insert(2, 789).unwrap();
 
-        assert!(list.value.0[0].1 == 123);
-        assert!(list.value.0[1].1 == 456);
-        assert!(list.value.0[2].1 == 789);
+        assert!(element_at(&list, 0).1 == 123);
+        assert!(element_at(&list, 1).1 == 456);
+        assert!(element_at(&list, 2).1 == 789);
 
         let element1 = get_insert_elt(op1);
         let element2 = get_insert_elt(op2);
@@ -358,9 +338,9 @@ mod tests {
         let op2 = list.insert(1, 456).unwrap();
         let op3 = list.insert(1, 789).unwrap();
 
-        assert!(list.value.0[0].1 == 123);
-        assert!(list.value.0[1].1 == 789);
-        assert!(list.value.0[2].1 == 456);
+        assert!(element_at(&list, 0).1 == 123);
+        assert!(element_at(&list, 1).1 == 789);
+        assert!(element_at(&list, 2).1 == 456);
 
         let element1 = get_insert_elt(op1);
         let element2 = get_insert_elt(op2);
@@ -391,8 +371,8 @@ mod tests {
         let uid     = get_remove_uid(op2);
 
         assert!(list.len() == 2);
-        assert!(list.value.0[0].1 == 123);
-        assert!(list.value.0[1].1 == 789);
+        assert!(element_at(&list, 0).1 == 123);
+        assert!(element_at(&list, 1).1 == 789);
         assert!(element.0 == uid);
     }
 
@@ -422,7 +402,7 @@ mod tests {
         let local_op = list2.execute_remote(&remote_op).unwrap();
 
         assert!(list2.len() == 1);
-        assert!(list2.value.0[0].1 == "a");
+        assert!(element_at(&list2, 0).1 == "a");
         assert_matches!(local_op, LocalOp::Insert{index: 0, value: "a"});
     }
 
@@ -485,12 +465,12 @@ mod tests {
         assert!(list1.tombstones == list2.tombstones);
         assert!(list1.local_value() == vec![12, 12, 15]);
 
-        assert!(list1.value.0[0].0.site    == 1);
-        assert!(list1.value.0[0].0.counter == 5);
-        assert!(list1.value.0[1].0.site    == 2);
-        assert!(list1.value.0[1].0.counter == 1);
-        assert!(list1.value.0[2].0.site    == 2);
-        assert!(list1.value.0[2].0.counter == 2);
+        assert!(element_at(&list1, 0).0.site    == 1);
+        assert!(element_at(&list1, 0).0.counter == 5);
+        assert!(element_at(&list1, 1).0.site    == 2);
+        assert!(element_at(&list1, 1).0.counter == 1);
+        assert!(element_at(&list1, 2).0.site    == 2);
+        assert!(element_at(&list1, 2).0.counter == 2);
         assert!(list1.tombstones.contains_pair(1,2));
     }
 
@@ -506,7 +486,7 @@ mod tests {
         let element2 = get_insert_elt(remote_ops.next().unwrap());
         let uid3     = get_remove_uid(remote_ops.next().unwrap());
 
-        assert!(list.value.0[0].0.site == 12);
+        assert!(element_at(&list, 0).0.site == 12);
         assert!(element1.0.site == 12);
         assert!(element2.0.site == 12);
         assert!(uid3.site == 12);
@@ -576,6 +556,10 @@ mod tests {
 
         assert!(local_op1 == local_op2);
         assert!(local_op1 == local_op3);
+    }
+
+    fn element_at<T>(list: &List<T>, idx: usize) -> &Element<T> {
+        list.value.0.get_elt(idx).unwrap().0
     }
 
     fn get_insert_elt<T>(remote_op: RemoteOp<T>) -> Element<T> {
