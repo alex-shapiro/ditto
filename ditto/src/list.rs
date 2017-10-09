@@ -39,7 +39,7 @@ pub enum LocalOp<T> {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Element<T>(pub UID, pub T);
 
-impl<T: Clone + ::std::fmt::Debug> List<T> {
+impl<T: Clone> List<T> {
 
     crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
 
