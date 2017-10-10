@@ -1,80 +1,209 @@
 extern crate ditto;
-extern crate rand;
+extern crate serde_json;
 extern crate rmp_serde;
 
-use ditto::Text;
-use rand::{Rng, ThreadRng};
+use ditto::Error;
+use ditto::text::*;
 
 #[test]
-fn test_long_text() {
-    perform_ops(1_000);
-    perform_ops(10_000);
-    perform_ops(100_000);
+fn test_new() {
+    let text = Text::new();
+    assert!(text.len() == 0);
+    assert!(text.site() == 1);
+    assert!(text.counter() == 0);
 }
 
-fn perform_ops(insert_count: usize) {
-    let mut rng    = rand::thread_rng();
-    let mut string = String::new();
-    let mut text   = Text::new();
-    let mut index  = 0;
-
-    for word in gen_words(insert_count) {
-        index = choose_index(&mut rng, index, text.len());
-        let word_len = word.len();
-
-        string.insert_str(index, &word);
-        let _ = text.insert(index, word).unwrap();
-        index += word_len;
-
-        // every 20ish inserts, execute 10ish deletes
-        if rng.gen_weighted_bool(20) {
-            while rng.gen_weighted_bool(10) && text.len() > 0 {
-                let upper = choose_index(&mut rng, index, text.len());
-                let len   = if rng.gen_weighted_bool(20) { std::cmp::min(upper, 10) } else { 1 };
-                index     = upper.saturating_sub(len);
-                string    = str_remove(&string, index, len);
-                let _     = text.remove(index, len).unwrap();
-            }
-        }
-    }
-
-    {
-        let string_bytes = string.len();
-        let crdt_bytes = rmp_serde::to_vec(&text).unwrap().len();
-        let overhead = ((crdt_bytes as f64) * 10. / (string_bytes as f64)).round() / 10.;
-        println!("overhead: {}x", overhead);
-    }
-
-    assert!(text.local_value() == string);
+#[test]
+fn test_insert() {
+    let mut text = Text::new();
+    let remote_op = text.insert(0, "🇺🇸😀Hello".to_owned()).unwrap();
+    assert!(text.len() == 8);
+    assert!(text.local_value() == "🇺🇸😀Hello");
+    assert!(text.counter() == 1);
+    assert!(remote_op.inserts[0].uid.site == 1);
+    assert!(remote_op.inserts[0].uid.counter == 0);
+    assert!(remote_op.inserts[0].len == 8);
+    assert!(remote_op.inserts[0].text == "🇺🇸😀Hello");
 }
 
-fn gen_words(count: usize) -> Vec<String> {
-    let mut rng = rand::thread_rng();
-    (0..count).into_iter().map(|_| gen_word(&mut rng)).collect()
+#[test]
+fn test_insert_out_of_bounds() {
+    let mut text = Text::new();
+    let _ = text.insert(0, "Hello".to_owned()).unwrap();
+    assert!(text.insert(6, "A".to_owned()).unwrap_err() == Error::OutOfBounds);
+    assert!(text.insert(5, "".to_owned()).unwrap_err() == Error::Noop);
 }
 
-fn gen_word(rng: &mut ThreadRng) -> String {
-    let len = rng.gen_range(1,4);
-    rng.gen_ascii_chars().take(len).collect()
+#[test]
+fn test_remove() {
+    let mut text = Text::new();
+    let remote_op1 = text.insert(0, "I am going".to_owned()).unwrap();
+    let remote_op2 = text.remove(2, 2).unwrap();
+    assert!(text.len() == 8);
+    assert!(text.local_value() == "I  going");
+    assert!(text.counter() == 2);
+    assert!(remote_op1.inserts[0].uid == remote_op2.removes[0]);
+    assert!(remote_op2.inserts[0].text == "I ");
+    assert!(remote_op2.inserts[1].text == " going");
 }
 
-// Probablistically chooses a new insert index.
-// 96% of the time it uses the old index
-//  2% of the time it chooses the end of the string
-//  2% of the time it chooses a random string index.
-fn choose_index(rng: &mut ThreadRng, old_index: usize, string_len: usize) -> usize {
-    if string_len == 0 { return 0 }
-
-    match rng.gen_range(0, 100) {
-        0  ... 95 => old_index,
-        96 ... 97 => string_len,
-        98 ... 99 => rng.gen_range(0, string_len),
-        _ => panic!("UNREACHABLE!!!"),
-    }
+#[test]
+fn test_remove_out_of_bounds() {
+    let mut text = Text::new();
+    let _ = text.insert(0, "I am going".to_owned()).unwrap();
+    assert!(text.remove(5, 20).unwrap_err() == Error::OutOfBounds);
+    assert!(text.remove(5, 0).unwrap_err() == Error::Noop);
 }
 
-fn str_remove(string: &str, index: usize, len: usize) -> String {
-    let (part1, x) = string.split_at(index);
-    let (_, part2) = x.split_at(len);
-    [part1, part2].join("")
+#[test]
+fn test_insert_remove_awaiting_site() {
+    let mut text = Text::from_state(Text::new().clone_state(), 0);
+    assert!(text.insert(0, "Hello".to_owned()).unwrap_err() == Error::AwaitingSite);
+    assert!(text.remove(0, 1).unwrap_err() == Error::AwaitingSite);
+    assert!(text.local_value() == "ello");
+    assert!(text.len() == 4);
+    assert!(text.counter() == 2);
+    assert!(text.awaiting_site().len() == 2);
+}
+
+#[test]
+fn test_execute_remote() {
+    let mut text1 = Text::new();
+    let mut text2 = Text::from_state(text1.clone_state(), 0);
+
+    let remote_op1 = text1.insert(0, "hello".to_owned()).unwrap();
+    let remote_op2 = text1.remove(0, 1).unwrap();
+    let remote_op3 = text1.replace(2, 1, "orl".to_owned()).unwrap();
+    let local_op1  = text2.execute_remote(&remote_op1).unwrap();
+    let local_op2  = text2.execute_remote(&remote_op2).unwrap();
+    let local_op3  = text2.execute_remote(&remote_op3).unwrap();
+
+    assert!(text1.value() == text2.value());
+    assert!(local_op1.changes.len() == 1);
+    assert!(local_op2.changes.len() == 2);
+    assert!(local_op3.changes.len() == 4);
+}
+
+#[test]
+fn test_execute_remote_dupe() {
+    let mut text1 = Text::new();
+    let mut text2 = Text::from_state(text1.clone_state(), 0);
+    let remote_op = text1.insert(0, "hello".to_owned()).unwrap();
+    assert!(text2.execute_remote(&remote_op).is_some());
+    assert!(text2.execute_remote(&remote_op).is_none());
+    assert!(text1.value() == text2.value());
+}
+
+#[test]
+fn test_merge() {
+    let mut text1 = Text::new();
+    let _ = text1.insert(0, "the ".to_owned());
+    let _ = text1.insert(4, "quick ".to_owned());
+    let _ = text1.insert(10, "brown ".to_owned());
+    let _ = text1.insert(16, "fox".to_owned());
+    let _ = text1.remove(4, 6);
+
+    let mut text2 = Text::from_state(text1.clone_state(), 2);
+    let _ = text2.remove(4, 6);
+    let _ = text2.insert(4, "yellow ".to_owned());
+    let _ = text1.insert(4, "slow ".to_owned());
+
+    let text1_state = text1.clone_state();
+    text1.merge(text2.clone_state());
+    text2.merge(text1_state);
+    assert!(text1.value() == text2.value());
+    assert!(text1.tombstones() == text2.tombstones());
+
+    assert!(text1.local_value() == "the yellow slow fox" || text1.local_value() == "the slow yellow fox");
+    assert!(text1.tombstones().contains_pair(1, 2));
+}
+
+#[test]
+fn test_add_site() {
+    let mut text = Text::from_state(Text::new().clone_state(), 0);
+    let _ = text.insert(0, "hello".to_owned());
+    let _ = text.insert(5, "there".to_owned());
+    let _ = text.remove(4, 1);
+    let mut remote_ops = text.add_site(7).unwrap().into_iter();
+
+    let remote_op1 = remote_ops.next().unwrap();
+    let remote_op2 = remote_ops.next().unwrap();
+    let remote_op3 = remote_ops.next().unwrap();
+
+    assert!(remote_op1.inserts[0].uid.site == 7);
+    assert!(remote_op2.inserts[0].uid.site == 7);
+    assert!(remote_op3.removes[0].site == 7);
+    assert!(remote_op3.inserts[0].uid.site == 7);
+}
+
+#[test]
+fn test_add_site_already_has_site() {
+    let mut text = Text::from_state(Text::new().clone_state(), 123);
+    let _ = text.insert(0, "hello".to_owned()).unwrap();
+    let _ = text.insert(5, "there".to_owned()).unwrap();
+    let _ = text.remove(4, 1).unwrap();
+    assert!(text.add_site(7).unwrap_err() == Error::AlreadyHasSite);
+}
+
+#[test]
+fn test_serialize() {
+    let mut text1 = Text::new();
+    let _ = text1.insert(0, "hello".to_owned());
+    let _ = text1.insert(5, "there".to_owned());
+
+    let s_json = serde_json::to_string(&text1).unwrap();
+    let s_msgpack = rmp_serde::to_vec(&text1).unwrap();
+    let text2: Text = serde_json::from_str(&s_json).unwrap();
+    let text3: Text = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+    assert!(text1 == text2);
+    assert!(text1 == text3);
+}
+
+#[test]
+fn test_serialize_value() {
+    let mut text1 = Text::new();
+    let _ = text1.insert(0, "hello".to_owned());
+    let _ = text1.insert(5, "there".to_owned());
+
+    let s_json = serde_json::to_string(text1.value()).unwrap();
+    let s_msgpack = rmp_serde::to_vec(text1.value()).unwrap();
+    let value2: TextValue = serde_json::from_str(&s_json).unwrap();
+    let value3: TextValue = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+    assert!(*text1.value() == value2);
+    assert!(*text1.value() == value3);
+}
+
+#[test]
+fn test_serialize_remote_op() {
+    let mut text = Text::new();
+    let _ = text.insert(0, "hello".to_owned()).unwrap();
+    let remote_op1 = text.insert(2, "bonjour".to_owned()).unwrap();
+
+    let s_json = serde_json::to_string(&remote_op1).unwrap();
+    let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
+    let remote_op2: RemoteOp = serde_json::from_str(&s_json).unwrap();
+    let remote_op3: RemoteOp = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+    assert!(remote_op1 == remote_op2);
+    assert!(remote_op1 == remote_op3);
+}
+
+#[test]
+fn test_serialize_local_op() {
+    let mut text1 = Text::new();
+    let mut text2 = Text::from_state(text1.clone_state(), 2);
+    let remote_op1 = text1.insert(0, "hello".to_owned()).unwrap();
+    let remote_op2 = text1.insert(2, "bonjour".to_owned()).unwrap();
+    let _ = text2.execute_remote(&remote_op1).unwrap();
+    let local_op1 = text2.execute_remote(&remote_op2).unwrap();
+
+    let s_json = serde_json::to_string(&local_op1).unwrap();
+    let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
+    let local_op2: LocalOp = serde_json::from_str(&s_json).unwrap();
+    let local_op3: LocalOp = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+    assert!(local_op1 == local_op2);
+    assert!(local_op1 == local_op3);
 }

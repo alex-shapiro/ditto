@@ -1,7 +1,7 @@
 use char_fns::CharFns;
 use order_statistic_tree;
 use Replica;
-use sequence::uid::{self, UID};
+use sequence::uid::UID;
 use std::cmp::Ordering;
 use serde::{Deserialize, Deserializer};
 
@@ -31,11 +31,6 @@ impl Element {
 
     pub fn between(elt1: &Element, elt2: &Element, text: String, replica: &Replica) -> Self {
         Self::text(text, UID::between(&elt1.uid, &elt2.uid, replica))
-    }
-
-    #[inline]
-    pub fn is_end_marker(&self) -> bool {
-        self.uid == *uid::MAX
     }
 }
 
