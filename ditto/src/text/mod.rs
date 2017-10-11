@@ -2,6 +2,7 @@
 
 mod value;
 mod element;
+mod text_edit;
 
 use {Error, Replica, Tombstones};
 pub use self::value::TextValue;
@@ -64,7 +65,7 @@ impl Text {
     /// Returns an error if the index is out-of-bounds.
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn insert(&mut self, index: usize, text: String) -> Result<RemoteOp, Error> {
+    pub fn insert(&mut self, index: usize, text: &str) -> Result<RemoteOp, Error> {
         let op = self.value.insert(index, text, &self.replica)?;
         self.after_op(op)
     }
@@ -82,7 +83,7 @@ impl Text {
     /// Returns an error if the start or stop index is out-of-bounds.
     /// If the crdt does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn replace(&mut self, index: usize, len: usize, text: String) -> Result<RemoteOp, Error> {
+    pub fn replace(&mut self, index: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
         let op = self.value.replace(index, len, text, &self.replica)?;
         self.after_op(op)
     }

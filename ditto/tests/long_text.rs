@@ -23,7 +23,7 @@ fn perform_ops(insert_count: usize) {
         let word_len = word.len();
 
         string.insert_str(index, &word);
-        let _ = text.insert(index, word).unwrap();
+        let _ = text.insert(index, &word).unwrap();
         index += word_len;
 
         // every 20ish inserts, execute 10ish deletes

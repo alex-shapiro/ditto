@@ -16,7 +16,7 @@ fn test_new() {
 #[test]
 fn test_insert() {
     let mut text = Text::new();
-    let remote_op = text.insert(0, "🇺🇸😀Hello".to_owned()).unwrap();
+    let remote_op = text.insert(0, "🇺🇸😀Hello").unwrap();
     assert!(text.len() == 8);
     assert!(text.local_value() == "🇺🇸😀Hello");
     assert!(text.counter() == 1);
@@ -29,15 +29,15 @@ fn test_insert() {
 #[test]
 fn test_insert_out_of_bounds() {
     let mut text = Text::new();
-    let _ = text.insert(0, "Hello".to_owned()).unwrap();
-    assert!(text.insert(6, "A".to_owned()).unwrap_err() == Error::OutOfBounds);
-    assert!(text.insert(5, "".to_owned()).unwrap_err() == Error::Noop);
+    let _ = text.insert(0, "Hello").unwrap();
+    assert!(text.insert(6, "A").unwrap_err() == Error::OutOfBounds);
+    assert!(text.insert(5, "").unwrap_err() == Error::Noop);
 }
 
 #[test]
 fn test_remove() {
     let mut text = Text::new();
-    let remote_op1 = text.insert(0, "I am going".to_owned()).unwrap();
+    let remote_op1 = text.insert(0, "I am going").unwrap();
     let remote_op2 = text.remove(2, 2).unwrap();
     assert!(text.len() == 8);
     assert!(text.local_value() == "I  going");
@@ -50,7 +50,7 @@ fn test_remove() {
 #[test]
 fn test_remove_out_of_bounds() {
     let mut text = Text::new();
-    let _ = text.insert(0, "I am going".to_owned()).unwrap();
+    let _ = text.insert(0, "I am going").unwrap();
     assert!(text.remove(5, 20).unwrap_err() == Error::OutOfBounds);
     assert!(text.remove(5, 0).unwrap_err() == Error::Noop);
 }
@@ -58,7 +58,7 @@ fn test_remove_out_of_bounds() {
 #[test]
 fn test_insert_remove_awaiting_site() {
     let mut text = Text::from_state(Text::new().clone_state(), 0);
-    assert!(text.insert(0, "Hello".to_owned()).unwrap_err() == Error::AwaitingSite);
+    assert!(text.insert(0, "Hello").unwrap_err() == Error::AwaitingSite);
     assert!(text.remove(0, 1).unwrap_err() == Error::AwaitingSite);
     assert!(text.local_value() == "ello");
     assert!(text.len() == 4);
@@ -71,9 +71,9 @@ fn test_execute_remote() {
     let mut text1 = Text::new();
     let mut text2 = Text::from_state(text1.clone_state(), 0);
 
-    let remote_op1 = text1.insert(0, "hello".to_owned()).unwrap();
+    let remote_op1 = text1.insert(0, "hello").unwrap();
     let remote_op2 = text1.remove(0, 1).unwrap();
-    let remote_op3 = text1.replace(2, 1, "orl".to_owned()).unwrap();
+    let remote_op3 = text1.replace(2, 1, "orl").unwrap();
     let local_op1  = text2.execute_remote(&remote_op1).unwrap();
     let local_op2  = text2.execute_remote(&remote_op2).unwrap();
     let local_op3  = text2.execute_remote(&remote_op3).unwrap();
@@ -88,7 +88,7 @@ fn test_execute_remote() {
 fn test_execute_remote_dupe() {
     let mut text1 = Text::new();
     let mut text2 = Text::from_state(text1.clone_state(), 0);
-    let remote_op = text1.insert(0, "hello".to_owned()).unwrap();
+    let remote_op = text1.insert(0, "hello").unwrap();
     assert!(text2.execute_remote(&remote_op).is_some());
     assert!(text2.execute_remote(&remote_op).is_none());
     assert!(text1.value() == text2.value());
@@ -97,16 +97,16 @@ fn test_execute_remote_dupe() {
 #[test]
 fn test_merge() {
     let mut text1 = Text::new();
-    let _ = text1.insert(0, "the ".to_owned());
-    let _ = text1.insert(4, "quick ".to_owned());
-    let _ = text1.insert(10, "brown ".to_owned());
-    let _ = text1.insert(16, "fox".to_owned());
+    let _ = text1.insert(0, "the ");
+    let _ = text1.insert(4, "quick ");
+    let _ = text1.insert(10, "brown ");
+    let _ = text1.insert(16, "fox");
     let _ = text1.remove(4, 6);
 
     let mut text2 = Text::from_state(text1.clone_state(), 2);
     let _ = text2.remove(4, 6);
-    let _ = text2.insert(4, "yellow ".to_owned());
-    let _ = text1.insert(4, "slow ".to_owned());
+    let _ = text2.insert(4, "yellow ");
+    let _ = text1.insert(4, "slow ");
 
     let text1_state = text1.clone_state();
     text1.merge(text2.clone_state());
@@ -121,8 +121,8 @@ fn test_merge() {
 #[test]
 fn test_add_site() {
     let mut text = Text::from_state(Text::new().clone_state(), 0);
-    let _ = text.insert(0, "hello".to_owned());
-    let _ = text.insert(5, "there".to_owned());
+    let _ = text.insert(0, "hello");
+    let _ = text.insert(5, "there");
     let _ = text.remove(4, 1);
     let mut remote_ops = text.add_site(7).unwrap().into_iter();
 
@@ -139,8 +139,8 @@ fn test_add_site() {
 #[test]
 fn test_add_site_already_has_site() {
     let mut text = Text::from_state(Text::new().clone_state(), 123);
-    let _ = text.insert(0, "hello".to_owned()).unwrap();
-    let _ = text.insert(5, "there".to_owned()).unwrap();
+    let _ = text.insert(0, "hello").unwrap();
+    let _ = text.insert(5, "there").unwrap();
     let _ = text.remove(4, 1).unwrap();
     assert!(text.add_site(7).unwrap_err() == Error::AlreadyHasSite);
 }
@@ -148,8 +148,8 @@ fn test_add_site_already_has_site() {
 #[test]
 fn test_serialize() {
     let mut text1 = Text::new();
-    let _ = text1.insert(0, "hello".to_owned());
-    let _ = text1.insert(5, "there".to_owned());
+    let _ = text1.insert(0, "hello");
+    let _ = text1.insert(5, "there");
 
     let s_json = serde_json::to_string(&text1).unwrap();
     let s_msgpack = rmp_serde::to_vec(&text1).unwrap();
@@ -163,8 +163,8 @@ fn test_serialize() {
 #[test]
 fn test_serialize_value() {
     let mut text1 = Text::new();
-    let _ = text1.insert(0, "hello".to_owned());
-    let _ = text1.insert(5, "there".to_owned());
+    let _ = text1.insert(0, "hello");
+    let _ = text1.insert(5, "there");
 
     let s_json = serde_json::to_string(text1.value()).unwrap();
     let s_msgpack = rmp_serde::to_vec(text1.value()).unwrap();
@@ -178,8 +178,8 @@ fn test_serialize_value() {
 #[test]
 fn test_serialize_remote_op() {
     let mut text = Text::new();
-    let _ = text.insert(0, "hello".to_owned()).unwrap();
-    let remote_op1 = text.insert(2, "bonjour".to_owned()).unwrap();
+    let _ = text.insert(0, "hello").unwrap();
+    let remote_op1 = text.insert(2, "bonjour").unwrap();
 
     let s_json = serde_json::to_string(&remote_op1).unwrap();
     let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
@@ -194,8 +194,8 @@ fn test_serialize_remote_op() {
 fn test_serialize_local_op() {
     let mut text1 = Text::new();
     let mut text2 = Text::from_state(text1.clone_state(), 2);
-    let remote_op1 = text1.insert(0, "hello".to_owned()).unwrap();
-    let remote_op2 = text1.insert(2, "bonjour".to_owned()).unwrap();
+    let remote_op1 = text1.insert(0, "hello").unwrap();
+    let remote_op2 = text1.insert(2, "bonjour").unwrap();
     let _ = text2.execute_remote(&remote_op1).unwrap();
     let local_op1 = text2.execute_remote(&remote_op2).unwrap();
 

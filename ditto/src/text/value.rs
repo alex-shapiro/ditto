@@ -5,19 +5,21 @@
 use {Error, Replica, Tombstones};
 use order_statistic_tree::Tree;
 use super::element::{self, Element};
+use super::text_edit::TextEdit;
 use super::{RemoteOp, LocalOp, LocalChange};
 use sequence::uid::UID;
 use traits::{CrdtValue, AddSiteToAll};
 use char_fns::CharFns;
+use serde::{Serialize, Serializer, Deserialize, Deserializer};
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct TextValue(pub Tree<Element>);
+#[derive(Debug, Clone, PartialEq)]
+pub struct TextValue(pub Tree<Element>, pub Option<TextEdit>);
 
 impl TextValue {
 
     /// Constructs a new, empty TextValue.
     pub fn new() -> Self {
-        TextValue(Tree::new())
+        TextValue(Tree::new(), None)
     }
 
     /// Returns the number of unicode characters in the TextValue.
@@ -25,101 +27,86 @@ impl TextValue {
         self.0.len()
     }
 
-    /// Inserts text at position `index`. Returns an error if the
-    /// text string is empty or if the index is out-of-bounds. A
-    /// successful insert returns an op that can be sent to remote
-    /// sites for replication.
-    pub fn insert(&mut self, index: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
-        if text.is_empty() { return Err(Error::Noop) }
-
-        let (uid, offset) = {
-            let (ref element, offset) = self.get_element(index)?;
-            (element.uid.clone(), offset)
-        };
-
-        let removes = match offset {
-            0 => vec![],
-            _ => vec![self.0.remove(&uid).expect("Element must exist F!")],
-        };
-
-        let inserts = {
-            let index = index - offset;
-            let prev  = self.get_prev_element(index)?;
-            let (next, _) = self.get_element(index)?;
-            if offset == 0 {
-                vec![Element::between(prev, next, text, replica)]
-            } else {
-                let (text_pre, text_post) = removes[0].text.char_split(offset);
-                let pre = Element::between(prev, next, text_pre.to_owned(), replica);
-                let new = Element::between(&pre, next, text, replica);
-                let post = Element::between(&new, next, text_post.to_owned(), replica);
-                vec![pre, new, post]
-            }
-        };
-
-        for e in &inserts { let _ = self.0.insert(e.clone()); }
-        let removes = removes.into_iter().map(|e| e.uid).collect();
-        Ok(RemoteOp{inserts: inserts, removes: removes})
+    pub fn insert(&mut self, idx: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
+        self.replace(idx, 0, text, replica)
     }
 
-    /// Removes a text range that starts at `index` and includes `len`
-    /// unicode characters. Returns an error if the range is empty or
-    /// if the range upper bound is out-of-bounds. A successful remove
-    /// returns an op that can be sent to remote sites for replication.
-    pub fn remove(&mut self, index: usize, len: usize, replica: &Replica) -> Result<RemoteOp, Error> {
-        if len == 0 { return Err(Error::Noop) }
-        if index + len > self.len() { return Err(Error::OutOfBounds) }
+    pub fn remove(&mut self, idx: usize, len: usize, replica: &Replica) -> Result<RemoteOp, Error> {
+        self.replace(idx, len, "", replica)
+    }
 
-        let (element, offset) = self.remove_at(index)?;
-        let border_index = index - offset;
+    /// Replaces a text range that starts at `idx` and includes `len`
+    /// unicode characters with new text. Returns an error if the
+    /// range is out-of-bounds or if the replacement has no effect.
+    /// A successful replacement returns an op that can be sent to
+    /// remote sites for replication.
+    pub fn replace(&mut self, idx: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
+        if idx + len > self.len() { return Err(Error::OutOfBounds) }
+        if len == 0 && text.is_empty() { return Err(Error::Noop) }
+
+        let merged_edit = self.gen_merged_edit(idx, len, text);
+
+        let offset = self.get_element(idx)?.1;
+        if offset == 0 && len == 0 {
+            self.do_insert(merged_edit.idx, merged_edit.text, replica)
+        } else {
+            self.do_replace(merged_edit.idx, merged_edit.len, merged_edit.text, replica)
+        }
+    }
+
+    fn do_insert(&mut self, idx: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
+        let element = {
+            let prev = self.get_prev_element(idx)?;
+            let next = self.get_element(idx)?.0;
+            Element::between(prev, next, text, replica)
+        };
+
+        self.0.insert(element.clone()).unwrap();
+        Ok(RemoteOp{inserts: vec![element], removes: vec![]})
+    }
+
+    fn do_replace(&mut self, idx: usize, len: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
+        let (element, offset) = self.remove_at(idx)?;
+        let border_idx = idx - offset;
         let mut removed_len = element.len - offset;
         let mut removes = vec![element];
+        let mut inserts = vec![];
 
         while removed_len < len {
-            let (element, _) = self.remove_at(border_index)?;
+            let (element, _) = self.remove_at(border_idx)?;
             removed_len += element.len;
             removes.push(element);
         }
 
-        let mut inserts = vec![];
-        if offset > 0 || removed_len > len {
-            let prev = self.get_prev_element(border_index)?;
-            let (next, _) = self.get_element(border_index)?;
+        if offset > 0 || !text.is_empty() || removed_len > len {
+            let prev = self.get_prev_element(border_idx)?;
+            let (next, _) = self.get_element(border_idx)?;
 
             if offset > 0 {
                 let (text, _) = removes[0].text.char_split(offset);
-                inserts.push(Element::between(prev, next, text.to_owned(), replica));
+                inserts.push(Element::between(prev, next, text.into(), replica));
+            }
+
+            if !text.is_empty() {
+                let element = Element::between(inserts.last().unwrap_or(prev), next, text, replica);
+                inserts.push(element);
             }
 
             if removed_len > len {
-                let overremoved_elt = &removes.last().expect("Element must exist G!");
-                let offset = overremoved_elt.len + len - removed_len;
-                let (_, text) = overremoved_elt.text.char_split(offset);
-                let element = {
-                    let prev = if inserts.is_empty() { prev } else { &inserts[0] };
-                    Element::between(prev, next, text.to_owned(), replica)
-                };
+                let old_elt = &removes.last().unwrap();
+                let offset = old_elt.len + len - removed_len;
+                let (_, text) = old_elt.text.char_split(offset);
+                let element = Element::between(inserts.last().unwrap_or(prev), next, text.into(), replica);
                 inserts.push(element);
             }
-        };
+        }
 
-        for e in &inserts { let _ = self.0.insert(e.clone()); }
+        for element in &inserts {
+            self.0.insert(element.clone()).unwrap();
+        }
+
         let removes = removes.into_iter().map(|e| e.uid).collect();
-        Ok(RemoteOp{inserts: inserts, removes: removes})
-    }
-
-    /// Replaces a text range that starts at `index` and includes `len`
-    /// unicode characters with new text. Returns an error if the
-    /// range is empty, if the range upper bound is out-of-bounds,
-    /// or if the replacement has no effect. A successful replacement
-    /// returns an op that can be sent to remote sites for replication.
-    pub fn replace(&mut self, index: usize, len: usize, text: String, replica: &Replica) -> Result<RemoteOp, Error> {
-        if index + len > self.len() { return Err(Error::OutOfBounds) }
-        if len == 0 && text.is_empty() { return Err(Error::Noop) }
-
-        let mut op1 = self.remove(index, len, replica).unwrap_or(RemoteOp::default());
-        if let Ok(op2) = self.insert(index, text, replica) { op1.merge(op2) };
-        Ok(op1)
+        Ok(RemoteOp{inserts, removes})
     }
 
     /// Executes remotely-generated ops to replicate state from other
@@ -142,6 +129,8 @@ impl TextValue {
                 changes.push(LocalChange::Insert{index: char_index, text: element.text.clone()});
             }
         }
+
+        self.shift_merged_edit(&changes);
 
         match changes.len() {
             0 => None,
@@ -193,6 +182,29 @@ impl TextValue {
             Ok(self.0.get_elt(index)?)
         }
     }
+
+    fn gen_merged_edit(&mut self, idx: usize, len: usize, text: &str) -> TextEdit {
+        if let Some(ref mut edit) = self.1 {
+            edit.merge_or_replace(idx, len, text)
+        } else {
+            let edit = TextEdit{idx, len, text: text.into()};
+            self.1 = Some(edit.clone());
+            edit
+        }
+    }
+
+    fn shift_merged_edit(&mut self, changes: &[LocalChange]) {
+        let edit = some!(self.1.take());
+        let edit = changes.iter().fold(Some(edit), |edit, change| {
+            let edit = try_opt!(edit);
+            match *change {
+                LocalChange::Insert{index, ref text} => edit.shift_or_destroy(index, 0, text),
+                LocalChange::Remove{index, len} => edit.shift_or_destroy(index, len, ""),
+            }
+        });
+
+        self.1 = edit;
+    }
 }
 
 impl CrdtValue for TextValue {
@@ -232,6 +244,19 @@ impl AddSiteToAll for TextValue {
     }
 }
 
+impl Serialize for TextValue {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for TextValue {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        let tree = Tree::<Element>::deserialize(deserializer)?;
+        Ok(TextValue(tree, None))
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -249,14 +274,14 @@ mod tests {
     #[test]
     fn test_insert_empty_string() {
         let mut text = TextValue::new();
-        let op = text.insert(0, "".to_owned(), &REPLICA1);
+        let op = text.insert(0, "", &REPLICA1);
         assert!(op == Err(Error::Noop));
     }
 
     #[test]
     fn test_insert_when_empty() {
         let mut text = TextValue::new();
-        let op = text.insert(0, "quick".to_owned(), &REPLICA1).unwrap();
+        let op = text.insert(0, "quick", &REPLICA1).unwrap();
         let element = elt_at(&text, 0, "quick");
 
         assert!(text.len() == 5);
@@ -270,9 +295,9 @@ mod tests {
     #[test]
     fn test_insert_before_index() {
         let mut text = TextValue::new();
-        let  _ = text.insert(0, "the ".to_owned(), &REPLICA1);
-        let  _ = text.insert(4, "brown".to_owned(), &REPLICA1);
-        let op = text.insert(4, "quick ".to_owned(), &REPLICA2).unwrap();
+        let  _ = text.insert(0, "the ", &REPLICA1);
+        let  _ = text.insert(4, "brown", &REPLICA1);
+        let op = text.insert(4, "quick ", &REPLICA2).unwrap();
 
         assert!(text.len() == 15);
         assert!(text.local_value() == "the quick brown");
@@ -290,9 +315,9 @@ mod tests {
     #[test]
     fn test_insert_in_index() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the  ".to_owned(), &REPLICA1).unwrap();
-        let   _ = text.insert(5, "brown".to_owned(), &REPLICA1);
-        let op2 = text.insert(4, "quick".to_owned(), &REPLICA2).unwrap();
+        let op1 = text.insert(0, "the  ", &REPLICA1).unwrap();
+        let   _ = text.insert(5, "brown", &REPLICA1);
+        let op2 = text.insert(4, "quick", &REPLICA2).unwrap();
 
         assert!(text.len() == 15);
         assert!(text.local_value() == "the quick brown");
@@ -317,14 +342,14 @@ mod tests {
     #[test]
     fn test_insert_invalid() {
         let mut text = TextValue::new();
-        let op = text.insert(1, "quick".to_owned(), &REPLICA1);
+        let op = text.insert(1, "quick", &REPLICA1);
         assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_remove_zero_text() {
         let mut text = TextValue::new();
-        let  _ = text.insert(0, "the ".to_owned(), &REPLICA1);
+        let  _ = text.insert(0, "the ", &REPLICA1);
         let op = text.remove(1, 0, &REPLICA2);
         assert!(op == Err(Error::Noop));
     }
@@ -332,9 +357,9 @@ mod tests {
     #[test]
     fn test_remove_whole_single_element() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the ".to_owned(), &REPLICA1);
-        let op1 = text.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let   _ = text.insert(10, "brown".to_owned(), &REPLICA1);
+        let   _ = text.insert(0, "the ", &REPLICA1);
+        let op1 = text.insert(4, "quick ", &REPLICA1).unwrap();
+        let   _ = text.insert(10, "brown", &REPLICA1);
         let op2 = text.remove(4, 6, &REPLICA2).unwrap();
 
         assert!(text.len() == 9);
@@ -351,9 +376,9 @@ mod tests {
     #[test]
     fn test_remove_whole_multiple_elements() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the ".to_owned(), &REPLICA1);
-        let op1 = text.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let op2 = text.insert(10, "brown".to_owned(), &REPLICA1).unwrap();
+        let   _ = text.insert(0, "the ", &REPLICA1);
+        let op1 = text.insert(4, "quick ", &REPLICA1).unwrap();
+        let op2 = text.insert(10, "brown", &REPLICA1).unwrap();
         let op3 = text.remove(4, 11, &REPLICA2).unwrap();
 
         assert!(text.len() == 4);
@@ -370,9 +395,9 @@ mod tests {
     #[test]
     fn test_remove_split_single_element() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the ".to_owned(), &REPLICA1);
-        let op1 = text.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let   _ = text.insert(10, "brown".to_owned(), &REPLICA1);
+        let   _ = text.insert(0, "the ", &REPLICA1);
+        let op1 = text.insert(4, "quick ", &REPLICA1).unwrap();
+        let   _ = text.insert(10, "brown", &REPLICA1);
         let op2 = text.remove(5, 3, &REPLICA2).unwrap();
 
         assert!(text.len() == 12);
@@ -393,12 +418,12 @@ mod tests {
     #[test]
     fn test_remove_split_multiple_elements() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the ".to_owned(), &REPLICA1).unwrap();
-        let   _ = text.insert(4, "quick ".to_owned(), &REPLICA1);
-        let   _ = text.insert(10, "brown ".to_owned(), &REPLICA1);
-        let   _ = text.insert(16, "fox ".to_owned(), &REPLICA1);
-        let op2 = text.insert(20, "jumps ".to_owned(), &REPLICA1).unwrap();
-        let   _ = text.insert(26, "over".to_owned(), &REPLICA1);
+        let op1 = text.insert(0, "the ", &REPLICA1).unwrap();
+        let   _ = text.insert(4, "quick ", &REPLICA1);
+        let   _ = text.insert(10, "brown ", &REPLICA1);
+        let   _ = text.insert(16, "fox ", &REPLICA1);
+        let op2 = text.insert(20, "jumps ", &REPLICA1).unwrap();
+        let   _ = text.insert(26, "over", &REPLICA1);
         let op3 = text.remove(2, 19, &REPLICA2).unwrap();
 
         assert!(text.len() == 11);
@@ -426,8 +451,8 @@ mod tests {
     #[test]
     fn test_replace_remove_only() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "hello world".to_owned(), &REPLICA1).unwrap();
-        let op2 = text.replace(2, 6, "".to_owned(), &REPLICA2).unwrap();
+        let op1 = text.insert(0, "hello world", &REPLICA1).unwrap();
+        let op2 = text.replace(2, 6, "", &REPLICA2).unwrap();
 
         assert!(text.len() == 5);
         assert!(text.local_value() == "herld");
@@ -445,8 +470,8 @@ mod tests {
     #[test]
     fn test_replace_insert_only() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the fox".to_owned(), &REPLICA1).unwrap();
-        let op2 = text.replace(4, 0, "quick ".to_owned(), &REPLICA2).unwrap();
+        let op1 = text.insert(0, "the fox", &REPLICA1).unwrap();
+        let op2 = text.replace(4, 0, "quick ", &REPLICA2).unwrap();
 
         assert!(text.len() == 13);
         let e0 = elt_at(&text,  0, "the ");
@@ -464,8 +489,8 @@ mod tests {
     #[test]
     fn test_replace_remove_and_insert() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the brown fox".to_owned(), &REPLICA1).unwrap();
-        let op2 = text.replace(4, 5, "qwik".to_owned(), &REPLICA2).unwrap();
+        let op1 = text.insert(0, "the brown fox", &REPLICA1).unwrap();
+        let op2 = text.replace(4, 5, "qwik", &REPLICA2).unwrap();
 
         assert!(text.len() == 12);
         let e0 = elt_at(&text,  0, "the ");
@@ -483,8 +508,8 @@ mod tests {
     #[test]
     fn test_replace_invalid() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the quick brown fox".to_owned(), &REPLICA1);
-        let op2 = text.replace(4, 16, "slow green turtle".to_owned(), &REPLICA2);
+        let   _ = text.insert(0, "the quick brown fox", &REPLICA1);
+        let op2 = text.replace(4, 16, "slow green turtle", &REPLICA2);
         assert!(op2 == Err(Error::OutOfBounds));
     }
 
@@ -498,9 +523,9 @@ mod tests {
     #[test]
     fn test_execute_remote() {
         let mut text1 = TextValue::new();
-        let op1 = text1.insert(0, "the brown".to_owned(), &REPLICA1).unwrap();
-        let op2 = text1.insert(4, "quick ".to_owned(), &REPLICA1).unwrap();
-        let op3 = text1.replace(6, 1, "a".to_owned(), &REPLICA1).unwrap();
+        let op1 = text1.insert(0, "the brown", &REPLICA1).unwrap();
+        let op2 = text1.insert(4, "quick ", &REPLICA1).unwrap();
+        let op3 = text1.replace(6, 1, "a", &REPLICA1).unwrap();
 
         let mut text2 = TextValue::new();
         let changes1 = text2.execute_remote(&op1).unwrap().changes;
@@ -528,7 +553,7 @@ mod tests {
         let mut text1 = TextValue::new();
         let mut text2 = TextValue::new();
 
-        let op = text1.insert(0, "hi".to_owned(), &REPLICA1).unwrap();
+        let op = text1.insert(0, "hi", &REPLICA1).unwrap();
         assert!(text2.execute_remote(&op).is_some());
         assert!(text2.execute_remote(&op).is_none());
         assert!(text1 == text2);
@@ -537,8 +562,8 @@ mod tests {
     #[test]
     fn test_add_site() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "a".to_owned(), &Replica::new(0, 1)).unwrap();
-        let op2 = text.insert(1, "b".to_owned(), &Replica::new(0, 2)).unwrap();
+        let op1 = text.insert(0, "a", &Replica::new(0, 1)).unwrap();
+        let op2 = text.insert(1, "b", &Replica::new(0, 2)).unwrap();
 
         text.add_site(&op1, 4);
         text.add_site(&op2, 8);
