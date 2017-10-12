@@ -43,8 +43,7 @@ fn test_remove() {
     assert!(text.local_value() == "I  going");
     assert!(text.counter() == 2);
     assert!(remote_op1.inserts[0].uid == remote_op2.removes[0]);
-    assert!(remote_op2.inserts[0].text == "I ");
-    assert!(remote_op2.inserts[1].text == " going");
+    assert!(remote_op2.inserts[0].text == "I  going");
 }
 
 #[test]
@@ -81,7 +80,7 @@ fn test_execute_remote() {
     assert!(text1.value() == text2.value());
     assert!(local_op1.changes.len() == 1);
     assert!(local_op2.changes.len() == 2);
-    assert!(local_op3.changes.len() == 4);
+    assert!(local_op3.changes.len() == 2);
 }
 
 #[test]
@@ -113,8 +112,7 @@ fn test_merge() {
     text2.merge(text1_state);
     assert!(text1.value() == text2.value());
     assert!(text1.tombstones() == text2.tombstones());
-
-    assert!(text1.local_value() == "the yellow slow fox" || text1.local_value() == "the slow yellow fox");
+    assert!(text1.local_value() == "the slow brown foxthe yellow fox" || text1.local_value() == "the yellow foxthe slow brown fox");
     assert!(text1.tombstones().contains_pair(1, 2));
 }
 

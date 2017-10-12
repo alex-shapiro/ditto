@@ -54,8 +54,17 @@ fn gen_words(count: usize) -> Vec<String> {
 }
 
 fn gen_word(rng: &mut ThreadRng) -> String {
-    let len = rng.gen_range(1,4);
-    rng.gen_ascii_chars().take(len).collect()
+    let len = match rng.gen_range(0, 100) {
+       0 => 0,
+       1 ... 90 => 1,
+       number => number - 88,
+    };
+
+    if len == 0 {
+       String::from("\n")
+    } else {
+       rng.gen_ascii_chars().take(len).collect()
+    }
 }
 
 // Probablistically chooses a new insert index.
