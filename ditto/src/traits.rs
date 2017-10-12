@@ -101,7 +101,7 @@ macro_rules! crdt_impl {
             self.replica.site = site;
             let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
 
-            for mut op in ops.iter_mut() {
+            for op in ops.iter_mut() {
                 self.value.add_site(op, site);
                 op.add_site(site);
             }

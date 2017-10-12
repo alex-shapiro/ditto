@@ -241,14 +241,14 @@ impl JsonValue {
         for key in pointer.split("/").skip(1) {
             match value.unwrap() {
                 &mut JsonValue::Object(ref mut map_value) => {
-                    let mut element = map_value.get_mut(key).ok_or(Error::DoesNotExist)?;
+                    let element = map_value.get_mut(key).ok_or(Error::DoesNotExist)?;
                     let uid = RemoteUID::Object(key.to_owned(), element.0.clone());
                     remote_pointer.push(uid);
                     value = Some(&mut element.1)
                 }
                 &mut JsonValue::Array(ref mut list_value) => {
                     let index = usize::from_str(key)?;
-                    let mut element = list_value.0.get_mut_elt(index)?.0;
+                    let element = list_value.0.get_mut_elt(index)?.0;
                     let uid = RemoteUID::Array(element.0.clone());
                     remote_pointer.push(uid);
                     value = Some(&mut element.1)
@@ -267,7 +267,7 @@ impl JsonValue {
         for uid in pointer {
             value = match (value.unwrap(), uid) {
                 (&mut JsonValue::Object(ref mut map_value), &RemoteUID::Object(ref key, ref replica)) => {
-                    let mut element = try_opt!(map_value.get_mut_element(key, replica));
+                    let element = try_opt!(map_value.get_mut_element(key, replica));
                     local_pointer.push(LocalUID::Object(key.clone()));
                     Some(&mut element.1)
                 }
