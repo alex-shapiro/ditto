@@ -239,16 +239,24 @@ impl AddSiteToAll for TextValue {
     }
 }
 
+
+// rust-msgpack encodes NewType values nontransparently,
+// as single-element arrays. The TextValue struct used to be
+// a NewType, and I am recreating that encapsulation to
+// maintain backwards compatibility.
+#[derive(Serialize, Deserialize)]
+struct TreeNewType<T>(T);
+
 impl Serialize for TextValue {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
-        self.0.serialize(serializer)
+        TreeNewType(&self.0).serialize(serializer)
     }
 }
 
 impl<'de> Deserialize<'de> for TextValue {
     fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
-        let tree = Tree::<Element>::deserialize(deserializer)?;
-        Ok(TextValue(tree, None))
+        let newtype: TreeNewType<Tree<Element>> = TreeNewType::deserialize(deserializer)?;
+        Ok(TextValue(newtype.0, None))
     }
 }
 
