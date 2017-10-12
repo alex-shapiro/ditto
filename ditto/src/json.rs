@@ -448,7 +448,9 @@ impl<T: IntoJson> IntoJson for Vec<T> {
 impl<'a> IntoJson for &'a str {
     fn into_json(self, replica: &Replica) -> Result<JsonValue, Error> {
         let mut text_value = TextValue::new();
-        text_value.replace(0, 0, self, replica)?;
+        if !self.is_empty() {
+            text_value.replace(0, 0, self, replica)?;
+        }
         text_value.1 = None;
         Ok(JsonValue::String(text_value))
     }
