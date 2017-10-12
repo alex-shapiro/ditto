@@ -207,10 +207,10 @@ impl<T: Element> Node<T> {
         } else if self.is_leaf() {
             None
         } else if contains_element {
-            char_idx += self.children[..idx+1].iter().map(|node| node.len).sum();
+            char_idx += self.children[..idx+1].iter().map(|node| node.len).sum::<usize>();
             Some(char_idx)
         } else {
-            char_idx += self.children[..idx].iter().map(|node| node.len).sum();
+            char_idx += self.children[..idx].iter().map(|node| node.len).sum::<usize>();
             match self.children[idx].get_idx(id) {
                 Some(sub_idx) => Some(char_idx + sub_idx),
                 None => None,

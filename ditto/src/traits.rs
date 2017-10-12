@@ -12,9 +12,25 @@ macro_rules! crdt_impl {
             self.replica.site
         }
 
+        /// Returns the CRDT's counter
+        pub fn counter(&self) -> u32 {
+            self.replica.counter
+        }
+
         /// Returns a reference to the CRDT's inner value
         pub fn value(&self) -> &$value {
             &self.value
+        }
+
+        /// Returns a reference to the remote ops which are
+        /// awaiting a site before being returned
+        pub fn awaiting_site(&self) -> &[<$value as CrdtValue>::RemoteOp] {
+            &self.awaiting_site
+        }
+
+        /// Returns a reference to the CRDT's tombstones
+        pub fn tombstones(&self) -> &Tombstones {
+            &self.tombstones
         }
 
         /// Returns a borrowed CRDT state.
@@ -85,7 +101,7 @@ macro_rules! crdt_impl {
             self.replica.site = site;
             let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
 
-            for mut op in ops.iter_mut() {
+            for op in ops.iter_mut() {
                 self.value.add_site(op, site);
                 op.add_site(site);
             }
