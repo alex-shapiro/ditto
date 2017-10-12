@@ -61,24 +61,6 @@ impl Text {
         self.value.len()
     }
 
-    /// Inserts text at position `index` in the CRDT.
-    /// Returns an error if the index is out-of-bounds.
-    /// If the crdt does not have a site allocated, it caches
-    /// the op and returns an `AwaitingSite` error.
-    pub fn insert(&mut self, index: usize, text: &str) -> Result<RemoteOp, Error> {
-        let op = self.value.insert(index, text, &self.replica)?;
-        self.after_op(op)
-    }
-
-    /// Removes the text in the range [index..<index+len].
-    /// Returns an error if the start or stop index is out-of-bounds.
-    /// If the crdt does not have a site allocated, it caches
-    /// the op and returns an `AwaitingSite` error.
-    pub fn remove(&mut self, index: usize, len: usize) -> Result<RemoteOp, Error> {
-        let op = self.value.remove(index, len, &self.replica)?;
-        self.after_op(op)
-    }
-
     /// Replaces the text in the range [index..<index+len] with new text.
     /// Returns an error if the start or stop index is out-of-bounds.
     /// If the crdt does not have a site allocated, it caches

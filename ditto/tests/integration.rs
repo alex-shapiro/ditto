@@ -145,9 +145,9 @@ fn test_text() {
     let mut text2 = Text::from_state(text1.clone_state(), 2);
     let mut text3 = Text::from_state(text1.clone_state(), 3);
 
-    let remote_op1 = text1.insert(0, "Hello! ").unwrap();
-    let remote_op2 = text2.insert(0, "Bonjour. ").unwrap();
-    let remote_op3 = text3.insert(0, "Buenos dias. ").unwrap();
+    let remote_op1 = text1.replace(0, 0, "Hello! ").unwrap();
+    let remote_op2 = text2.replace(0, 0, "Bonjour. ").unwrap();
+    let remote_op3 = text3.replace(0, 0, "Buenos dias. ").unwrap();
 
     let _ = text1.execute_remote(&via_json(&remote_op2)).unwrap();
     let _ = text1.execute_remote(&via_msgpack(&remote_op3)).unwrap();

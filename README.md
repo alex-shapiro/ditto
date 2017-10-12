@@ -38,9 +38,9 @@ For more examples, take a look at the integration tests.
 
 **List&lt;T&gt;** stores an ordered sequence of values. Values in the list are immutable. Its supported operations are `insert` and `remove`, which insert and remove list value, respectively.
 
-**Text** is a string-like CRDT for mutable text. Its supported operations are `insert`, `remove`, and `replace`.
+**Text** is a string-like CRDT for mutable text. Its supported operation is `replace`, which replaces a range of unicode characters with a new string.
 
-**Json** is a container for any kind of data that can be represented via Json - objects, arrays, text, numbers, bools, and null. Its supported operations are `object_insert`, `object_remove`, `array_insert`, `array_remove`, `string_insert`, `string_remove`, and `string_replace`. Numbers, bools, and nulls are immutable.
+**Json** is a container for any kind of data that can be represented via Json - objects, arrays, text, numbers, bools, and null. Its supported operations are `object_insert`, `object_remove`, `array_insert`, `array_remove`, and `string_replace`. Numbers, bools, and nulls are immutable.
 
 ## Notes
 

@@ -23,7 +23,7 @@ fn perform_ops(insert_count: usize) {
         let word_len = word.len();
 
         string.insert_str(index, &word);
-        let _ = text.insert(index, &word).unwrap();
+        let _ = text.replace(index, 0, &word).unwrap();
         index += word_len;
 
         // every 20ish inserts, execute 10ish deletes
@@ -33,7 +33,7 @@ fn perform_ops(insert_count: usize) {
                 let len   = if rng.gen_weighted_bool(20) { std::cmp::min(upper, 10) } else { 1 };
                 index     = upper.saturating_sub(len);
                 string    = str_remove(&string, index, len);
-                let _     = text.remove(index, len).unwrap();
+                let _     = text.replace(index, len, "").unwrap();
             }
         }
     }

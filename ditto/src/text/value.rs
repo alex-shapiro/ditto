@@ -27,14 +27,6 @@ impl TextValue {
         self.0.len()
     }
 
-    pub fn insert(&mut self, idx: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
-        self.replace(idx, 0, text, replica)
-    }
-
-    pub fn remove(&mut self, idx: usize, len: usize, replica: &Replica) -> Result<RemoteOp, Error> {
-        self.replace(idx, len, "", replica)
-    }
-
     /// Replaces a text range that starts at `idx` and includes `len`
     /// unicode characters with new text. Returns an error if the
     /// range is out-of-bounds or if the replacement has no effect.
@@ -283,14 +275,14 @@ mod tests {
     #[test]
     fn test_insert_empty_string() {
         let mut text = TextValue::new();
-        let op = text.insert(0, "", &REPLICA1);
+        let op = text.replace(0, 0, "", &REPLICA1);
         assert!(op == Err(Error::Noop));
     }
 
     #[test]
     fn test_insert_when_empty() {
         let mut text = TextValue::new();
-        let op = text.insert(0, "quick", &REPLICA1).unwrap();
+        let op = text.replace(0, 0, "quick", &REPLICA1).unwrap();
         let element = elt_at(&text, 0, "quick");
 
         assert!(text.len() == 5);
@@ -304,9 +296,9 @@ mod tests {
     #[test]
     fn test_insert_before_index() {
         let mut text = TextValue::new();
-        let  _ = text.insert(0, "the\n", &REPLICA1).unwrap();
-        let  _ = text.insert(4, "brown", &REPLICA1).unwrap();
-        let op = text.insert(4, "quick ", &REPLICA2).unwrap();
+        let  _ = text.replace(0, 0, "the\n", &REPLICA1).unwrap();
+        let  _ = text.replace(4, 0, "brown", &REPLICA1).unwrap();
+        let op = text.replace(4, 0, "quick ", &REPLICA2).unwrap();
 
         assert!(text.len() == 15);
         assert!(text.local_value() == "the\nquick brown");
@@ -323,9 +315,9 @@ mod tests {
     #[test]
     fn test_insert_in_index() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the\n\n", &REPLICA1).unwrap();
-        let   _ = text.insert(5, "brown", &REPLICA1);
-        let op2 = text.insert(4, "quick", &REPLICA2).unwrap();
+        let op1 = text.replace(0, 0, "the\n\n", &REPLICA1).unwrap();
+        let   _ = text.replace(5, 0, "brown", &REPLICA1);
+        let op2 = text.replace(4, 0, "quick", &REPLICA2).unwrap();
 
         assert!(text.len() == 15);
         assert!(text.local_value() == "the\nquick\nbrown");
@@ -350,25 +342,25 @@ mod tests {
     #[test]
     fn test_insert_invalid() {
         let mut text = TextValue::new();
-        let op = text.insert(1, "quick", &REPLICA1);
+        let op = text.replace(1, 0, "quick", &REPLICA1);
         assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_remove_zero_text() {
         let mut text = TextValue::new();
-        let  _ = text.insert(0, "the ", &REPLICA1);
-        let op = text.remove(1, 0, &REPLICA2);
+        let  _ = text.replace(0, 0, "the ", &REPLICA1);
+        let op = text.replace(1, 0, "", &REPLICA2);
         assert!(op == Err(Error::Noop));
     }
 
     #[test]
     fn test_remove_whole_single_element() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the\n", &REPLICA1).unwrap();
-        let op1 = text.insert(4, "quick\n", &REPLICA1).unwrap();
-        let   _ = text.insert(10, "brown\n", &REPLICA1).unwrap();
-        let op2 = text.remove(4, 6, &REPLICA2).unwrap();
+        let   _ = text.replace(0, 0, "the\n", &REPLICA1).unwrap();
+        let op1 = text.replace(4, 0, "quick\n", &REPLICA1).unwrap();
+        let   _ = text.replace(10, 0, "brown\n", &REPLICA1).unwrap();
+        let op2 = text.replace(4, 6, "", &REPLICA2).unwrap();
 
         assert!(text.len() == 10);
         assert!(text.local_value() == "the\nbrown\n");
@@ -384,10 +376,10 @@ mod tests {
     #[test]
     fn test_remove_whole_multiple_elements() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the\n", &REPLICA1);
-        let op1 = text.insert(4, "quick\n", &REPLICA1).unwrap();
-        let op2 = text.insert(10, "brown\n", &REPLICA1).unwrap();
-        let op3 = text.remove(4, 12, &REPLICA2).unwrap();
+        let   _ = text.replace(0, 0, "the\n", &REPLICA1);
+        let op1 = text.replace(4, 0, "quick\n", &REPLICA1).unwrap();
+        let op2 = text.replace(10, 0, "brown\n", &REPLICA1).unwrap();
+        let op3 = text.replace(4, 12, "", &REPLICA2).unwrap();
 
         assert!(text.len() == 4);
         assert!(text.local_value() == "the\n");
@@ -403,10 +395,10 @@ mod tests {
     #[test]
     fn test_remove_split_single_element() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the ", &REPLICA1).unwrap();
-        let   _ = text.insert(4, "quick ", &REPLICA1).unwrap();
-        let op1 = text.insert(10, "brown", &REPLICA1).unwrap();
-        let op2 = text.remove(5, 3, &REPLICA2).unwrap();
+        let   _ = text.replace(0, 0, "the ", &REPLICA1).unwrap();
+        let   _ = text.replace(4, 0, "quick ", &REPLICA1).unwrap();
+        let op1 = text.replace(10, 0, "brown", &REPLICA1).unwrap();
+        let op2 = text.replace(5, 3, "", &REPLICA2).unwrap();
 
         assert!(text.len() == 12);
         assert!(text.local_value() == "the qk brown");
@@ -422,13 +414,13 @@ mod tests {
     #[test]
     fn test_remove_split_multiple_elements() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the\n", &REPLICA1).unwrap();
-        let   _ = text.insert(4, "quick\n", &REPLICA1);
-        let   _ = text.insert(10, "brown\n", &REPLICA1);
-        let   _ = text.insert(16, "fox\n", &REPLICA1);
-        let op2 = text.insert(20, "jumps\n", &REPLICA1).unwrap();
-        let   _ = text.insert(26, "over", &REPLICA1);
-        let op3 = text.remove(2, 19, &REPLICA2).unwrap();
+        let op1 = text.replace(0, 0, "the\n", &REPLICA1).unwrap();
+        let   _ = text.replace(4, 0, "quick\n", &REPLICA1);
+        let   _ = text.replace(10, 0, "brown\n", &REPLICA1);
+        let   _ = text.replace(16, 0, "fox\n", &REPLICA1);
+        let op2 = text.replace(20, 0, "jumps\n", &REPLICA1).unwrap();
+        let   _ = text.replace(26, 0, "over", &REPLICA1);
+        let op3 = text.replace(2, 19, "", &REPLICA2).unwrap();
 
         assert!(text.len() == 11);
         assert!(text.local_value() == "thumps\nover");
@@ -448,14 +440,14 @@ mod tests {
     #[test]
     fn test_remove_invalid() {
         let mut text = TextValue::new();
-        let op = text.remove(0, 1, &REPLICA2);
+        let op = text.replace(0, 1, "", &REPLICA2);
         assert!(op == Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_replace_remove_only() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "hello world", &REPLICA1).unwrap();
+        let op1 = text.replace(0, 0, "hello world", &REPLICA1).unwrap();
         let op2 = text.replace(2, 6, "", &REPLICA2).unwrap();
 
         assert!(text.len() == 5);
@@ -472,7 +464,7 @@ mod tests {
     #[test]
     fn test_replace_insert_only() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the fox", &REPLICA1).unwrap();
+        let op1 = text.replace(0, 0, "the fox", &REPLICA1).unwrap();
         let op2 = text.replace(4, 0, "quick ", &REPLICA2).unwrap();
 
         assert!(text.len() == 13);
@@ -487,7 +479,7 @@ mod tests {
     #[test]
     fn test_replace_remove_and_insert() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "the brown fox", &REPLICA1).unwrap();
+        let op1 = text.replace(0, 0, "the brown fox", &REPLICA1).unwrap();
         let op2 = text.replace(4, 5, "qwik", &REPLICA2).unwrap();
 
         assert!(text.len() == 12);
@@ -502,7 +494,7 @@ mod tests {
     #[test]
     fn test_replace_invalid() {
         let mut text = TextValue::new();
-        let   _ = text.insert(0, "the quick brown fox", &REPLICA1);
+        let   _ = text.replace(0, 0, "the quick brown fox", &REPLICA1);
         let op2 = text.replace(4, 16, "slow green turtle", &REPLICA2);
         assert!(op2 == Err(Error::OutOfBounds));
     }
@@ -543,7 +535,7 @@ mod tests {
         let mut text1 = TextValue::new();
         let mut text2 = TextValue::new();
 
-        let op = text1.insert(0, "hi", &REPLICA1).unwrap();
+        let op = text1.replace(0, 0, "hi", &REPLICA1).unwrap();
         assert!(text2.execute_remote(&op).is_some());
         assert!(text2.execute_remote(&op).is_none());
         assert!(text1 == text2);
@@ -552,8 +544,8 @@ mod tests {
     #[test]
     fn test_add_site() {
         let mut text = TextValue::new();
-        let op1 = text.insert(0, "a\n", &Replica::new(0, 1)).unwrap();
-        let op2 = text.insert(2, "b", &Replica::new(0, 2)).unwrap();
+        let op1 = text.replace(0, 0, "a\n", &Replica::new(0, 1)).unwrap();
+        let op2 = text.replace(2, 0, "b", &Replica::new(0, 2)).unwrap();
 
         text.add_site(&op1, 4);
         text.add_site(&op2, 8);
