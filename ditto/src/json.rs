@@ -98,6 +98,8 @@ impl Json {
     /// Inserts a value into the Json CRDT at the given pointer.
     /// The enclosing node may be an object or an array and the
     /// value being inserted must satisfy the IntoJson trait.
+    /// If the CRDT does not have a site allocated, it caches
+    /// the op and returns an `AwaitingSite` error.
     pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T) -> Result<RemoteOp, Error> {
         let value = value.into_json(&self.replica)?;
         let op = self.value.insert(pointer, value, &self.replica)?;
@@ -106,20 +108,26 @@ impl Json {
 
     /// Inserts a value into the Json CRDT at the given pointer.
     /// The enclosing node may be an object or an array and the
-    /// value being inserted is stringified JSON.
+    /// value being inserted is stringified JSON. If the CRDT
+    /// does not have a site allocated, it caches  the op and
+    /// returns an `AwaitingSite` error.
     pub fn insert_json(&mut self, pointer: &str, value: &str) -> Result<RemoteOp, Error> {
         let json: SJValue = serde_json::from_str(&value)?;
         self.insert(pointer, json)
     }
 
     /// Deletes a key-value pair from the Json CRDT. The enclosing
-    /// node may be an object or an array.
+    /// node may be an object or an array. If the CRDT does not
+    /// have a site allocated, it caches  the op and returns
+    /// an `AwaitingSite` error.
     pub fn remove(&mut self, pointer: &str) -> Result<RemoteOp, Error> {
         let op = self.value.remove(pointer)?;
         self.after_op(op)
     }
 
     /// Replaces a text range in a text node in the Json CRDT.
+    /// If the CRDT does not have a site allocated, it caches
+    /// the op and returns an `AwaitingSite` error.
     pub fn string_replace(&mut self, pointer: &str, index: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
         let op = self.value.string_replace(pointer, index, len, text, &self.replica)?;
         self.after_op(op)
