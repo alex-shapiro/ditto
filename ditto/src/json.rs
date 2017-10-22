@@ -134,8 +134,8 @@ impl Json {
     ///
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn string_replace(&mut self, pointer: &str, index: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
-        let op = self.value.string_replace(pointer, index, len, text, &self.replica)?;
+    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
+        let op = self.value.replace_text(pointer, index, len, text, &self.replica)?;
         self.after_op(op)
     }
 }
@@ -182,7 +182,7 @@ impl JsonValue {
         }
     }
 
-    pub fn string_replace(&mut self, pointer: &str, index: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
+    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
         let pointer = Self::split_pointer(pointer)?;
         let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
         let text_value = json_value.as_text()?;
@@ -736,9 +736,9 @@ mod tests {
     }
 
     #[test]
-    fn test_string_replace() {
+    fn test_replace_text() {
         let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
-        let remote_op = crdt.string_replace("/1", 1, 2, "åⱡ").unwrap();
+        let remote_op = crdt.replace_text("/1", 1, 2, "åⱡ").unwrap();
         let remote_op = text_remote_op(remote_op);
         assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
         assert!(remote_op.removes.len() == 1);
@@ -748,22 +748,22 @@ mod tests {
     }
 
     #[test]
-    fn test_string_replace_invalid_pointer() {
+    fn test_replace_text_invalid_pointer() {
         let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
-        assert!(crdt.string_replace("/0", 1, 2, "åⱡ").unwrap_err() == Error::WrongJsonType);
+        assert!(crdt.replace_text("/0", 1, 2, "åⱡ").unwrap_err() == Error::WrongJsonType);
     }
 
     #[test]
-    fn test_string_replace_out_of_bounds() {
+    fn test_replace_text_out_of_bounds() {
         let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
-        assert!(crdt.string_replace("/1", 1, 6, "åⱡ").unwrap_err() == Error::OutOfBounds);
+        assert!(crdt.replace_text("/1", 1, 6, "åⱡ").unwrap_err() == Error::OutOfBounds);
     }
 
     #[test]
-    fn test_string_replace_awaiting_site() {
+    fn test_replace_text_awaiting_site() {
         let remote_crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
         let mut crdt = Json::from_state(remote_crdt.clone_state(), 0);
-        assert!(crdt.string_replace("/1", 1, 2, "åⱡ").unwrap_err() == Error::AwaitingSite);
+        assert!(crdt.replace_text("/1", 1, 2, "åⱡ").unwrap_err() == Error::AwaitingSite);
         assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
 
         let remote_op = text_remote_op(crdt.awaiting_site.pop().unwrap());
@@ -799,7 +799,7 @@ mod tests {
     fn test_execute_remote_string() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        let remote_op = crdt1.string_replace("/foo/2", 1, 2, "ab").unwrap();
+        let remote_op = crdt1.replace_text("/foo/2", 1, 2, "ab").unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
         assert!(crdt1.value() == crdt2.value());
@@ -843,11 +843,11 @@ mod tests {
 
         println!("\nAAA\n{:#?}", crdt2);
 
-        let _ = crdt2.string_replace("/bar", 5, 0, " everyone!");
+        let _ = crdt2.replace_text("/bar", 5, 0, " everyone!");
 
         println!("\nBBB\n{:#?}", crdt2);
 
-        let _ = crdt2.string_replace("/bar", 0, 1, "");
+        let _ = crdt2.replace_text("/bar", 0, 1, "");
 
         println!("\nCCC\n{:#?}", crdt2);
 
@@ -934,7 +934,7 @@ mod tests {
         let mut crdt = Json::from_str("{}").unwrap();
         let _ = crdt.insert("/foo", vec![1.0]).unwrap();
         let _ = crdt.insert("/foo/0", "hello").unwrap();
-        let _ = crdt.string_replace("/foo/0", 5, 0, " everybody!").unwrap();
+        let _ = crdt.replace_text("/foo/0", 5, 0, " everybody!").unwrap();
         assert!(crdt.add_site(33).unwrap_err() == Error::AlreadyHasSite);
     }
 
