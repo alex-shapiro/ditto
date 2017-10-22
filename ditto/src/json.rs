@@ -106,7 +106,7 @@ impl Json {
 
     /// Inserts a value into the Json CRDT at the given pointer.
     /// The enclosing node may be an object or an array and the
-    /// value being inserted is encoded as stringified JSON.
+    /// value being inserted is stringified JSON.
     pub fn insert_json(&mut self, pointer: &str, value: &str) -> Result<RemoteOp, Error> {
         let json: SJValue = serde_json::from_str(&value)?;
         self.insert(pointer, json)
@@ -578,15 +578,15 @@ mod tests {
     #[test]
     fn test_object_insert_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
-        let result = crdt.object_insert_json("/foo", "bar".to_owned(), r#"{"bar": 3.5}"#);
+        let result = crdt.insert_json("/foo/bar", r#"{"bar": 3.5}"#);
         assert!(result.unwrap_err() == Error::DoesNotExist);
     }
 
     #[test]
     fn test_object_insert_replaces_value() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
-        let _ = crdt.object_insert("", "foo".to_owned(), 19.7).unwrap();
-        let remote_op = crdt.object_insert("", "foo".to_owned(), 4.6).unwrap();
+        let _ = crdt.insert("/foo", 19.7).unwrap();
+        let remote_op = crdt.insert("/foo", 4.6).unwrap();
 
         assert!(crdt.replica.counter == 3);
         assert!(*nested_value(&mut crdt, "/foo").unwrap() == JsonValue::Number(4.6));
@@ -602,15 +602,15 @@ mod tests {
     #[test]
     fn test_object_insert_same_value() {
         let mut crdt = Json::from_str("{}").unwrap();
-        assert!(crdt.object_insert("", "foo".to_owned(), 19.7).is_ok());
-        assert!(crdt.object_insert("", "foo".to_owned(), 19.7).unwrap_err() == Error::AlreadyExists);
+        assert!(crdt.insert("/foo", 19.7).is_ok());
+        assert!(crdt.insert("/foo", 19.7).unwrap_err() == Error::AlreadyExists);
     }
 
     #[test]
     fn test_object_insert_awaiting_site() {
         let crdt1 = Json::from_str("{}").unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        let result = crdt2.object_insert("", "foo".to_owned(), 19.7);
+        let result = crdt2.insert("/foo", 19.7);
 
         assert!(result.unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
@@ -620,7 +620,7 @@ mod tests {
     #[test]
     fn test_object_remove() {
         let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
-        let remote_op = crdt.object_remove("/abc/2", "def").unwrap();
+        let remote_op = crdt.remove("/abc/2/def").unwrap();
 
         assert!(nested_value(&mut crdt, "abc/2/def").is_none());
         assert!(remote_op.pointer.len() == 2);
@@ -636,14 +636,14 @@ mod tests {
     #[test]
     fn test_object_remove_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
-        let result = crdt.object_remove("/uhoh/11", "def");
+        let result = crdt.remove("/uhoh/11/def");
         assert!(result.unwrap_err() == Error::DoesNotExist);
     }
 
     #[test]
     fn test_object_remove_does_not_exist() {
         let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
-        let result = crdt.object_remove("/abc/2", "zebra!");
+        let result = crdt.remove("/abc/2/zebra!");
         assert!(result.unwrap_err() == Error::DoesNotExist);
     }
 
@@ -651,7 +651,7 @@ mod tests {
     fn test_object_remove_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        assert!(crdt2.object_remove("/abc/2", "def").unwrap_err() == Error::AwaitingSite);
+        assert!(crdt2.remove("/abc/2/def").unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
         assert!(nested_value(&mut crdt2, "/abc/2/def").is_none());
     }
@@ -659,7 +659,7 @@ mod tests {
     #[test]
     fn test_array_insert() {
         let mut crdt = Json::from_str(r#"{"things":[1,[],2,3]}"#).unwrap();
-        let remote_op = crdt.array_insert("/things/1", 0, true).unwrap();
+        let remote_op = crdt.insert("/things/1/0", true).unwrap();
         let element = list_insert_op_element(remote_op);
         assert!(*nested_value(&mut crdt, "/things/1/0").unwrap() == JsonValue::Bool(true));
         assert!(crdt.replica.counter == 2);
@@ -669,20 +669,20 @@ mod tests {
     #[test]
     fn test_array_insert_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
-        assert!(crdt.array_insert("/others", 1, true).unwrap_err() == Error::DoesNotExist);
+        assert!(crdt.insert("/others/1", true).unwrap_err() == Error::DoesNotExist);
     }
 
     #[test]
     fn test_array_insert_out_of_bounds() {
         let mut crdt = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
-        assert!(crdt.array_insert("/things", 4, true).unwrap_err() == Error::OutOfBounds);
+        assert!(crdt.insert("/things/4", true).unwrap_err() == Error::OutOfBounds);
     }
 
     #[test]
     fn test_array_insert_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        assert!(crdt2.array_insert("/things", 1, true).unwrap_err() == Error::AwaitingSite);
+        assert!(crdt2.insert("/things/1", true).unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
         assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Bool(true));
     }
@@ -690,7 +690,7 @@ mod tests {
     #[test]
     fn test_array_remove() {
         let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
-        let remote_op = crdt.array_remove("/things/1", 2).unwrap();
+        let remote_op = crdt.remove("/things/1/2").unwrap();
         let uid = list_remove_op_uid(remote_op);
         assert!(nested_value(&mut crdt, "/things/1/2").is_none());
         assert!(crdt.replica.counter == 2);
@@ -700,20 +700,20 @@ mod tests {
     #[test]
     fn test_array_remove_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
-        assert!(crdt.array_remove("/things/5", 2).unwrap_err() == Error::OutOfBounds);
+        assert!(crdt.remove("/things/5/2").unwrap_err() == Error::OutOfBounds);
     }
 
     #[test]
     fn test_array_remove_out_of_bounds() {
         let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
-        assert!(crdt.array_remove("/things/1", 3).unwrap_err() == Error::OutOfBounds);
+        assert!(crdt.remove("/things/1/3").unwrap_err() == Error::OutOfBounds);
     }
 
     #[test]
     fn test_array_remove_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        assert!(crdt2.array_remove("/things", 1).unwrap_err() == Error::AwaitingSite);
+        assert!(crdt2.remove("/things/1").unwrap_err() == Error::AwaitingSite);
 
         let remote_op = crdt2.awaiting_site.pop().unwrap();
         let uid = list_remove_op_uid(remote_op);
@@ -763,7 +763,7 @@ mod tests {
     fn test_execute_remote_object() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        let remote_op = crdt1.object_insert("", "baz".to_owned(), 54.0).unwrap();
+        let remote_op = crdt1.insert("/baz", 54.0).unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
         assert!(crdt1.value() == crdt2.value());
@@ -774,7 +774,7 @@ mod tests {
     fn test_execute_remote_array() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        let remote_op = crdt1.array_insert("/foo", 0, 54.0).unwrap();
+        let remote_op = crdt1.insert("/foo/0", 54.0).unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
         assert!(crdt1.value() == crdt2.value());
@@ -796,8 +796,8 @@ mod tests {
     fn test_execute_remote_missing_pointer() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
-        let remote_op = crdt1.object_remove("", "bar").unwrap();
-        let _         = crdt2.object_remove("", "bar").unwrap();
+        let remote_op = crdt1.remove("/bar").unwrap();
+        let _         = crdt2.remove("/bar").unwrap();
         assert!(crdt2.execute_remote(&remote_op).is_none());
     }
 
@@ -805,11 +805,11 @@ mod tests {
     fn test_merge() {
         let mut crdt1 = Json::from_str(r#"{"x":[{"a": 1},{"b": 2},{"c":true},{"d":false}]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
-        let _ = crdt1.object_insert("/x/0", "e".to_owned(), 222.0).unwrap();
-        let _ = crdt1.object_insert("/x/3", "e".to_owned(), 333.0).unwrap();
-        let _ = crdt1.array_remove("/x", 2).unwrap();
-        let _ = crdt2.object_insert("/x/1", "e".to_owned(), 444.0).unwrap();
-        let _ = crdt2.array_remove("/x", 3).unwrap();
+        let _ = crdt1.insert("/x/0/e", 222.0).unwrap();
+        let _ = crdt1.insert("/x/3/e", 333.0).unwrap();
+        let _ = crdt1.remove("/x/2").unwrap();
+        let _ = crdt2.insert("/x/1/e", 444.0).unwrap();
+        let _ = crdt2.remove("/x/3").unwrap();
 
         let crdt1_state = crdt1.clone_state();
         crdt1.merge(crdt2.clone_state());
@@ -824,8 +824,8 @@ mod tests {
     fn test_add_site() {
         let crdt1 = Json::from_str(r#"{"foo":[1,2,3],"bar":"hello"}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        let _ = crdt2.object_insert("","baz".to_owned(), json!({"abc":[true, false, 84.0]}));
-        let _ = crdt2.array_insert("/baz/abc", 1, 61.0);
+        let _ = crdt2.insert("/baz", json!({"abc":[true, false, 84.0]}));
+        let _ = crdt2.insert("/baz/abc/1", 61.0);
 
         println!("\nAAA\n{:#?}", crdt2);
 
@@ -837,8 +837,8 @@ mod tests {
 
         println!("\nCCC\n{:#?}", crdt2);
 
-        let _ = crdt2.array_remove("/baz/abc", 2);
-        let _ = crdt2.object_remove("", "foo");
+        let _ = crdt2.remove("/baz/abc/2");
+        let _ = crdt2.remove("/foo");
 
         let mut remote_ops = crdt2.add_site(11).unwrap().into_iter();
 
@@ -898,7 +898,7 @@ mod tests {
     fn test_add_site_nested() {
         let crdt1 = Json::from_str("{}").unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        let _ = crdt2.object_insert("", "foo".to_owned(), json!({
+        let _ = crdt2.insert("/foo", json!({
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}
         }));
@@ -918,8 +918,8 @@ mod tests {
     #[test]
     fn test_add_site_already_has_site() {
         let mut crdt = Json::from_str("{}").unwrap();
-        let _ = crdt.object_insert("", "foo".to_owned(), vec![1.0]).unwrap();
-        let _ = crdt.array_insert("/foo", 0, "hello").unwrap();
+        let _ = crdt.insert("/foo", vec![1.0]).unwrap();
+        let _ = crdt.insert("/foo/0", "hello").unwrap();
         let _ = crdt.string_replace("/foo/0", 5, 0, " everybody!").unwrap();
         assert!(crdt.add_site(33).unwrap_err() == Error::AlreadyHasSite);
     }
@@ -928,7 +928,7 @@ mod tests {
     fn test_execute_remote_dupe() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
-        let remote_op = crdt1.object_remove("", "bar").unwrap();
+        let remote_op = crdt1.remove("/bar").unwrap();
         assert!(crdt2.execute_remote(&remote_op).is_some());
         assert!(crdt2.execute_remote(&remote_op).is_none());
     }
@@ -962,7 +962,7 @@ mod tests {
     #[test]
     fn test_serialize_remote_op() {
         let mut crdt = Json::from_str(r#"{"foo":{}}"#).unwrap();
-        let remote_op1 = crdt.object_insert("/foo", "bar".to_owned(), json!({
+        let remote_op1 = crdt.insert("/foo/bar", json!({
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}
         })).unwrap();
@@ -980,7 +980,7 @@ mod tests {
     fn test_serialize_local_op() {
         let mut crdt1 = Json::from_str(r#"{"foo":{}}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
-        let remote_op = crdt1.object_insert("/foo", "bar".to_owned(), json!({
+        let remote_op = crdt1.insert("/foo/bar", json!({
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}
         })).unwrap();
@@ -996,7 +996,8 @@ mod tests {
     }
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {
-        let (value, _) = try_opt!(crdt.value.get_nested_local(pointer).ok());
+        let pointer = try_opt!(JsonValue::split_pointer(pointer).ok());
+        let (value, _) = try_opt!(crdt.value.get_nested_local(&pointer).ok());
         Some(value)
     }
 
