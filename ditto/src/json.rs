@@ -95,46 +95,27 @@ impl Json {
         Ok(Json{value, replica, tombstones, awaiting_site: vec![]})
     }
 
-    /// Inserts a key-value pair into an object in the Json CRDT and
-    /// returns an op that can be sent to remote sites for replication.
-    /// If the CRDT does not have a site allocated, it caches the op
-    /// and returns an `AwaitingSite` error.
-    pub fn object_insert<T: IntoJson>(&mut self, pointer: &str, key: String, value: T) -> Result<RemoteOp, Error> {
+    /// Inserts a value into the Json CRDT at the given pointer.
+    /// The enclosing node may be an object or an array and the
+    /// value being inserted must satisfy the IntoJson trait.
+    pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T) -> Result<RemoteOp, Error> {
         let value = value.into_json(&self.replica)?;
-        let op = self.value.object_insert(pointer, key, value, &self.replica)?;
+        let op = self.value.insert(pointer, value, &self.replica)?;
         self.after_op(op)
     }
 
-    /// Inserts a key-value pair into an object in the Json CRDT, where
-    /// the value being inserted is encoded as a JSON `&str`.
-    pub fn object_insert_json(&mut self, pointer: &str, key: String, value: &str) -> Result<RemoteOp, Error> {
+    /// Inserts a value into the Json CRDT at the given pointer.
+    /// The enclosing node may be an object or an array and the
+    /// value being inserted is encoded as stringified JSON.
+    pub fn insert_json(&mut self, pointer: &str, value: &str) -> Result<RemoteOp, Error> {
         let json: SJValue = serde_json::from_str(&value)?;
-        self.object_insert(pointer, key, json)
+        self.insert(pointer, json)
     }
 
-    /// Deletes a key-value pair from an object in the Json CRDT.
-    pub fn object_remove(&mut self, pointer: &str, key: &str) -> Result<RemoteOp, Error> {
-        let op = self.value.object_remove(pointer, key)?;
-        self.after_op(op)
-    }
-
-    /// Inserts an element into an array in the Json CRDT.
-    pub fn array_insert<T: IntoJson>(&mut self, pointer: &str, index: usize, value: T) -> Result<RemoteOp, Error> {
-        let value = value.into_json(&self.replica)?;
-        let op = self.value.array_insert(pointer, index, value, &self.replica)?;
-        self.after_op(op)
-    }
-
-    /// Inserts an element into an array in the Json CRDT, where the
-    /// value being inserted is encoded as a JSON `&str`.
-    pub fn array_insert_json(&mut self, pointer: &str, index: usize, value: &str) -> Result<RemoteOp, Error> {
-        let json: SJValue = serde_json::from_str(&value)?;
-        self.array_insert(pointer, index, json)
-    }
-
-    /// Removes an element from an array in the Json CRDT.
-    pub fn array_remove(&mut self, pointer: &str, index: usize) -> Result<RemoteOp, Error> {
-        let op = self.value.array_remove(pointer, index)?;
+    /// Deletes a key-value pair from the Json CRDT. The enclosing
+    /// node may be an object or an array.
+    pub fn remove(&mut self, pointer: &str) -> Result<RemoteOp, Error> {
+        let op = self.value.remove(pointer)?;
         self.after_op(op)
     }
 
@@ -146,36 +127,50 @@ impl Json {
 }
 
 impl JsonValue {
-    pub fn object_insert<T: IntoJson>(&mut self, pointer: &str, key: String, value: T, replica: &Replica) -> Result<RemoteOp, Error> {
-        let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
-        let map_value = json_value.as_map()?;
-        let remote_op = map_value.insert(key, value.into_json(&replica)?, &replica)?;
-        Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Object(remote_op)})
+    pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T, replica: &Replica) -> Result<RemoteOp, Error> {
+        let mut pointer = Self::split_pointer(pointer)?;
+        let key = pointer.pop().ok_or(Error::DoesNotExist)?;
+        let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
+        let value = value.into_json(&replica)?;
+
+        match *json_value {
+            JsonValue::Object(ref mut map_value) => {
+                let remote_op = map_value.insert(key.into(), value, &replica)?;
+                let remote_op = RemoteOpInner::Object(remote_op);
+                Ok(RemoteOp{pointer: remote_pointer, op: remote_op})
+            }
+            JsonValue::Array(ref mut list_value) => {
+                let idx = usize::from_str(key)?;
+                let remote_op = list_value.insert(idx, value, &replica)?;
+                let remote_op = RemoteOpInner::Array(remote_op);
+                Ok(RemoteOp{pointer: remote_pointer, op: remote_op})
+            }
+            _ => Err(Error::DoesNotExist),
+        }
     }
 
-    pub fn object_remove(&mut self, pointer: &str, key: &str) -> Result<RemoteOp, Error> {
-        let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
-        let map_value = json_value.as_map()?;
-        let remote_op = map_value.remove(key)?;
-        Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Object(remote_op)})
-    }
+    pub fn remove(&mut self, pointer: &str) -> Result<RemoteOp, Error> {
+        let mut pointer = Self::split_pointer(pointer)?;
+        let key = pointer.pop().ok_or(Error::DoesNotExist)?;
+        let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
 
-    pub fn array_insert<T: IntoJson>(&mut self, pointer: &str, index: usize, value: T, replica: &Replica) -> Result<RemoteOp, Error> {
-        let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
-        let list_value = json_value.as_list()?;
-        let remote_op = list_value.insert(index, value.into_json(&replica)?, &replica)?;
-        Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Array(remote_op)})
-    }
-
-    pub fn array_remove(&mut self, pointer: &str, index: usize) -> Result<RemoteOp, Error> {
-        let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
-        let list_value = json_value.as_list()?;
-        let remote_op = list_value.remove(index)?;
-        Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Array(remote_op)})
+        match *json_value {
+            JsonValue::Object(ref mut map_value) => {
+                let remote_op = map_value.remove(key)?;
+                Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Object(remote_op)})
+            }
+            JsonValue::Array(ref mut list_value) => {
+                let idx = usize::from_str(key)?;
+                let remote_op = list_value.remove(idx)?;
+                Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Array(remote_op)})
+            }
+            _ => Err(Error::DoesNotExist),
+        }
     }
 
     pub fn string_replace(&mut self, pointer: &str, index: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
-        let (json_value, remote_pointer) = self.get_nested_local(pointer)?;
+        let pointer = Self::split_pointer(pointer)?;
+        let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
         let text_value = json_value.as_text()?;
         let remote_op = text_value.replace(index, len, text, &replica)?;
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::String(remote_op)})
@@ -204,19 +199,22 @@ impl JsonValue {
         self.nested_merge(other, self_tombstones, other_tombstones)
     }
 
-    fn get_nested_local(&mut self, pointer: &str) -> Result<(&mut JsonValue, Vec<RemoteUID>), Error> {
-        if !(pointer.is_empty() || pointer.starts_with("/")) {
+    fn split_pointer(pointer_str: &str) -> Result<Vec<&str>, Error> {
+        if !(pointer_str.is_empty() || pointer_str.starts_with("/")) {
             return Err(Error::DoesNotExist)
         }
+        Ok(pointer_str.split("/").skip(1).collect())
+    }
 
+    fn get_nested_local(&mut self, pointer: &[&str]) -> Result<(&mut JsonValue, Vec<RemoteUID>), Error> {
         let mut value = Some(self);
         let mut remote_pointer = vec![];
 
-        for key in pointer.split("/").skip(1) {
+        for key in pointer {
             match value.unwrap() {
                 &mut JsonValue::Object(ref mut map_value) => {
-                    let element = map_value.get_mut(key).ok_or(Error::DoesNotExist)?;
-                    let uid = RemoteUID::Object(key.to_owned(), element.0.clone());
+                    let element = map_value.get_mut(*key).ok_or(Error::DoesNotExist)?;
+                    let uid = RemoteUID::Object((*key).to_owned(), element.0.clone());
                     remote_pointer.push(uid);
                     value = Some(&mut element.1)
                 }
@@ -562,8 +560,8 @@ mod tests {
     #[test]
     fn test_object_insert() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
-        let remote_op1 = crdt.object_insert_json("", "foo".to_owned(), r#"{"bar": 3.5}"#).unwrap();
-        let remote_op2 = crdt.object_insert("/foo", "baz".to_owned(), true).unwrap();
+        let remote_op1 = crdt.insert_json("/foo", r#"{"bar": 3.5}"#).unwrap();
+        let remote_op2 = crdt.insert("/foo/baz", true).unwrap();
 
         assert!(crdt.replica.counter == 3);
         assert!(*nested_value(&mut crdt, "/foo/bar").unwrap() == JsonValue::Number(3.5));
