@@ -166,9 +166,9 @@ fn test_json() {
     let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
     let mut crdt3 = Json::from_state(crdt1.clone_state(), 3);
 
-    let remote_op1 = crdt1.object_insert("", "foo".to_owned(), 1.0).unwrap();
-    let remote_op2 = crdt2.object_insert("", "foo".to_owned(), 2.0).unwrap();
-    let remote_op3 = crdt3.object_insert("", "bar".to_owned(), 3.0).unwrap();
+    let remote_op1 = crdt1.insert("/foo", 1.0).unwrap();
+    let remote_op2 = crdt2.insert("/foo", 2.0).unwrap();
+    let remote_op3 = crdt3.insert("/bar", 3.0).unwrap();
 
     let _ = crdt1.execute_remote(&via_msgpack(&remote_op2));
     let _ = crdt1.execute_remote(&via_msgpack(&remote_op3));
