@@ -1,10 +1,12 @@
 use element::Element;
+use element::Node as Child;
 use error::Error;
 use quick_xml::events::{Event, BytesDecl};
 use quick_xml::reader::Reader as XmlReader;
 use quick_xml::writer::Writer as XmlWriter;
 use std::io::{Read, BufRead, BufReader, Write};
 use std::str::from_utf8;
+use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
 pub struct Document {
@@ -23,6 +25,13 @@ pub struct Declaration {
 pub enum XmlVersion {
     Version10,
     Version11,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum Node<'a> {
+    Attribute(&'a str),
+    Element(&'a Element),
+    Text(&'a str),
 }
 
 impl Document {
@@ -46,6 +55,32 @@ impl Document {
 
     pub fn encoding(&self) -> Option<&str> {
         self.declaration.encoding.as_ref().and_then(|s| Some(s.as_str()))
+    }
+
+    pub fn pointer<'a>(&'a self, pointer: &str) -> Result<Node<'a>, Error> {
+        if !pointer.starts_with("/") { return Err(Error::InvalidPointer) }
+        let keys = pointer.split("/").skip(1);
+        let mut node = Ok(Node::Element(&self.root));
+
+        for key in keys {
+            if let Node::Element(ref element) = node.unwrap() {
+                if let Some(attr_value) = element.attributes().get(key) {
+                    node = Ok(Node::Attribute(attr_value));
+                } else {
+                    let idx = usize::from_str(key).map_err(|_| Error::InvalidPointer)?;
+                    match *element.children().get(idx).ok_or(Error::InvalidPointer)? {
+                        Child::Element(ref element) =>
+                            node = Ok(Node::Element(element)),
+                        Child::Text(ref text) =>
+                            node = Ok(Node::Text(text)),
+                    };
+                }
+            } else {
+                return Err(Error::InvalidPointer)
+            }
+        }
+
+        node
     }
 }
 

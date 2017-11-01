@@ -5,6 +5,7 @@ use std::str::Utf8Error;
 pub enum Error {
     BadWrite,
     InvalidEncoding(Utf8Error),
+    InvalidPointer,
     InvalidXml,
     QuickXml(quick_xml::errors::Error),
 }

@@ -24,6 +24,18 @@ pub enum Node {
 }
 
 impl Element {
+    pub fn name(&self) -> &str {
+        &self.name
+    }
+
+    pub fn attributes(&self) -> &BTreeMap<String, String> {
+        &self.attributes
+    }
+
+    pub fn children(&self) -> &[Node] {
+        &self.children
+    }
+
     pub fn from_reader<R: BufRead>(reader: &mut XmlReader<R>) -> Result<Element, Error> {
         let mut buf   = vec![];
         let mut stack = vec![];
@@ -116,7 +128,7 @@ fn build_element(event: &BytesStart) -> Result<Element, Error> {
     let attributes = event.attributes().map(|attr_result| {
         let attr  = attr_result?;
         let key   = str::from_utf8(attr.key)?.to_owned();
-        let value = str::from_utf8(attr.value)?.to_owned();
+        let value = str::from_utf8(attr.unescaped_value()?.borrow())?.to_owned();
         Ok((key, value))
     }).collect::<Result<BTreeMap<String, String>, Error>>()?;
     Ok(Element{name, attributes, children: vec![]})
