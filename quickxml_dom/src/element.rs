@@ -14,11 +14,11 @@ use std::str;
 pub struct Element {
     name: String,
     attributes: BTreeMap<String, String>,
-    children: Vec<Node>,
+    children: Vec<Child>,
 }
 
 #[derive(Debug, PartialEq)]
-pub enum Node {
+pub enum Child {
     Element(Element),
     Text(String),
 }
@@ -32,7 +32,7 @@ impl Element {
         &self.attributes
     }
 
-    pub fn children(&self) -> &[Node] {
+    pub fn children(&self) -> &[Child] {
         &self.children
     }
 
@@ -55,7 +55,7 @@ impl Element {
                     }
 
                     if let Some(parent) = stack.last_mut() {
-                        parent.children.push(Node::Element(element));
+                        parent.children.push(Child::Element(element));
                     } else {
                         return Ok(element)
                     }
@@ -63,7 +63,7 @@ impl Element {
                 Event::Empty(ref event) => {
                     let element = build_element(event)?;
                     if let Some(parent) = stack.last_mut() {
-                        parent.children.push(Node::Element(element));
+                        parent.children.push(Child::Element(element));
                     } else {
                         return Ok(element)
                     }
@@ -76,7 +76,7 @@ impl Element {
                     if text.is_empty() { continue }
 
                     let parent = stack.last_mut().ok_or(Error::InvalidXml)?;
-                    parent.children.push(Node::Text(text))
+                    parent.children.push(Child::Text(text))
                 }
                 Event::Eof => return Err(Error::InvalidXml),
                 Event::Decl(_) => return Err(Error::InvalidXml),
@@ -111,11 +111,11 @@ impl Element {
     }
 }
 
-impl Node {
+impl Child {
     pub fn to_writer<W: Write>(&self, writer: &mut XmlWriter<W>) -> Result<usize, Error> {
         match *self {
-            Node::Element(ref element) => element.to_writer(writer),
-            Node::Text(ref text) => {
+            Child::Element(ref element) => element.to_writer(writer),
+            Child::Text(ref text) => {
                 let element = BytesText::borrowed(text.as_bytes());
                 Ok(writer.write_event(Event::Text(element))?)
             }

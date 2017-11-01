@@ -1,5 +1,5 @@
 use element::Element;
-use element::Node as Child;
+use element::Child;
 use error::Error;
 use quick_xml::events::{Event, BytesDecl};
 use quick_xml::reader::Reader as XmlReader;
