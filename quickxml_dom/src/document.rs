@@ -14,7 +14,7 @@ pub struct Document {
     root: Element,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Declaration {
     version:    XmlVersion,
     encoding:   Option<String>,

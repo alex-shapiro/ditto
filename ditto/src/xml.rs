@@ -29,8 +29,15 @@ pub struct XmlState<'a> {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct XmlValue {
-    declaration: dom::Declaration,
+    declaration: Declaration,
     root: Element,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+struct Declaration {
+    version:    XmlVersion,
+    encoding:   Option<String>,
+    standalone: Option<bool>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -44,6 +51,12 @@ struct Element {
 enum Child {
     Text(TextValue),
     Element(Element),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Serialize, Deserialize)]
+enum XmlVersion {
+    Version10,
+    Version11,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,7 +90,7 @@ impl Xml {
 
     pub fn from_reader<R: Read>(mut reader: R) -> Result<Self, Error> {
         let mut replica = Replica::new(1, 0);
-        let local_xml = dom::Document::from_reader(reader)?;
+        let local_xml = dom::Document::from_reader(&mut reader).map_err(|_| Error::InvalidXml)?;
         let value = into_xml(local_xml, &replica)?;
         let tombstones = Tombstones::new();
         replica.counter += 1;
@@ -90,7 +103,7 @@ impl Xml {
 
     pub fn insert<T: IntoXmlNode>(&mut self, pointer_str: &str, node: T) -> Result<RemoteOp, Error> {
         let op = self.value.insert(pointer_str, node, &self.replica)?;
-        self.after_op(op);
+        self.after_op(op)
     }
 
     pub fn remove(&mut self, pointer_str: &str) -> Result<RemoteOp, Error> {
@@ -98,23 +111,25 @@ impl Xml {
         self.after_op(op)
     }
 
-    // pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
-    //     let op = self.value.replace_text(pointer_str, idx, len, text, &self.replica)?;
-    //     self.after_op(op)
-    // }
+    pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
+        let op = self.value.replace_text(pointer_str, idx, len, text, &self.replica)?;
+        self.after_op(op)
+    }
 }
 
 impl XmlValue {
     pub fn insert<T: IntoXmlNode>(&mut self, pointer_str: &str, node: T, replica: &Replica) -> Result<RemoteOp, Error> {
         let (pointer, key) = pointer::split_xml_nodes(pointer_str)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
-        let nested_element = child.as_element()?;
+        let nested_element = child.as_element_mut().ok_or(Error::InvalidPointer)?;
 
         if let Ok(idx) = usize::from_str(key) {
-            let op = nested_element.children.insert(idx, node.into_xml_child(), replica)?;
+            let node = node.into_xml_child(replica)?;
+            let op = nested_element.children.insert(idx, node, replica)?;
             Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Child(op)})
         } else {
-            let op = nested_element.attributes.insert(key, node.into_xml_attribute_value(), replica)?;
+            let attribute_value = node.into_xml_attribute_value()?;
+            let op = nested_element.attributes.insert(key.into(), attribute_value, replica)?;
             Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Attribute(op)})
         }
     }
@@ -122,7 +137,7 @@ impl XmlValue {
     pub fn remove(&mut self, pointer_str: &str) -> Result<RemoteOp, Error> {
         let (pointer, key) = pointer::split_xml_nodes(pointer_str)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
-        let nested_element = child.as_element()?;
+        let nested_element = child.as_element_mut().ok_or(Error::InvalidPointer)?;
 
         if let Ok(idx) = usize::from_str(key) {
             let op = nested_element.children.remove(idx)?;
@@ -133,15 +148,16 @@ impl XmlValue {
         }
     }
 
-    pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str, replica: &str) -> Result<RemoteOp, Error> {
+    pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
         let pointer = pointer::split_xml_children(pointer_str)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
-        let nested_text = child.as_text()?;
+        let nested_text = child.as_text_mut().ok_or(Error::InvalidPointer)?;
         let op = nested_text.replace(idx, len, text, replica)?;
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::ReplaceText(op)})
     }
 
-    // pub fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
+    pub fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
+        unimplemented!()
     //     let (child, local_pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
     //     match (child, &remote_op.op) {
     //         (&mut Child::Element(ref mut element), &RemoteOpInner::Child(ref op)) => {
@@ -157,21 +173,21 @@ impl XmlValue {
     //             Some(LocalOp{pointer: local_pointer, op: LocalOpInner::ReplaceText(local_op)})
     //         }
     //     }
-    // }
+    }
 
     pub fn merge(&mut self, other: XmlValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones)
+        self.root.nested_merge(other.root, self_tombstones, other_tombstones)
     }
 
     fn get_nested_local(&mut self, pointer: &[usize]) -> Result<(&mut Child, Vec<SequenceUid>), Error> {
-        let mut child = Some(&mut self.root);
+        let mut child = Some(&mut Child::Element(self.root));
         let mut remote_pointer = vec![];
 
-        for idx in pointer.enumerate() {
+        for idx in pointer {
             match child.unwrap() {
                 &mut Child::Text(_) => return Err(Error::InvalidPointer),
                 &mut Child::Element(ref mut element) => {
-                    let list_elt = element.children.0.get_mut_elt(idx).ok_or(Error::InvalidPointer)?;
+                    let (list_elt, _) = element.children.0.get_mut_elt(*idx).map_err(|_| Error::InvalidPointer)?;
                     let uid = list_elt.0.clone();
                     remote_pointer.push(uid);
                     child = Some(&mut list_elt.1);
@@ -183,6 +199,24 @@ impl XmlValue {
     }
 }
 
+impl NestedValue for Element {
+    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        self.attributes.merge(other.attributes, self_tombstones, other_tombstones);
+        self.children.nested_merge(other.children, self_tombstones, other_tombstones);
+    }
+}
+
+impl NestedValue for Child {
+    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        match other {
+            Child::Text(other_text) =>
+                some!(self.as_text_mut()).merge(other_text, self_tombstones, other_tombstones),
+            Child::Element(other_element) =>
+                some!(self.as_element_mut()).nested_merge(other_element, self_tombstones, other_tombstones),
+        }
+    }
+}
+
 impl CrdtValue for XmlValue {
     type RemoteOp = RemoteOp;
     type LocalOp = LocalOp;
@@ -190,7 +224,7 @@ impl CrdtValue for XmlValue {
 
     fn local_value(&self) -> Self::LocalValue {
         let declaration = self.declaration.clone();
-        let root = self.root.local_value();
+        let root = self.root.into_dom();
         dom::Document::new(declaration, root)
     }
 
@@ -217,6 +251,15 @@ impl CrdtRemoteOp for RemoteOp {
     }
 }
 
+impl Child {
+    fn as_element_mut(&mut self) -> Option<&mut Element> {
+        if let Child::Element(ref mut element) = *self { Some(element) } else { None }
+    }
+
+    fn as_text_mut(&mut self) -> Option<&mut TextValue> {
+        if let Child::Text(ref mut text) = *self { Some(text) } else { None }
+    }
+}
 
 impl Element {
     fn from_dom(dom_element: dom::Element, replica: &Replica) -> Result<Self, Error> {
@@ -261,7 +304,7 @@ fn into_xml(dom: dom::Document, replica: &Replica) -> Result<XmlValue, Error> {
 trait IntoXmlNode {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error>;
 
-    fn into_xml_attribute_value(self, replica: &Replica) -> Result<String, Error> {
+    fn into_xml_attribute_value(self) -> Result<String, Error> {
         Err(Error::InvalidXml)
     }
 }
@@ -272,7 +315,7 @@ impl<'a> IntoXmlNode for &'a str {
         dom_child.into_xml_child(replica)
     }
 
-    fn into_xml_attribute_value(self, replica: &Replica) -> Result<String, Error> {
+    fn into_xml_attribute_value(self) -> Result<String, Error> {
         let dom_child = dom::Child::from_str(self)?;
         let text = dom_child.into_text().ok_or(Error::InvalidXml)?;
         Ok(text)

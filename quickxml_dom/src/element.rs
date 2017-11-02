@@ -145,6 +145,14 @@ impl Child {
         if let Child::Element(ref element) = *self { Some(element) } else { None }
     }
 
+    pub fn as_text_mut(&mut self) -> Option<&mut str> {
+        if let Child::Text(ref mut text) = *self { Some(text) } else { None }
+    }
+
+    pub fn as_element_mut(&mut self) -> Option<&mut Element> {
+        if let Child::Element(ref mut element) = *self { Some(element) } else { None }
+    }
+
     pub fn into_text(self) -> Option<String> {
         if let Child::Text(text) = self { Some(text) } else { None }
     }
