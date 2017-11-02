@@ -7,7 +7,7 @@ use quick_xml::reader::Reader as XmlReader;
 use quick_xml::writer::Writer as XmlWriter;
 use std::borrow::Borrow;
 use std::collections::BTreeMap;
-use std::io::{BufRead, Write};
+use std::io::{BufRead, BufReader, Write, Cursor};
 use std::str;
 
 #[derive(Debug, PartialEq)]
@@ -119,6 +119,21 @@ impl Child {
                 let element = BytesText::borrowed(text.as_bytes());
                 Ok(writer.write_event(Event::Text(element))?)
             }
+        }
+    }
+
+    pub fn from_str(string: &str) -> Result<Self, Error> {
+        if string.starts_with("<") {
+            let cursor = Cursor::new(string);
+            let buf_reader = BufReader::new(cursor);
+            let mut xml_reader = XmlReader::from_reader(buf_reader);
+            let element = Element::from_reader(&mut xml_reader)?;
+            Ok(Child::Element(element))
+        } else {
+            let escaped = BytesText::borrowed(string.as_bytes());
+            let unescaped = escaped.unescaped()?.into_owned();
+            let text = String::from_utf8(unescaped)?;
+            Ok(Child::Text(text))
         }
     }
 }

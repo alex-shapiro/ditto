@@ -21,3 +21,9 @@ impl From<Utf8Error> for Error {
         Error::InvalidEncoding(err)
     }
 }
+
+impl From<::std::string::FromUtf8Error> for Error {
+    fn from(err: ::std::string::FromUtf8Error) -> Self {
+        err.utf8_error().into()
+    }
+}
