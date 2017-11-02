@@ -260,13 +260,22 @@ fn into_xml(dom: dom::Document, replica: &Replica) -> Result<XmlValue, Error> {
 
 trait IntoXmlNode {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error>;
-    fn into_xml_attribute_value(self, replica: &Replica) -> Result<String, Error>;
+
+    fn into_xml_attribute_value(self, replica: &Replica) -> Result<String, Error> {
+        Err(Error::InvalidXml)
+    }
 }
 
 impl<'a> IntoXmlNode for &'a str {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error> {
         let dom_child = dom::Child::from_str(self)?;
         dom_child.into_xml_child(replica)
+    }
+
+    fn into_xml_attribute_value(self, replica: &Replica) -> Result<String, Error> {
+        let dom_child = dom::Child::from_str(self)?;
+        let text = dom_child.into_text().ok_or(Error::InvalidXml)?;
+        Ok(text)
     }
 }
 

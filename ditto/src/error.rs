@@ -16,6 +16,7 @@ pub enum Error {
     InvalidLocalOp,
     InvalidPath,
     InvalidRemoteOp,
+    InvalidXml,
     KeyDoesNotExist,
     Noop,
     OutOfBounds,
