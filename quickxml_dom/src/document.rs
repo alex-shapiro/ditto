@@ -35,6 +35,10 @@ pub enum Node<'a> {
 }
 
 impl Document {
+    pub fn new(declaration: Declaration, root: Element) -> Self {
+        Document{declaration, root}
+    }
+
     pub fn from_reader<R: Read>(reader: &mut R) -> Result<Self, Error> {
         let buf_reader = BufReader::new(reader);
         let mut xml_reader = XmlReader::from_reader(buf_reader);

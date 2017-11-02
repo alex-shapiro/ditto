@@ -136,6 +136,22 @@ impl Child {
             Ok(Child::Text(text))
         }
     }
+
+    pub fn as_text(&self) -> Option<&str> {
+        if let Child::Text(ref text) = *self { Some(text) } else { None }
+    }
+
+    pub fn as_element(&self) -> Option<&Element> {
+        if let Child::Element(ref element) = *self { Some(element) } else { None }
+    }
+
+    pub fn into_text(self) -> Option<String> {
+        if let Child::Text(text) = self { Some(text) } else { None }
+    }
+
+    pub fn into_element(self) -> Option<Element> {
+        if let Child::Element(element) = self { Some(element) } else { None }
+    }
 }
 
 fn build_element(event: &BytesStart) -> Result<Element, Error> {
