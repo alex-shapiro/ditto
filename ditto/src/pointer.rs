@@ -2,13 +2,6 @@ use Error;
 use std::str::FromStr;
 use std::num::ParseIntError;
 
-pub fn split(pointer_str: &str) -> Result<Vec<&str>, Error> {
-    if !(pointer_str.is_empty() || pointer_str.starts_with("/")) {
-        return Err(Error::DoesNotExist)
-    }
-    Ok(pointer_str.split("/").skip(1).collect())
-}
-
 pub fn split_xml_children(pointer_str: &str) -> Result<Vec<usize>, Error> {
     if !pointer_str.starts_with("/") { return Err(Error::InvalidPointer) }
     pointer_str.split("/").skip(1).map(|s| Ok(usize::from_str(s)?)).collect()

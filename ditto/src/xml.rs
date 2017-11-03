@@ -120,8 +120,7 @@ impl Xml {
 impl XmlValue {
     pub fn insert<T: IntoXmlNode>(&mut self, pointer_str: &str, node: T, replica: &Replica) -> Result<RemoteOp, Error> {
         let (pointer, key) = pointer::split_xml_nodes(pointer_str)?;
-        let (child, remote_pointer) = self.get_nested_local(&pointer)?;
-        let nested_element = child.as_element_mut().ok_or(Error::InvalidPointer)?;
+        let (nested_element, remote_pointer) = self.get_nested_element_local(&pointer)?;
 
         if let Ok(idx) = usize::from_str(key) {
             let node = node.into_xml_child(replica)?;
@@ -136,8 +135,7 @@ impl XmlValue {
 
     pub fn remove(&mut self, pointer_str: &str) -> Result<RemoteOp, Error> {
         let (pointer, key) = pointer::split_xml_nodes(pointer_str)?;
-        let (child, remote_pointer) = self.get_nested_local(&pointer)?;
-        let nested_element = child.as_element_mut().ok_or(Error::InvalidPointer)?;
+        let (nested_element, remote_pointer) = self.get_nested_element_local(&pointer)?;
 
         if let Ok(idx) = usize::from_str(key) {
             let op = nested_element.children.remove(idx)?;
@@ -150,8 +148,7 @@ impl XmlValue {
 
     pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
         let pointer = pointer::split_xml_children(pointer_str)?;
-        let (child, remote_pointer) = self.get_nested_local(&pointer)?;
-        let nested_text = child.as_text_mut().ok_or(Error::InvalidPointer)?;
+        let (nested_text, remote_pointer) = self.get_nested_text_local(pointer)?;
         let op = nested_text.replace(idx, len, text, replica)?;
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::ReplaceText(op)})
     }
@@ -179,24 +176,48 @@ impl XmlValue {
         self.root.nested_merge(other.root, self_tombstones, other_tombstones)
     }
 
-    fn get_nested_local(&mut self, pointer: &[usize]) -> Result<(&mut Child, Vec<SequenceUid>), Error> {
-        let mut child = Some(&mut Child::Element(self.root));
+    fn get_nested_element_local(&mut self, pointer: &[usize]) -> Result<(&mut Element, Vec<SequenceUid>), Error> {
+        let mut element = Some(&mut self.root);
         let mut remote_pointer = vec![];
 
         for idx in pointer {
-            match child.unwrap() {
-                &mut Child::Text(_) => return Err(Error::InvalidPointer),
-                &mut Child::Element(ref mut element) => {
-                    let (list_elt, _) = element.children.0.get_mut_elt(*idx).map_err(|_| Error::InvalidPointer)?;
-                    let uid = list_elt.0.clone();
-                    remote_pointer.push(uid);
-                    child = Some(&mut list_elt.1);
-                }
-            }
+            let (list_elt, _) = element.unwrap().children.0.get_mut_elt(*idx).map_err(|_| Error::InvalidPointer)?;
+            let uid = list_elt.0.clone();
+            element = Some(list_elt.1.as_element_mut().ok_or(Error::InvalidPointer)?);
+            remote_pointer.push(uid);
         }
 
-        Ok((child.unwrap(), remote_pointer))
+        Ok((element.unwrap(), remote_pointer))
     }
+
+    fn get_nested_text_local(&mut self, mut pointer: Vec<usize>) -> Result<(&mut TextValue, Vec<SequenceUid>), Error> {
+        let idx = pointer.pop().ok_or(Error::InvalidPointer)?;
+        let (element, mut remote_pointer) = self.get_nested_element_local(&pointer)?;
+        let (list_elt, _) = element.children.0.get_mut_elt(idx).map_err(|_| Error::InvalidPointer)?;
+        let uid = list_elt.0.clone();
+        let text = list_elt.1.as_text_mut().ok_or(Error::InvalidPointer)?;
+        remote_pointer.push(uid);
+        Ok((text, remote_pointer))
+    }
+
+
+    // fn get_nested_local(&mut self, pointer: &[usize]) -> Result<(&mut Child, Vec<SequenceUid>), Error> {
+    //     if pointer.is_empty() { return Ok((&mut self.root, vec![])) }
+    //     let mut pointer_iter = pointer.into_iter();
+
+    //     let idx = pointer_iter.next().unwrap();
+    //     let mut child = self.root.children.0.get_mut_elt(*idx).map_err(|_| Error::InvalidPointer)?;
+    //     let mut remote_pointer = vec![];
+
+    //     for idx in pointer_iter {
+    //         let (ref mut list_elt, _) = child.unwrap().children.0.get_mut_elt(*idx).map_err(|_| Error::InvalidPointer)?;
+    //         let uid = list_elt.0.clone();
+    //         remote_pointer.push(uid);
+    //         child = list_elt.1;
+    //     }
+
+    //     Ok((child.unwrap(), remote_pointer))
+    // }
 }
 
 impl NestedValue for Element {
@@ -267,7 +288,7 @@ impl Element {
 
         let mut attributes = MapValue::new();
         for (key, value) in dom_attributes {
-            attributes.insert(key, value, replica);
+            let _ = attributes.insert(key, value, replica);
         }
 
         let mut children = ListValue::new();
