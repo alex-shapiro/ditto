@@ -22,6 +22,27 @@ impl TextValue {
         TextValue(Tree::new(), None)
     }
 
+    /// Constructs a new TextValue from a str and a replica.
+    /// Each paragraph in the str is split into a separate element.
+    pub fn from_str(string: &str, replica: &Replica) -> Self {
+        let mut text = TextValue::new();
+        if string.is_empty() { return text }
+
+        let mut iter = string.rsplit('\n');
+        if !string.ends_with('\n') {
+            let last_substring = iter.next().unwrap().to_owned();
+            let _ = text.do_insert(0, last_substring, replica).unwrap();
+        }
+
+        for substring in iter {
+            let substring = format!("{}\n", substring);
+            let _ = text.do_insert(0, substring, replica).unwrap();
+        }
+
+        text
+    }
+
+
     /// Returns the number of unicode characters in the TextValue.
     pub fn len(&self) -> usize {
         self.0.len()

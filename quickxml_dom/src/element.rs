@@ -6,15 +6,15 @@ use quick_xml::events::{Event, BytesStart, BytesEnd, BytesText};
 use quick_xml::reader::Reader as XmlReader;
 use quick_xml::writer::Writer as XmlWriter;
 use std::borrow::Borrow;
-use std::collections::BTreeMap;
+use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Write, Cursor};
 use std::str;
 
 #[derive(Debug, PartialEq)]
 pub struct Element {
-    name: String,
-    attributes: BTreeMap<String, String>,
-    children: Vec<Child>,
+    pub name: String,
+    pub attributes: HashMap<String, String>,
+    pub children: Vec<Child>,
 }
 
 #[derive(Debug, PartialEq)]
@@ -24,11 +24,15 @@ pub enum Child {
 }
 
 impl Element {
+    pub fn new(name: String, attributes: HashMap<String, String>, children: Vec<Child>) -> Self {
+        Element{name, attributes, children}
+    }
+
     pub fn name(&self) -> &str {
         &self.name
     }
 
-    pub fn attributes(&self) -> &BTreeMap<String, String> {
+    pub fn attributes(&self) -> &HashMap<String, String> {
         &self.attributes
     }
 
@@ -169,6 +173,6 @@ fn build_element(event: &BytesStart) -> Result<Element, Error> {
         let key   = str::from_utf8(attr.key)?.to_owned();
         let value = str::from_utf8(attr.unescaped_value()?.borrow())?.to_owned();
         Ok((key, value))
-    }).collect::<Result<BTreeMap<String, String>, Error>>()?;
+    }).collect::<Result<HashMap<String, String>, Error>>()?;
     Ok(Element{name, attributes, children: vec![]})
 }

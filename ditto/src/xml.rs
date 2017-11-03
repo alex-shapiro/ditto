@@ -41,14 +41,14 @@ struct Declaration {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-struct Element {
+pub struct Element {
     name:       String,
     attributes: MapValue<String, String>,
     children:   ListValue<Child>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-enum Child {
+pub enum Child {
     Text(TextValue),
     Element(Element),
 }
@@ -224,8 +224,8 @@ impl CrdtValue for XmlValue {
 
     fn local_value(&self) -> Self::LocalValue {
         let declaration = self.declaration.clone();
-        let root = self.root.into_dom();
-        dom::Document::new(declaration, root)
+        let root = self.root.dom();
+        dom::Document::new(declaration.into(), root)
     }
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
@@ -236,7 +236,7 @@ impl CrdtValue for XmlValue {
 impl CrdtRemoteOp for RemoteOp {
     fn deleted_replicas(&self) -> Vec<Replica> {
         match self.op {
-            RemoteOpInner::Attributes(ref op) => op.deleted_replicas(),
+            RemoteOpInner::Attribute(ref op) => op.deleted_replicas(),
             RemoteOpInner::Child(ref op) => op.deleted_replicas(),
             RemoteOpInner::ReplaceText(ref op) => op.deleted_replicas(),
         }
@@ -263,60 +263,62 @@ impl Child {
 
 impl Element {
     fn from_dom(dom_element: dom::Element, replica: &Replica) -> Result<Self, Error> {
+        let dom::Element{name, attributes: dom_attributes, children: dom_children} = dom_element;
+
         let mut attributes = MapValue::new();
-        for (key, value) in dom_element.attributes {
+        for (key, value) in dom_attributes {
             attributes.insert(key, value, replica);
         }
 
         let mut children = ListValue::new();
-        for (idx, child) in dom_element.children.into_iter().enumerate() {
+        for child in dom_children.into_iter() {
             match child {
                 dom::Child::Element(dom_element) => {
-                    let element = dom_element.into_xml_elt(replica)?;
-                    children.push(Child::Element(element));
+                    let element = Element::from_dom(dom_element, replica)?;
+                    children.push(Child::Element(element), replica)?;
                 }
                 dom::Child::Text(text) => {
                     let mut text_value = TextValue::new();
-                    text_value.replace(0, 0, text, replica)?;
-                    children.push(Child::Text(text_value));
+                    text_value.replace(0, 0, &text, replica)?;
+                    children.push(Child::Text(text_value), replica)?;
                 }
             }
         }
 
-        Ok(Element{name: dom_element.name, attributes, children})
+        Ok(Element{name, attributes, children})
     }
 
-    fn into_dom(&self) -> dom::Element {
+    fn dom(&self) -> dom::Element {
         let attributes = self.attributes.local_value();
         let children = self.children.iter().map(|child|
-            match *child {
-                Child::Element(ref element) => dom::Child::Element(element.local_value()),
-                Child::Text(ref text) => dom::Child::Text(text),
+            match child.1 {
+                Child::Element(ref element) => dom::Child::Element(element.dom()),
+                Child::Text(ref text) => dom::Child::Text(text.local_value()),
             }).collect::<Vec<_>>();
         dom::Element::new(self.name.clone(), attributes, children)
     }
 }
 
 fn into_xml(dom: dom::Document, replica: &Replica) -> Result<XmlValue, Error> {
-    XmlValue{declaration: dom.declaration, root: dom.root.into_xml_element(replica)}
+    let dom::Document{declaration, root} = dom;
+    let root = Element::from_dom(root, replica)?;
+    Ok(XmlValue{declaration: declaration.into(), root})
 }
 
-trait IntoXmlNode {
+pub trait IntoXmlNode {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error>;
 
-    fn into_xml_attribute_value(self) -> Result<String, Error> {
-        Err(Error::InvalidXml)
-    }
+    fn into_xml_attribute_value(self) -> Result<String, Error>;
 }
 
 impl<'a> IntoXmlNode for &'a str {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error> {
-        let dom_child = dom::Child::from_str(self)?;
+        let dom_child = dom::Child::from_str(self).map_err(|_| Error::InvalidXml)?;
         dom_child.into_xml_child(replica)
     }
 
     fn into_xml_attribute_value(self) -> Result<String, Error> {
-        let dom_child = dom::Child::from_str(self)?;
+        let dom_child = dom::Child::from_str(self).map_err(|_| Error::InvalidXml)?;
         let text = dom_child.into_text().ok_or(Error::InvalidXml)?;
         Ok(text)
     }
@@ -325,14 +327,62 @@ impl<'a> IntoXmlNode for &'a str {
 impl IntoXmlNode for dom::Child {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error> {
         match self {
-            dom::Child::Text(text) => Ok(Child::Text(text)),
-            dom::Child::Element(dom_element) => dom_element.into_xml_child()
+            dom::Child::Text(text) =>
+                Ok(Child::Text(TextValue::from_str(&text, replica))),
+            dom::Child::Element(dom_element) =>
+                Ok(Child::Element(Element::from_dom(dom_element, replica)?)),
         }
+    }
+
+    fn into_xml_attribute_value(self) -> Result<String, Error> {
+        Err(Error::InvalidXml)
     }
 }
 
 impl IntoXmlNode for dom::Element {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error> {
-        Ok(Child::Element(Element::from_dom(self)?))
+        Ok(Child::Element(Element::from_dom(self, replica)?))
+    }
+
+    fn into_xml_attribute_value(self) -> Result<String, Error> {
+        Err(Error::InvalidXml)
+    }
+}
+
+impl From<Declaration> for dom::Declaration {
+    fn from(declaration: Declaration) -> Self {
+        dom::Declaration{
+            version:    declaration.version.into(),
+            encoding:   declaration.encoding,
+            standalone: declaration.standalone,
+        }
+    }
+}
+
+impl From<dom::Declaration> for Declaration {
+    fn from(declaration: dom::Declaration) -> Self {
+        Declaration{
+            version:    declaration.version.into(),
+            encoding:   declaration.encoding,
+            standalone: declaration.standalone,
+        }
+    }
+}
+
+impl From<dom::XmlVersion> for XmlVersion {
+    fn from(xml_version: dom::XmlVersion) -> Self {
+        match xml_version {
+            dom::XmlVersion::Version10 => XmlVersion::Version10,
+            dom::XmlVersion::Version11 => XmlVersion::Version11,
+        }
+    }
+}
+
+impl From<XmlVersion> for dom::XmlVersion {
+    fn from(xml_version: XmlVersion) -> Self {
+        match xml_version {
+            XmlVersion::Version10 => dom::XmlVersion::Version10,
+            XmlVersion::Version11 => dom::XmlVersion::Version11,
+        }
     }
 }

@@ -94,6 +94,11 @@ impl<T: Clone> ListValue<T> {
         self.0.iter()
     }
 
+    pub fn push(&mut self, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
+        let len = self.0.len();
+        self.insert(len, value, replica)
+    }
+
     pub fn insert(&mut self, index: usize, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
         let max_index = self.0.len();
         if index > max_index { return Err(Error::OutOfBounds) }

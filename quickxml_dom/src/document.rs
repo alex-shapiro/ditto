@@ -10,15 +10,15 @@ use std::str::FromStr;
 
 #[derive(Debug, PartialEq)]
 pub struct Document {
-    declaration: Declaration,
-    root: Element,
+    pub declaration: Declaration,
+    pub root: Element,
 }
 
 #[derive(Debug, Clone, PartialEq)]
 pub struct Declaration {
-    version:    XmlVersion,
-    encoding:   Option<String>,
-    standalone: Option<bool>,
+    pub version:    XmlVersion,
+    pub encoding:   Option<String>,
+    pub standalone: Option<bool>,
 }
 
 #[derive(Debug, Clone, Copy, PartialEq)]
