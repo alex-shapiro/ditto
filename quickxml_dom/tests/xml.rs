@@ -1,8 +1,10 @@
+#[macro_use]
+extern crate assert_matches;
 extern crate quickxml_dom;
 
 use std::fs;
 use std::io::Cursor;
-use quickxml_dom::{Document, Node};
+use quickxml_dom::{Document, Node, Error};
 
 #[test]
 fn test_rdf() {
@@ -27,6 +29,11 @@ fn test_entities() {
     assert!(document.pointer("/1/other-attr").is_err());
 }
 
+#[test]
+fn test_invalid_xml() {
+    assert_matches!(try_load("test3.xml").unwrap_err(), Error::InvalidXml);
+}
+
 fn test_file(filename: &str) -> Document {
     let document1 = load(filename);
     let document2 = dump_and_reload(&document1);
@@ -35,10 +42,14 @@ fn test_file(filename: &str) -> Document {
 }
 
 fn load(filename: &str) -> Document {
+    try_load(filename).unwrap()
+}
+
+fn try_load(filename: &str) -> Result<Document, Error> {
     let relative_path = format!("./tests/files/{}", filename);
     let absolute_path = fs::canonicalize(&relative_path).unwrap();
     let mut file = fs::File::open(absolute_path).unwrap();
-    Document::from_reader(&mut file).unwrap()
+    Document::from_reader(&mut file)
 }
 
 fn dump_and_reload(document: &Document) -> Document {

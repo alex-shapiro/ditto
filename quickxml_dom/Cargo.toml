@@ -3,5 +3,8 @@ name = "quickxml_dom"
 version = "0.1.0"
 authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
 
+[dev-dependencies]
+assert_matches = "1.1"
+
 [dependencies]
 quick-xml = "0.9"
