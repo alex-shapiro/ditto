@@ -130,10 +130,25 @@ pub trait CrdtValue {
 
     /// Adds a site to all elements affected by the remote op.
     fn add_site(&mut self, op: &Self::RemoteOp, site: u32);
+
+    /// Adds a site to all elements
+    fn add_site_to_all(&mut self, site: u32);
+
+    /// Validates that all elements have the given site.
+    fn validate_site(&mut self, site: u32);
+
+    /// Merges CRDT values
+    fn merge(&mut self, site: u32);
 }
 
 /// Functions for nested CRDT values.
-pub trait NestedValue {
+pub trait NestedCrdtValue: CrdtValue {
+    /// Adds a site to a value in the CRDT and all its descendants.
+    fn nested_add_site(&mut self, op: &<Self as CrdtValue>::RemoteOp, site: u32);
+
+    /// Validates a nested site.
+    fn nested_validate_site(&mut self, site: u32);
+
     /// Merges nested CRDT values.
     fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);
 }
@@ -147,18 +162,14 @@ pub trait CrdtRemoteOp {
     /// Adds a site to all elements in the op with site 0.
     fn add_site(&mut self, site: u32);
 
-    /// Validates that all inserted elements in the op
-    /// have the given site.
+    /// Validates that all inserted elements in the op have the given site.
     fn validate_site(&self, site: u32) -> Result<(), Error>;
 }
 
-pub trait AddSiteToAll: CrdtValue {
-    /// Adds a site to a value in the CRDT and all its descendants.
-    fn add_site_nested(&mut self, op: &<Self as CrdtValue>::RemoteOp, site: u32);
+pub trait NestedCrdtRemoteOp: CrdtRemoteOp {
+    /// Add a site to all elements in the nested op.
+    fn nested_add_site(&mut self, site: u32);
 
-    /// Adds a site to all elements in the CRDT.
-    fn add_site_to_all(&mut self, site: u32);
-
-    /// Validates that all elements have the given site.
-    fn validate_site_for_all(&self, site: u32) -> Result<(), Error>;
+    /// Validates that all elements in the nested op have the given site.
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error>;
 }
