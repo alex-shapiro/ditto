@@ -200,24 +200,20 @@ impl XmlValue {
         Ok((text, remote_pointer))
     }
 
+    fn get_nested_element_remote(&mut self, mut pointer: &[SequenceUid]) -> Option<(&mut Element, Vec<usize>)> {
+        let mut element = Some(&mut self.root);
+        let mut local_pointer = vec![];
 
-    // fn get_nested_local(&mut self, pointer: &[usize]) -> Result<(&mut Child, Vec<SequenceUid>), Error> {
-    //     if pointer.is_empty() { return Ok((&mut self.root, vec![])) }
-    //     let mut pointer_iter = pointer.into_iter();
+        for uid in pointer {
+            let unwrapped_element = element.unwrap();
+            let list_idx = try_opt!(unwrapped_element.children.0.get_idx(uid));
+            let list_elt = try_opt!(unwrapped_element.children.0.lookup_mut(uid));
+            element = Some(try_opt!(list_elt.1.as_element_mut()));
+            local_pointer.push(list_idx);
+        }
 
-    //     let idx = pointer_iter.next().unwrap();
-    //     let mut child = self.root.children.0.get_mut_elt(*idx).map_err(|_| Error::InvalidPointer)?;
-    //     let mut remote_pointer = vec![];
-
-    //     for idx in pointer_iter {
-    //         let (ref mut list_elt, _) = child.unwrap().children.0.get_mut_elt(*idx).map_err(|_| Error::InvalidPointer)?;
-    //         let uid = list_elt.0.clone();
-    //         remote_pointer.push(uid);
-    //         child = list_elt.1;
-    //     }
-
-    //     Ok((child.unwrap(), remote_pointer))
-    // }
+        Some((element.unwrap(), local_pointer))
+    }
 }
 
 impl NestedValue for Element {
