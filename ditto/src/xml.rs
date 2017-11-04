@@ -74,7 +74,7 @@ enum RemoteOpInner {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocalOp {
-    pointer: String,
+    pointer: Vec<usize>,
     op: LocalOpInner,
 }
 
@@ -148,28 +148,29 @@ impl XmlValue {
 
     pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
         let pointer = pointer::split_xml_children(pointer_str)?;
-        let (nested_text, remote_pointer) = self.get_nested_text_local(pointer)?;
+        let (nested_text, remote_pointer) = self.get_nested_text_local(&pointer)?;
         let op = nested_text.replace(idx, len, text, replica)?;
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::ReplaceText(op)})
     }
 
     pub fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
-        unimplemented!()
-    //     let (child, local_pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
-    //     match (child, &remote_op.op) {
-    //         (&mut Child::Element(ref mut element), &RemoteOpInner::Child(ref op)) => {
-    //             let local_op = try_opt!(element.children.execute_remote(op));
-    //             Some(LocalOp{pointer: local_pointer, op: LocalOpInner::Child(local_op)})
-    //         }
-    //         (&mut Child::Element(ref mut element), &RemoteOpInner::Attribute(ref op)) => {
-    //             let local_op = try_opt!(element.attributes.execute_remote(op));
-    //             Some(LocalOp{pointer: local_pointer, op: LocalOpInner::Attribute(local_op)})
-    //         }
-    //         (&mut Child::Text(ref mut text), &RemoteOpInner::ReplaceText(ref op)) => {
-    //             let local_op = try_opt!(text.execute_remote(op));
-    //             Some(LocalOp{pointer: local_pointer, op: LocalOpInner::ReplaceText(local_op)})
-    //         }
-    //     }
+        match remote_op.op {
+            RemoteOpInner::Child(ref op) => {
+                let (element, pointer) = try_opt!(self.get_nested_element_remote(&remote_op.pointer));
+                let local_op = try_opt!(element.children.execute_remote(op));
+                Some(LocalOp{pointer, op: LocalOpInner::Child(local_op)})
+            }
+            RemoteOpInner::Attribute(ref op) => {
+                let (element, pointer) = try_opt!(self.get_nested_element_remote(&remote_op.pointer));
+                let local_op = try_opt!(element.attributes.execute_remote(op));
+                Some(LocalOp{pointer, op: LocalOpInner::Attribute(local_op)})
+            }
+            RemoteOpInner::ReplaceText(ref op) => {
+                let (text, pointer) = try_opt!(self.get_nested_text_remote(&remote_op.pointer));
+                let local_op = try_opt!(text.execute_remote(op));
+                Some(LocalOp{pointer, op: LocalOpInner::ReplaceText(local_op)})
+            }
+        }
     }
 
     pub fn merge(&mut self, other: XmlValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
@@ -190,18 +191,20 @@ impl XmlValue {
         Ok((element.unwrap(), remote_pointer))
     }
 
-    fn get_nested_text_local(&mut self, mut pointer: Vec<usize>) -> Result<(&mut TextValue, Vec<SequenceUid>), Error> {
-        let idx = pointer.pop().ok_or(Error::InvalidPointer)?;
+    fn get_nested_text_local(&mut self, pointer: &[usize]) -> Result<(&mut TextValue, Vec<SequenceUid>), Error> {
+        let idx = *pointer.last().ok_or(Error::InvalidPointer)?;
+        let pointer = &pointer[0 .. pointer.len() - 1];
+
         let (element, mut remote_pointer) = self.get_nested_element_local(&pointer)?;
         let (list_elt, _) = element.children.0.get_mut_elt(idx).map_err(|_| Error::InvalidPointer)?;
-
         let uid = list_elt.0.clone();
         let text = list_elt.1.as_text_mut().ok_or(Error::InvalidPointer)?;
+
         remote_pointer.push(uid);
         Ok((text, remote_pointer))
     }
 
-    fn get_nested_element_remote(&mut self, mut pointer: &[SequenceUid]) -> Option<(&mut Element, Vec<usize>)> {
+    fn get_nested_element_remote(&mut self, pointer: &[SequenceUid]) -> Option<(&mut Element, Vec<usize>)> {
         let mut element = Some(&mut self.root);
         let mut local_pointer = vec![];
 
@@ -216,8 +219,10 @@ impl XmlValue {
         Some((element.unwrap(), local_pointer))
     }
 
-    fn get_nested_text_remote(&mut self, mut pointer: Vec<SequenceUid>) -> Option<(&mut TextValue, Vec<usize>)> {
-        let uid = try_opt!(pointer.pop());
+    fn get_nested_text_remote(&mut self, pointer: &[SequenceUid]) -> Option<(&mut TextValue, Vec<usize>)> {
+        let uid = try_opt!(pointer.last());
+        let pointer = &pointer[0 .. pointer.len() - 1];
+
         let (element, mut local_pointer) = try_opt!(self.get_nested_element_remote(&pointer));
         let idx = try_opt!(element.children.0.get_idx(&uid));
         let list_elt = try_opt!(element.children.0.lookup_mut(&uid));
