@@ -194,6 +194,7 @@ impl XmlValue {
         let idx = pointer.pop().ok_or(Error::InvalidPointer)?;
         let (element, mut remote_pointer) = self.get_nested_element_local(&pointer)?;
         let (list_elt, _) = element.children.0.get_mut_elt(idx).map_err(|_| Error::InvalidPointer)?;
+
         let uid = list_elt.0.clone();
         let text = list_elt.1.as_text_mut().ok_or(Error::InvalidPointer)?;
         remote_pointer.push(uid);
@@ -213,6 +214,17 @@ impl XmlValue {
         }
 
         Some((element.unwrap(), local_pointer))
+    }
+
+    fn get_nested_text_remote(&mut self, mut pointer: Vec<SequenceUid>) -> Option<(&mut TextValue, Vec<usize>)> {
+        let uid = try_opt!(pointer.pop());
+        let (element, mut local_pointer) = try_opt!(self.get_nested_element_remote(&pointer));
+        let idx = try_opt!(element.children.0.get_idx(&uid));
+        let list_elt = try_opt!(element.children.0.lookup_mut(&uid));
+        let text = try_opt!(list_elt.1.as_text_mut());
+
+        local_pointer.push(idx);
+        Some((text, local_pointer))
     }
 }
 
