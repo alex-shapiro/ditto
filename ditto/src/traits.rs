@@ -135,10 +135,10 @@ pub trait CrdtValue {
     fn add_site_to_all(&mut self, site: u32);
 
     /// Validates that all elements have the given site.
-    fn validate_site(&mut self, site: u32);
+    fn validate_site(&self, site: u32) -> Result<(), Error>;
 
     /// Merges CRDT values
-    fn merge(&mut self, site: u32);
+    fn merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);
 }
 
 /// Functions for nested CRDT values.
@@ -146,8 +146,11 @@ pub trait NestedCrdtValue: CrdtValue {
     /// Adds a site to a value in the CRDT and all its descendants.
     fn nested_add_site(&mut self, op: &<Self as CrdtValue>::RemoteOp, site: u32);
 
+    /// Adds a site to all values and descendants in the CRDT.
+    fn nested_add_site_to_all(&mut self, site: u32);
+
     /// Validates a nested site.
-    fn nested_validate_site(&mut self, site: u32);
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error>;
 
     /// Merges nested CRDT values.
     fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);

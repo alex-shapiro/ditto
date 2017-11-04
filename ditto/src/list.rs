@@ -160,7 +160,6 @@ impl<T: Clone> CrdtValue for ListValue<T> {
         let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
         for mut element in old_tree {
             element.0.site = site;
-            element.1.add_site_to_all(site);
             let _ = self.0.insert(element);
         }
     }
@@ -203,10 +202,19 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
         }
     }
 
+    fn nested_add_site_to_all(&mut self, site: u32) {
+        let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
+        for mut element in old_tree {
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+            let _ = self.0.insert(element);
+        }
+    }
+
     fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
         for element in &self.0 {
             try_assert!(element.0.site == site, Error::InvalidRemoteOp);
-            try!(element.1.validate_site_for_all(site));
+            try!(element.1.nested_validate_site(site));
         }
         Ok(())
     }
@@ -275,12 +283,12 @@ impl<T: NestedCrdtValue> NestedCrdtRemoteOp for RemoteOp<T> {
         }
     }
 
-    fn nested_validate_site(&mut self, site: u32) -> Result<(), Error> {
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
         match *self {
             RemoteOp::Remove(_) => Ok(()),
             RemoteOp::Insert(ref element) => {
                 try_assert!(element.0.site == site, Error::InvalidRemoteOp);
-                element.1.validate_site_for_all(site)
+                element.1.nested_validate_site(site)
             }
         }
     }

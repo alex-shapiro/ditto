@@ -214,9 +214,47 @@ impl<K: Key, V: Value> MapValue<K, V> {
             }
         }
     }
+}
 
-    /// Merges two MapValues into one.
-    pub fn merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
+    type LocalValue = HashMap<K, V>;
+    type RemoteOp = RemoteOp<K, V>;
+    type LocalOp = LocalOp<K, V>;
+
+    fn local_value(&self) -> HashMap<K, V> {
+        let mut hash_map = HashMap::new();
+        for (key, elements) in self.0.iter() {
+            hash_map.insert(key.clone(), elements[0].1.clone());
+        }
+        hash_map
+    }
+
+    fn add_site(&mut self, op: &RemoteOp<K,V>, site: u32) {
+        if let RemoteOp::Insert{ref key, ref element, ..} = *op {
+            let elements = some!(self.0.get_mut(key));
+            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
+            elements[index].0.site = site;
+        }
+    }
+
+    fn add_site_to_all(&mut self, site: u32) {
+        for elements in self.0.values_mut() {
+            for element in elements.iter_mut() {
+                element.0.site = site;
+            }
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        for elements in self.0.values() {
+            for element in elements.iter() {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            }
+        }
+        Ok(())
+    }
+
+    fn merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let self_elements = mem::replace(&mut self.0, HashMap::new());
 
         for (key, elements) in self_elements {
@@ -251,7 +289,36 @@ impl<K: Key, V: Value> MapValue<K, V> {
     }
 }
 
-impl<K: Key, V: Value + NestedValue> NestedValue for MapValue<K,V> {
+impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
+    fn nested_add_site(&mut self, op: &RemoteOp<K,V>, site: u32) {
+        if let RemoteOp::Insert{ref key, ref element, ..} = *op {
+            let elements = some!(self.0.get_mut(key));
+            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
+            let ref mut element = elements[index];
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+        }
+    }
+
+    fn nested_add_site_to_all(&mut self, site: u32) {
+        for elements in self.0.values_mut() {
+            for element in elements.iter_mut() {
+                element.0.site = site;
+                element.1.add_site_to_all(site);
+            }
+        }
+    }
+
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
+        for elements in self.0.values() {
+            for element in elements.iter() {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try!(element.1.nested_validate_site(site));
+            }
+        }
+        Ok(())
+    }
+
     fn nested_merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let self_elements = mem::replace(&mut self.0, HashMap::new());
 
@@ -301,73 +368,6 @@ impl<K: Key, V: Value + NestedValue> NestedValue for MapValue<K,V> {
     }
 }
 
-fn compare<V>(e1: Option<&Element<V>>, e2: Option<&Element<V>>) -> Ordering {
-    let e1 = unwrap_or!(e1, Ordering::Greater);
-    let e2 = unwrap_or!(e2, Ordering::Less);
-    e1.0.cmp(&e2.0)
-}
-
-fn remove_replicas<V: Value>(elements: &mut Vec<Element<V>>, replicas: &[Replica]) {
-    for replica in replicas {
-        if let Ok(index) = elements.binary_search_by(|e| e.0.cmp(&replica)) {
-            elements.remove(index);
-        }
-    }
-}
-
-impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
-    type LocalValue = HashMap<K, V>;
-    type RemoteOp = RemoteOp<K, V>;
-    type LocalOp = LocalOp<K, V>;
-
-    fn local_value(&self) -> HashMap<K, V> {
-        let mut hash_map = HashMap::new();
-        for (key, elements) in self.0.iter() {
-            hash_map.insert(key.clone(), elements[0].1.clone());
-        }
-        hash_map
-    }
-
-    fn add_site(&mut self, op: &RemoteOp<K,V>, site: u32) {
-        if let RemoteOp::Insert{ref key, ref element, ..} = *op {
-            let elements = some!(self.0.get_mut(key));
-            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
-            elements[index].0.site = site;
-        }
-    }
-}
-
-impl<K: Key, V: Value + AddSiteToAll> AddSiteToAll for MapValue<K,V> {
-    fn add_site_nested(&mut self, op: &RemoteOp<K,V>, site: u32) {
-        if let RemoteOp::Insert{ref key, ref element, ..} = *op {
-            let elements = some!(self.0.get_mut(key));
-            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
-            let ref mut element = elements[index];
-            element.0.site = site;
-            element.1.add_site_to_all(site);
-        }
-    }
-
-    fn add_site_to_all(&mut self, site: u32) {
-        for elements in self.0.values_mut() {
-            for element in elements.iter_mut() {
-                element.0.site = site;
-                element.1.add_site_to_all(site);
-            }
-        }
-    }
-
-    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-        for elements in self.0.values() {
-            for element in elements.iter() {
-                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
-                try!(element.1.validate_site_for_all(site));
-            }
-        }
-        Ok(())
-    }
-}
-
 impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
     fn deleted_replicas(&self) -> Vec<Replica> {
         match *self {
@@ -399,6 +399,50 @@ impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
                 try_assert!(element.0.site == site, Error::InvalidRemoteOp);
                 Ok(())
             }
+        }
+    }
+}
+
+impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtRemoteOp for RemoteOp<K, V> {
+    fn nested_add_site(&mut self, site: u32) {
+        match *self {
+            RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
+                element.0.site = site;
+                element.1.nested_add_site_to_all(site);
+                for replica in removed {
+                    if replica.site == 0 { replica.site = site; }
+                }
+            }
+            RemoteOp::Remove{ref mut removed, ..} => {
+                for replica in removed {
+                    if replica.site == 0 { replica.site = site; }
+                }
+            }
+        }
+    }
+
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove{..} => Ok(()),
+            RemoteOp::Insert{ref element, ..} => {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                element.1.nested_validate_site(site)
+            }
+        }
+    }
+}
+
+
+fn compare<V>(e1: Option<&Element<V>>, e2: Option<&Element<V>>) -> Ordering {
+    let e1 = unwrap_or!(e1, Ordering::Greater);
+    let e2 = unwrap_or!(e2, Ordering::Less);
+    e1.0.cmp(&e2.0)
+}
+
+fn remove_replicas<V: Value>(elements: &mut Vec<Element<V>>, replicas: &[Replica]) {
+    for replica in replicas {
+        if let Ok(index) = elements.binary_search_by(|e| e.0.cmp(&replica)) {
+            elements.remove(index);
         }
     }
 }
