@@ -244,6 +244,10 @@ impl CrdtValue for TextValue {
 }
 
 impl AddSiteToAll for TextValue {
+    fn add_site_nested(&mut self, op: &RemoteOp, site: u32) {
+        self.add_site(op, site)
+    }
+
     fn add_site_to_all(&mut self, site: u32) {
         let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
         for mut element in old_tree {

@@ -152,7 +152,10 @@ pub trait CrdtRemoteOp {
     fn validate_site(&self, site: u32) -> Result<(), Error>;
 }
 
-pub trait AddSiteToAll {
+pub trait AddSiteToAll: CrdtValue {
+    /// Adds a site to a value in the CRDT and all its descendants.
+    fn add_site_nested(&mut self, op: &<Self as CrdtValue>::RemoteOp, site: u32);
+
     /// Adds a site to all elements in the CRDT.
     fn add_site_to_all(&mut self, site: u32);
 

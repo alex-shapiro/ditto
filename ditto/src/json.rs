@@ -337,13 +337,7 @@ impl CrdtValue for JsonValue {
     }
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
-        let (value, _) = some!(self.get_nested_remote(&op.pointer));
-        match (value, &op.op) {
-            (&mut JsonValue::Object(ref mut m), &RemoteOpInner::Object(ref op)) => add_site_map(m, op, site),
-            (&mut JsonValue::Array(ref mut l), &RemoteOpInner::Array(ref op)) => add_site_list(l, op, site),
-            (&mut JsonValue::String(ref mut t), &RemoteOpInner::String(ref op)) => t.add_site(op, site),
-            _ => return,
-        }
+        self.add_site_nested(op, site)
     }
 }
 
@@ -387,6 +381,16 @@ impl CrdtRemoteOp for RemoteOp {
 }
 
 impl AddSiteToAll for JsonValue {
+    fn add_site_nested(&mut self, op: &RemoteOp, site: u32) {
+        let (value, _) = some!(self.get_nested_remote(&op.pointer));
+        match (value, &op.op) {
+            (&mut JsonValue::Object(ref mut m), &RemoteOpInner::Object(ref op)) => m.add_site_nested(op, site),
+            (&mut JsonValue::Array(ref mut l), &RemoteOpInner::Array(ref op)) => l.add_site_nested(op, site),
+            (&mut JsonValue::String(ref mut t), &RemoteOpInner::String(ref op)) => t.add_site(op, site),
+            _ => return,
+        }
+    }
+
     fn add_site_to_all(&mut self, site: u32) {
         match *self {
             JsonValue::Object(ref mut m) => m.add_site_to_all(site),
@@ -480,25 +484,6 @@ impl IntoJson for f64 {
 impl IntoJson for bool {
     fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
         Ok(JsonValue::Bool(self))
-    }
-}
-
-fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
-    if let map::RemoteOp::Insert{ref key, ref element, ..} = *op {
-        let elements = some!(map_value.0.get_mut(key));
-        let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
-        let ref mut element = elements[index];
-        element.0.site = site;
-        element.1.add_site_to_all(site);
-    }
-}
-
-fn add_site_list(list_value: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
-    if let list::RemoteOp::Insert(list::Element(ref uid, _)) = *op {
-        let mut element = some!(list_value.0.remove(uid));
-        element.0.site = site;
-        element.1.add_site_to_all(site);
-        list_value.0.insert(element).unwrap();
     }
 }
 

@@ -263,7 +263,7 @@ impl CrdtValue for XmlValue {
     }
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
-        unimplemented!()
+        self.add_site_nested(op, site);
     }
 }
 
@@ -282,6 +282,59 @@ impl CrdtRemoteOp for RemoteOp {
 
     fn validate_site(&self, site: u32) -> Result<(), Error> {
         unimplemented!()
+    }
+}
+
+impl AddSiteToAll for XmlValue {
+    fn add_site_nested(&mut self, op: &RemoteOp, site: u32) {
+        match op.op {
+            RemoteOpInner::Child(ref op_inner) => {
+                let (element, _) = some!(self.get_nested_element_remote(&op.pointer));
+                element.children.add_site_nested(op_inner, site);
+            }
+            RemoteOpInner::Attribute(ref op_inner) => {
+                let (element, _) = some!(self.get_nested_element_remote(&op.pointer));
+                element.attributes.add_site(op_inner, site);
+            }
+            RemoteOpInner::ReplaceText(ref op_inner) => {
+                let (text, _) = some!(self.get_nested_text_remote(&op.pointer));
+                text.add_site(op_inner, site);
+            }
+        }
+    }
+
+    fn add_site_to_all(&mut self, site: u32) {
+        self.root.children.add_site_to_all(site);
+        self.root.attributes.add_site_to_all(site);
+    }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        self.root.children.validate_site_for_all()?;
+        self.root.attributes.validate_site_for_all()?;
+    }
+}
+
+impl AddSiteToAll for Child {
+    fn add_site_to_all(&mut self, site: u32) {
+        match *self {
+            Child::Text(ref mut text) => text.add_site_to_all(site),
+            Child::Element(ref mut element) => {
+                element.attributes.add_site_to_all(site);
+                element.children.add_site_to_all(site);
+            }
+        }
+    }
+
+    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            Child::Text(ref text) => text.validate_site_for_all(site)?,
+            Child::Element(ref element) => {
+                element.attributes.validate_site_for_all(site)?;
+                element.children.validate_site_for_all(site)?;
+            }
+        };
+
+        Ok(())
     }
 }
 

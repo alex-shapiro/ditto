@@ -338,6 +338,16 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
 }
 
 impl<K: Key, V: Value + AddSiteToAll> AddSiteToAll for MapValue<K,V> {
+    fn add_site_nested(&mut self, op: &RemoteOp<K,V>, site: u32) {
+        if let RemoteOp::Insert{ref key, ref element, ..} = *op {
+            let elements = some!(self.0.get_mut(key));
+            let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
+            let ref mut element = elements[index];
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+        }
+    }
+
     fn add_site_to_all(&mut self, site: u32) {
         for elements in self.0.values_mut() {
             for element in elements.iter_mut() {

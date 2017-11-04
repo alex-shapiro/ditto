@@ -206,6 +206,15 @@ impl<T: Clone> CrdtValue for ListValue<T> {
 }
 
 impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
+    fn add_site_nested(&mut self, op: &RemoteOp<T>, site: u32) {
+        if let RemoteOp::Insert(Element(ref uid, _)) = *op {
+            let mut element = some!(self.0.remove(uid));
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+            self.0.insert(element).unwrap();
+        }
+    }
+
     fn add_site_to_all(&mut self, site: u32) {
         let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
         for mut element in old_tree {
