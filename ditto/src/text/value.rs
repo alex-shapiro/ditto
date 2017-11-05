@@ -8,7 +8,7 @@ use super::element::{self, Element};
 use super::text_edit::TextEdit;
 use super::{RemoteOp, LocalOp, LocalChange};
 use sequence::uid::UID;
-use traits::{CrdtValue, NestedCrdtValue};
+use traits::CrdtValue;
 use char_fns::CharFns;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 

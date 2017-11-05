@@ -1,5 +1,6 @@
 extern crate base64;
 extern crate char_fns;
+extern crate either;
 #[macro_use] extern crate lazy_static;
 extern crate num;
 extern crate order_statistic_tree;
@@ -35,7 +36,6 @@ pub mod xml;
 
 mod error;
 mod map_tuple_vec;
-mod pointer;
 mod replica;
 mod sequence;
 mod vlq;

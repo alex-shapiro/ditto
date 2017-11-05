@@ -139,7 +139,7 @@ impl<T: Clone> CrdtValue for RegisterValue<T> {
     }
 
     fn validate_site(&self, site: u32) -> Result<(), Error> {
-        for element in &mut self.0 {
+        for element in &self.0 {
             try_assert!(element.0.site == site, Error::InvalidRemoteOp);
         }
         Ok(())
