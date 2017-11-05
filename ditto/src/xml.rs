@@ -545,8 +545,121 @@ impl From<XmlVersion> for dom::XmlVersion {
     }
 }
 
-pub fn split_pointer(pointer_str: &str) -> Result<Vec<usize>, Error> {
+fn split_pointer(pointer_str: &str) -> Result<Vec<usize>, Error> {
     if !pointer_str.starts_with("/") { return Err(Error::InvalidPointer) }
+    if pointer_str == "/" { return Ok(vec![]) }
     pointer_str.split("/").skip(1).map(|s| Ok(usize::from_str(s)?)).collect()
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use serde_json;
+    use rmp_serde;
+
+    #[test]
+    fn test_from_reader() {
+        let string = r#"<?xml version="1.0" encoding="UTF-8"?><A>Something Texty</A>"#;
+        let cursor = Cursor::new(string.as_bytes());
+        let crdt = Xml::from_reader(cursor).unwrap();
+        let local_value = crdt.local_value().to_string().unwrap();
+        assert!(local_value == string);
+    }
+
+    #[test]
+    fn test_from_str() {
+        let string = r#"<?xml version="1.0" encoding="UTF-8"?><A>Something Texty</A>"#;
+        let crdt = Xml::from_str(string).unwrap();
+        let local_value = crdt.local_value().to_string().unwrap();
+        assert!(local_value == string);
+    }
+
+    #[test]
+    fn test_invalid_from_str() {
+        let string1 = r#"<A>Something Texty</A>"#;
+        let string2 = r#"<?xml version="1.0" encoding="UTF-8"?>"#;
+        let string3 = r#"<?xml version="1.0" encoding="UTF-8"?>Hello Everybody!"#;
+        assert!(Xml::from_str(string1).is_err());
+        assert!(Xml::from_str(string2).is_err());
+        assert!(Xml::from_str(string3).is_err());
+    }
+
+    #[test]
+    fn test_insert() {
+        let string1 = r#"<?xml version="1.0" encoding="UTF-8"?><A></A>"#;
+        let string2 = r#"<?xml version="1.0" encoding="UTF-8"?><A>Something Texty</A>"#;
+
+        let mut crdt = Xml::from_str(string1).unwrap();
+        let op = crdt.insert("/0", "Something Texty").unwrap();
+        assert!(crdt.local_value().to_string().unwrap() == string2);
+        assert_matches!(op.op, RemoteOpInner::Child(list::RemoteOp::Insert(_)));
+    }
+
+    #[test]
+    fn test_remove() {
+        let string1 = r#"<?xml version="1.0" encoding="UTF-8"?><ul><li>Thing 1</li><li>Thing 2</li>Random Text</ul>"#;
+        let string2 = r#"<?xml version="1.0" encoding="UTF-8"?><ul><li>Thing 2</li></ul>"#;
+
+        let mut crdt = Xml::from_str(string1).unwrap();
+        let op1 = crdt.remove("/0").unwrap();
+        let op2 = crdt.remove("/1").unwrap();
+
+        assert!(crdt.local_value().to_string().unwrap() == string2);
+        assert_matches!(op1.op, RemoteOpInner::Child(list::RemoteOp::Remove(_)));
+        assert_matches!(op2.op, RemoteOpInner::Child(list::RemoteOp::Remove(_)));
+    }
+
+    #[test]
+    fn test_insert_attribute() {
+        let string1 = r#"<?xml version="1.0" encoding="UTF-8"?><A/>"#;
+        let string2 = r#"<?xml version="1.0" encoding="UTF-8"?><A class="zebra"/>"#;
+
+        let mut crdt = Xml::from_str(string1).unwrap();
+        let op = crdt.insert_attribute("/", "class", "zebra").unwrap();
+        println!("{}", crdt.local_value().to_string().unwrap());
+        assert!(crdt.local_value().to_string().unwrap() == string2);
+        assert_matches!(op.op, RemoteOpInner::Attribute(map::RemoteOp::Insert{..}));
+    }
+
+    #[test]
+    fn test_remove_attribute() {
+        let string1 = r#"<?xml version="1.0" encoding="UTF-8"?><A class="zebra">Hiya</A>"#;
+        let string2 = r#"<?xml version="1.0" encoding="UTF-8"?><A>Hiya</A>"#;
+
+        let mut crdt = Xml::from_str(string1).unwrap();
+        let op = crdt.remove_attribute("/", "class").unwrap();
+        println!("{}", crdt.local_value().to_string().unwrap());
+        assert!(crdt.local_value().to_string().unwrap() == string2);
+        assert_matches!(op.op, RemoteOpInner::Attribute(map::RemoteOp::Remove{..}));
+    }
+
+    #[test]
+    fn test_replace_text() {
+        let string1 = r#"<?xml version="1.0" encoding="UTF-8"?><ul><li>Thing 1</li></ul>"#;
+        let string2 = r#"<?xml version="1.0" encoding="UTF-8"?><ul><li>Thing 9000</li></ul>"#;
+
+        let mut crdt = Xml::from_str(string1).unwrap();
+        let op = crdt.replace_text("/0/0", 6, 1, "9000").unwrap();
+        assert!(crdt.local_value().to_string().unwrap() == string2);
+        assert_matches!(op.op, RemoteOpInner::ReplaceText(text::RemoteOp{..}));
+    }
+
+    #[test]
+    fn test_split_pointer() {
+        assert!(split_pointer("/").unwrap() == Vec::<usize>::new());
+        assert!(split_pointer("/1/5/102").unwrap() == [1, 5, 102]);
+        assert!(split_pointer("/1/5/blob").is_err());
+        assert!(split_pointer("1/5/102").is_err());
+        assert!(split_pointer("hello!!!").is_err());
+    }
+}
+
+
+
+
+
+
+
+
+
 

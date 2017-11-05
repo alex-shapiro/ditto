@@ -53,6 +53,12 @@ impl Document {
         Ok(self.root.to_writer(&mut xml_writer)?)
     }
 
+    pub fn to_string(&self) -> Result<String, Error> {
+        let mut bytes = Vec::new();
+        let _ = self.to_writer(&mut bytes)?;
+        Ok(String::from_utf8(bytes)?)
+    }
+
     pub fn version(&self) -> XmlVersion {
         self.declaration.version
     }
