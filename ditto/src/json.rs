@@ -842,12 +842,12 @@ mod tests {
         // check that the remote ops' elements have the correct sites
         let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
         assert!(element.0.site == 11);
-        assert!(element.1.validate_site_for_all(11).is_ok());
+        assert!(element.1.validate_site(11).is_ok());
         assert!(replicas.is_empty());
 
         let element = list_insert_op_element(remote_ops.next().unwrap());
         assert!(element.0.site == 11);
-        assert!(element.1.validate_site_for_all(11).is_ok());
+        assert!(element.1.validate_site(11).is_ok());
 
         let element = text_remote_op(remote_ops.next().unwrap());
         assert!(element.removes.is_empty());
@@ -877,11 +877,11 @@ mod tests {
         assert!(crdt2.site() == 22);
 
         let object = nested_value(&mut crdt2, "/foo").unwrap();
-        assert!(object.validate_site_for_all(22).is_ok());
+        assert!(object.validate_site(22).is_ok());
 
         let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
         assert!(element.0.site == 22);
-        assert!(element.1.validate_site_for_all(22).is_ok());
+        assert!(element.1.validate_site(22).is_ok());
         assert!(replicas.is_empty());
     }
 
