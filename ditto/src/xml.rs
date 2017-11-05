@@ -128,7 +128,7 @@ impl Xml {
 }
 
 impl XmlValue {
-    pub fn insert<T: IntoXmlNode>(&mut self, pointer_str: &str, node: T, replica: &Replica) -> Result<RemoteOp, Error> {
+    fn insert<T: IntoXmlNode>(&mut self, pointer_str: &str, node: T, replica: &Replica) -> Result<RemoteOp, Error> {
         let mut pointer = split_pointer(pointer_str)?;
         let idx = pointer.pop().ok_or(Error::InvalidPointer)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
@@ -138,7 +138,7 @@ impl XmlValue {
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Child(op)})
     }
 
-    pub fn remove(&mut self, pointer_str: &str) -> Result<RemoteOp, Error> {
+    fn remove(&mut self, pointer_str: &str) -> Result<RemoteOp, Error> {
         let mut pointer = split_pointer(pointer_str)?;
         let idx = pointer.pop().ok_or(Error::InvalidPointer)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
@@ -147,7 +147,7 @@ impl XmlValue {
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Child(op)})
     }
 
-    pub fn insert_attribute(&mut self, pointer_str: &str, key: &str, value: &str, replica: &Replica) -> Result<RemoteOp, Error> {
+    fn insert_attribute(&mut self, pointer_str: &str, key: &str, value: &str, replica: &Replica) -> Result<RemoteOp, Error> {
         let pointer = split_pointer(pointer_str)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
         let element = child.left().ok_or(Error::InvalidPointer)?;
@@ -156,7 +156,7 @@ impl XmlValue {
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Attribute(op)})
     }
 
-    pub fn remove_attribute(&mut self, pointer_str: &str, key: &str) -> Result<RemoteOp, Error> {
+    fn remove_attribute(&mut self, pointer_str: &str, key: &str) -> Result<RemoteOp, Error> {
         let pointer = split_pointer(pointer_str)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
         let element = child.left().ok_or(Error::InvalidPointer)?;
@@ -164,7 +164,7 @@ impl XmlValue {
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Attribute(op)})
     }
 
-    pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
+    fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
         let pointer = split_pointer(pointer_str)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
         let text_value = child.right().ok_or(Error::InvalidPointer)?;
@@ -172,7 +172,7 @@ impl XmlValue {
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::ReplaceText(op)})
     }
 
-    pub fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
+    fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
         match remote_op.op {
             RemoteOpInner::Child(ref op) => {
                 let (child, pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
@@ -269,19 +269,38 @@ impl CrdtValue for XmlValue {
 
 impl NestedCrdtValue for XmlValue {
     fn nested_add_site(&mut self, op: &RemoteOp, site: u32) {
-        unimplemented!()
+        match op.op {
+            RemoteOpInner::Child(ref op_inner) => {
+                let (child, _) = some!(self.get_nested_remote(&op.pointer));
+                let element = some!(child.left());
+                element.children.nested_add_site(op_inner, site);
+            }
+            RemoteOpInner::Attribute(ref op_inner) => {
+                let (child, _) = some!(self.get_nested_remote(&op.pointer));
+                let element = some!(child.left());
+                element.attributes.add_site(op_inner, site);
+            }
+            RemoteOpInner::ReplaceText(ref op_inner) => {
+                let (child, _) = some!(self.get_nested_remote(&op.pointer));
+                let text = some!(child.right());
+                text.add_site(op_inner, site);
+            }
+        };
     }
 
     fn nested_add_site_to_all(&mut self, site: u32) {
-        unimplemented!()
+        self.root.attributes.add_site_to_all(site);
+        self.root.children.nested_add_site_to_all(site);
     }
 
     fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
-        unimplemented!()
+        self.root.attributes.validate_site(site)?;
+        self.root.children.nested_validate_site(site)
     }
 
     fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        unimplemented!()
+        self.root.attributes.merge(other.root.attributes, self_tombstones, other_tombstones);
+        self.root.children.merge(other.root.children, self_tombstones, other_tombstones);
     }
 }
 
@@ -290,130 +309,64 @@ impl CrdtValue for Child {
     type LocalOp = <XmlValue as CrdtValue>::LocalOp;
     type LocalValue = <XmlValue as CrdtValue>::LocalValue;
 
-    fn local_value(&self) -> Self::LocalValue {
-        unimplemented!()
-    }
+    fn local_value(&self) -> Self::LocalValue { unreachable!() }
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
-        unimplemented!()
+        self.nested_add_site(op, site)
     }
 
     fn add_site_to_all(&mut self, site: u32) {
-        unimplemented!()
+        self.nested_add_site_to_all(site)
     }
 
     fn validate_site(&self, site: u32) -> Result<(), Error> {
-        unimplemented!()
+        self.nested_validate_site(site)
     }
 
     fn merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        unimplemented!()
+        self.nested_merge(other, self_tombstones, other_tombstones)
     }
 }
 
 impl NestedCrdtValue for Child {
-    fn nested_add_site(&mut self, op: &RemoteOp, site: u32) {
+    fn nested_add_site(&mut self, _: &RemoteOp, _: u32) {
         unimplemented!()
     }
 
     fn nested_add_site_to_all(&mut self, site: u32) {
-        unimplemented!()
+        match *self {
+            Child::Text(ref mut text) => text.add_site_to_all(site),
+            Child::Element(ref mut element) => {
+                element.attributes.add_site_to_all(site);
+                element.children.nested_add_site_to_all(site);
+            }
+        }
     }
 
     fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
-        unimplemented!()
+        match *self {
+            Child::Text(ref text) => text.validate_site(site),
+            Child::Element(ref element) => {
+                element.attributes.validate_site(site)?;
+                element.children.nested_validate_site(site)
+            }
+        }
     }
 
     fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        unimplemented!()
+        match other {
+            Child::Text(other) => {
+                let text = some!(self.as_text_mut());
+                text.merge(other, self_tombstones, other_tombstones)
+            }
+            Child::Element(other) => {
+                let element = some!(self.as_element_mut());
+                element.attributes.merge(other.attributes, self_tombstones, other_tombstones);
+                element.children.nested_merge(other.children, self_tombstones, other_tombstones);
+            }
+        };
     }
 }
-
-
-
-// impl AddSiteToAll for XmlValue {
-//     fn add_site_nested(&mut self, op: &RemoteOp, site: u32) {
-//         match op.op {
-//             RemoteOpInner::Child(ref op_inner) => {
-//                 let (element, _) = some!(self.get_nested_element_remote(&op.pointer));
-//                 element.children.add_site_nested(op_inner, site);
-//             }
-//             RemoteOpInner::Attribute(ref op_inner) => {
-//                 let (element, _) = some!(self.get_nested_element_remote(&op.pointer));
-//                 element.attributes.add_site(op_inner, site);
-//             }
-//             RemoteOpInner::ReplaceText(ref op_inner) => {
-//                 let (text, _) = some!(self.get_nested_text_remote(&op.pointer));
-//                 text.add_site(op_inner, site);
-//             }
-//         }
-//     }
-
-//     fn add_site_to_all(&mut self, site: u32) {
-//         self.root.children.add_site_to_all(site);
-//         self.root.attributes.add_site_to_all(site);
-//     }
-
-//     fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-//         self.root.children.validate_site_for_all()?;
-//         self.root.attributes.validate_site_for_all()?;
-//     }
-// }
-
-// impl NestedValue for Element {
-//     fn nested_merge(&mut other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-//         self.attributes.merge(other.attributes, self_tombstones, other_tombstones);
-//         self.children.merge()
-
-//         for child in &mut self.children.iter_mut {
-//             match child {
-//                 Child::Text(other_text)
-
-//             }
-//         }
-//     }
-// }
-
-
-// impl NestedValue for Child {
-//     fn nested_add_site(&mut self, other: Self, self_tombstones)
-
-//     fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-//         match other {
-//             Child::Text(other_text) =>
-//                 some!(self.as_text_mut()).merge(other_text, self_tombstones, other_tombstones),
-//             Child::Element(other_element) => {
-//                 let element = some!(self.as_element_mut());
-//                 element.attributes.merge(other.attributes, self_tombstones, other_tombstones);
-//                 element.children.nested_merge(other.children, self_tombstones, other_tombstones);
-//             }
-//         }
-//     }
-// }
-
-// impl AddSiteToAll for Child {
-//     fn add_site_to_all(&mut self, site: u32) {
-//         match *self {
-//             Child::Text(ref mut text) => text.add_site_to_all(site),
-//             Child::Element(ref mut element) => {
-//                 element.attributes.add_site_to_all(site);
-//                 element.children.add_site_to_all(site);
-//             }
-//         }
-//     }
-
-//     fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-//         match *self {
-//             Child::Text(ref text) => text.validate_site_for_all(site)?,
-//             Child::Element(ref element) => {
-//                 element.attributes.validate_site_for_all(site)?;
-//                 element.children.validate_site_for_all(site)?;
-//             }
-//         };
-
-//         Ok(())
-//     }
-// }
 
 impl CrdtRemoteOp for RemoteOp {
     fn deleted_replicas(&self) -> Vec<Replica> {
@@ -458,10 +411,6 @@ impl NestedCrdtRemoteOp for RemoteOp {
 }
 
 impl Child {
-    fn as_element(&self) -> Option<&Element> {
-        if let Child::Element(ref element) = *self { Some(element) } else { None }
-    }
-
     fn as_element_mut(&mut self) -> Option<&mut Element> {
         if let Child::Element(ref mut element) = *self { Some(element) } else { None }
     }
