@@ -6,6 +6,7 @@ pub enum Error {
     AlreadyExists,
     AlreadyHasSite,
     AwaitingSite,
+    CannotMerge,
     DecodeCompact,
     DeserializeObjectUID,
     DeserializeSequenceUID,

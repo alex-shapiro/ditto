@@ -5,7 +5,6 @@ authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
 
 [dev-dependencies]
 assert_matches = "1.1"
-regex = "0.1"
 rmp-serde = "0.13"
 
 [dependencies]

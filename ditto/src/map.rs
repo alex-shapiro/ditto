@@ -319,7 +319,7 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
         Ok(())
     }
 
-    fn nested_merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+    fn nested_merge(&mut self, mut other: MapValue<K,V>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
         let self_elements = mem::replace(&mut self.0, HashMap::new());
 
         for (key, key_elements) in self_elements {
@@ -334,7 +334,7 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
                     Ordering::Equal => {
                         let mut elt1 = mem::replace(&mut s_element, self_iter.next()).unwrap();
                         let elt2 = mem::replace(&mut o_element, other_iter.next()).unwrap();
-                        elt1.1.nested_merge(elt2.1, self_tombstones, other_tombstones);
+                        elt1.1.nested_merge(elt2.1, self_tombstones, other_tombstones)?;
                         new_elements.push(elt1);
                     }
                     Ordering::Less => {
@@ -365,6 +365,8 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
                 self.0.insert(key, elements);
             }
         }
+
+        Ok(())
     }
 }
 

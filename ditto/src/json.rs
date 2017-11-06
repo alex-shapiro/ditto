@@ -210,7 +210,7 @@ impl JsonValue {
     }
 
     pub fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones)
+        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
     }
 
     fn split_pointer(pointer_str: &str) -> Result<Vec<&str>, Error> {
@@ -334,7 +334,7 @@ impl CrdtValue for JsonValue {
     }
 
     fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones)
+        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
     }
 }
 
@@ -367,15 +367,17 @@ impl NestedCrdtValue for JsonValue {
         }
     }
 
-    fn nested_merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+    fn nested_merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
         match other {
             JsonValue::Object(other_map) =>
-                ok!(self.as_map()).nested_merge(other_map, self_tombstones, other_tombstones),
+                self.as_map()?.nested_merge(other_map, self_tombstones, other_tombstones),
             JsonValue::Array(other_list) =>
-                ok!(self.as_list()).nested_merge(other_list, self_tombstones, other_tombstones),
-            JsonValue::String(other_text) =>
-                ok!(self.as_text()).merge(other_text, self_tombstones, other_tombstones),
-            _ => (),
+                self.as_list()?.nested_merge(other_list, self_tombstones, other_tombstones),
+            JsonValue::String(other_text) => {
+                self.as_text()?.merge(other_text, self_tombstones, other_tombstones);
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 }

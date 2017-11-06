@@ -151,8 +151,8 @@ impl XmlValue {
         let pointer = split_pointer(pointer_str)?;
         let (child, remote_pointer) = self.get_nested_local(&pointer)?;
         let element = child.left().ok_or(Error::InvalidPointer)?;
-        let attribute_value = value.into_xml_attribute_value()?;
-        let op = element.attributes.insert(key.into(), attribute_value, replica)?;
+        let (key, value) = into_xml_attribute(key, value)?;
+        let op = element.attributes.insert(key, value, replica)?;
         Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Attribute(op)})
     }
 
@@ -263,7 +263,7 @@ impl CrdtValue for XmlValue {
     }
 
     fn merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones)
+        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
     }
 }
 
@@ -298,9 +298,12 @@ impl NestedCrdtValue for XmlValue {
         self.root.children.nested_validate_site(site)
     }
 
-    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
+        if self.declaration != other.declaration || self.root.name != other.root.name {
+            return Err(Error::CannotMerge)
+        }
         self.root.attributes.merge(other.root.attributes, self_tombstones, other_tombstones);
-        self.root.children.merge(other.root.children, self_tombstones, other_tombstones);
+        self.root.children.nested_merge(other.root.children, self_tombstones, other_tombstones)
     }
 }
 
@@ -324,7 +327,7 @@ impl CrdtValue for Child {
     }
 
     fn merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones)
+        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
     }
 }
 
@@ -353,18 +356,19 @@ impl NestedCrdtValue for Child {
         }
     }
 
-    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
         match other {
             Child::Text(other) => {
-                let text = some!(self.as_text_mut());
-                text.merge(other, self_tombstones, other_tombstones)
+                let text = self.as_text_mut().ok_or(Error::CannotMerge)?;
+                text.merge(other, self_tombstones, other_tombstones);
+                Ok(())
             }
             Child::Element(other) => {
-                let element = some!(self.as_element_mut());
+                let element = self.as_element_mut().ok_or(Error::CannotMerge)?;
                 element.attributes.merge(other.attributes, self_tombstones, other_tombstones);
-                element.children.nested_merge(other.children, self_tombstones, other_tombstones);
+                element.children.nested_merge(other.children, self_tombstones, other_tombstones)
             }
-        };
+        }
     }
 }
 
@@ -465,20 +469,12 @@ fn into_xml(dom: dom::Document, replica: &Replica) -> Result<XmlValue, Error> {
 
 pub trait IntoXmlNode {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error>;
-
-    fn into_xml_attribute_value(self) -> Result<String, Error>;
 }
 
 impl<'a> IntoXmlNode for &'a str {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error> {
         let dom_child = dom::Child::from_str(self).map_err(|_| Error::InvalidXml)?;
         dom_child.into_xml_child(replica)
-    }
-
-    fn into_xml_attribute_value(self) -> Result<String, Error> {
-        let dom_child = dom::Child::from_str(self).map_err(|_| Error::InvalidXml)?;
-        let text = dom_child.into_text().ok_or(Error::InvalidXml)?;
-        Ok(text)
     }
 }
 
@@ -491,20 +487,19 @@ impl IntoXmlNode for dom::Child {
                 Ok(Child::Element(Element::from_dom(dom_element, replica)?)),
         }
     }
-
-    fn into_xml_attribute_value(self) -> Result<String, Error> {
-        Err(Error::InvalidXml)
-    }
 }
 
 impl IntoXmlNode for dom::Element {
     fn into_xml_child(self, replica: &Replica) -> Result<Child, Error> {
         Ok(Child::Element(Element::from_dom(self, replica)?))
     }
+}
 
-    fn into_xml_attribute_value(self) -> Result<String, Error> {
-        Err(Error::InvalidXml)
-    }
+fn into_xml_attribute(key: &str, value: &str) -> Result<(String, String), Error> {
+    dom::name::validate(key).map_err(|_| Error::InvalidXml)?;
+    let dom_child = dom::Child::from_str(value).map_err(|_| Error::InvalidXml)?;
+    let value = dom_child.into_text().ok_or(Error::InvalidXml)?;
+    Ok((key.into(), value))
 }
 
 impl From<Declaration> for dom::Declaration {
@@ -634,6 +629,18 @@ mod tests {
     }
 
     #[test]
+    fn test_insert_attribute_invalid() {
+        let mut crdt = Xml::from_str(r#"<?xml version="1.0" encoding="UTF-8"?><A/>"#).unwrap();
+        assert!(crdt.insert_attribute("/", "Hello There!", "zebra").is_err())
+    }
+
+    #[test]
+    fn test_remove_attribute_invalid() {
+        let mut crdt = Xml::from_str(r#"<?xml version="1.0" encoding="UTF-8"?><A/>"#).unwrap();
+        assert!(crdt.remove_attribute("/", "zebra!").is_err())
+    }
+
+    #[test]
     fn test_replace_text() {
         let string1 = r#"<?xml version="1.0" encoding="UTF-8"?><ul><li>Thing 1</li></ul>"#;
         let string2 = r#"<?xml version="1.0" encoding="UTF-8"?><ul><li>Thing 9000</li></ul>"#;
@@ -645,6 +652,102 @@ mod tests {
     }
 
     #[test]
+    fn test_awaiting_site() {
+        let string1 = r#"<?xml version="1.0"?><A>Hello</A>"#;
+        let string2 = r#"<?xml version="1.0"?><A>Hello And Goodbye</A>"#;
+
+        let remote_crdt = Xml::from_str(string1).unwrap();
+        let mut crdt = Xml::from_state(remote_crdt.clone_state(), 0);
+        assert!(crdt.replace_text("/0", 5, 0, " And Goodbye").unwrap_err() == Error::AwaitingSite);
+        assert!(crdt.local_value().to_string().unwrap() == string2);
+
+        let op = crdt.awaiting_site.pop().unwrap();
+        assert_matches!(op.op, RemoteOpInner::ReplaceText(text::RemoteOp{..}));
+    }
+
+    #[test]
+    fn test_execute_remote_child() {
+        let string1 = r#"<?xml version="1.0"?><A>Hello</A>"#;
+        let string2 = r#"<?xml version="1.0"?><A>Hello<b>GoodBye</b></A>"#;
+
+        let mut crdt1 = Xml::from_str(string1).unwrap();
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        let remote_op = crdt1.insert("/1", "<b>GoodBye</b>").unwrap();
+        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+
+        assert!(crdt1.value() == crdt2.value());
+        assert!(crdt1.local_value().to_string().unwrap() == string2);
+        assert!(local_op.pointer == Vec::<usize>::new());
+        assert_matches!(local_op.op, LocalOpInner::Child(list::LocalOp::Insert{..}));
+    }
+
+    #[test]
+    fn test_execute_remote_attribute() {
+        let string1 = r#"<?xml version="1.0"?><A></A>"#;
+        let string2 = r#"<?xml version="1.0"?><A name="foo"/>"#;
+
+        let mut crdt1 = Xml::from_str(string1).unwrap();
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        let remote_op = crdt1.insert_attribute("/", "name", "foo").unwrap();
+        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+
+        assert!(crdt1.value() == crdt2.value());
+        assert!(crdt1.local_value().to_string().unwrap() == string2);
+        assert!(local_op.pointer == Vec::<usize>::new());
+        assert_matches!(local_op.op, LocalOpInner::Attribute(map::LocalOp::Insert{..}));
+    }
+
+    #[test]
+    fn test_execute_remote_replace_text() {
+        let string1 = r#"<?xml version="1.0"?><A>Hiya!</A>"#;
+        let string2 = r#"<?xml version="1.0"?><A>Hi There!</A>"#;
+
+        let mut crdt1 = Xml::from_str(string1).unwrap();
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        let remote_op = crdt1.replace_text("/0", 2, 2, " There").unwrap();
+        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+
+        assert!(crdt1.value() == crdt2.value());
+        assert!(crdt1.local_value().to_string().unwrap() == string2);
+        assert!(local_op.pointer == [0]);
+        assert_matches!(local_op.op, LocalOpInner::ReplaceText(text::LocalOp{..}));
+    }
+
+    #[test]
+    fn test_execute_remote_missing_pointer() {
+        let mut crdt1 = Xml::from_str(r#"<?xml version="1.0"?><A>Hiya!</A>"#).unwrap();
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 2);
+        let remote_op = crdt1.remove("/0").unwrap();
+        let _         = crdt2.remove("/0").unwrap();
+        assert!(crdt2.execute_remote(&remote_op).is_none());
+    }
+
+    #[test]
+    fn test_merge() {
+        let string1 = r#"<?xml version="1.0"?><list><metadata/><items></items></list>"#;
+
+        let mut crdt1 = Xml::from_str(string1).unwrap();
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 2);
+        crdt1.insert_attribute("/0", "category", "letters").unwrap();
+        crdt1.insert("/1/0", "<li>A</li>").unwrap();
+        crdt1.insert("/1/1", "<li>B</li>").unwrap();
+
+        crdt1.insert_attribute("/0", "category", "error codes").unwrap();
+        crdt2.insert("/1/0", "<li>404</li>").unwrap();
+        crdt2.insert("/1/1", "<li>503</li>").unwrap();
+
+        let crdt1_state = crdt1.clone_state();
+        crdt1.merge(crdt2.clone_state());
+        crdt2.merge(crdt1_state);
+
+        println!("\n{:#?}", crdt1.local_value());
+        println!("\n{:#?}", crdt2.local_value());
+
+        assert!(crdt1.value == crdt2.value);
+        assert!(crdt1.tombstones == crdt2.tombstones);
+    }
+
+    #[test]
     fn test_split_pointer() {
         assert!(split_pointer("/").unwrap() == Vec::<usize>::new());
         assert!(split_pointer("/1/5/102").unwrap() == [1, 5, 102]);
@@ -653,13 +756,3 @@ mod tests {
         assert!(split_pointer("hello!!!").is_err());
     }
 }
-
-
-
-
-
-
-
-
-
-

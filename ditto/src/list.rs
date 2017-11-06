@@ -219,7 +219,7 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
         Ok(())
     }
 
-    fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+    fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
         {
             let removed_uids: Vec<UID> = self.0.iter()
                 .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site, e.0.counter))
@@ -234,11 +234,13 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
         for element in other.0.into_iter() {
             if self.0.lookup(&element.0).is_some() {
                 let self_element = self.0.lookup_mut(&element.0).unwrap();
-                self_element.1.nested_merge(element.1, self_tombstones, other_tombstones);
+                self_element.1.nested_merge(element.1, self_tombstones, other_tombstones)?;
             } else if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
                 let _ = self.0.insert(element);
             }
         }
+
+        Ok(())
     }
 }
 

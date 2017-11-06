@@ -153,7 +153,7 @@ pub trait NestedCrdtValue: CrdtValue {
     fn nested_validate_site(&self, site: u32) -> Result<(), Error>;
 
     /// Merges nested CRDT values.
-    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);
+    fn nested_merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error>;
 }
 
 /// Required functions for CRDT remote ops.
