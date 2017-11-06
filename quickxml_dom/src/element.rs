@@ -1,6 +1,7 @@
 //! Provides an `Element` type to represent DOM nodes.
 
 use error::Error;
+use name::validate as validate_name;
 use quick_xml::events::attributes::Attribute;
 use quick_xml::events::{Event, BytesStart, BytesEnd, BytesText};
 use quick_xml::reader::Reader as XmlReader;
@@ -168,10 +169,14 @@ impl Child {
 
 fn build_element(event: &BytesStart) -> Result<Element, Error> {
     let name = str::from_utf8(event.name())?.to_owned();
+    validate_name(&name)?;
+
     let attributes = event.attributes().map(|attr_result| {
         let attr  = attr_result?;
         let key   = str::from_utf8(attr.key)?.to_owned();
         let value = str::from_utf8(attr.unescaped_value()?.borrow())?.to_owned();
+        validate_name(&key)?;
+
         Ok((key, value))
     }).collect::<Result<HashMap<String, String>, Error>>()?;
     Ok(Element{name, attributes, children: vec![]})
