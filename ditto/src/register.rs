@@ -116,23 +116,6 @@ impl<T: Clone> RegisterValue<T> {
 
         None
     }
-
-    /// Merges two RegisterValues into one.
-    pub fn merge(&mut self, other: RegisterValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.0 =
-            mem::replace(&mut self.0, vec![])
-            .into_iter()
-            .filter(|e| other.0.contains(e) || !other_tombstones.contains(&e.0))
-            .collect();
-
-        for element in other.0 {
-            if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&element.0)) {
-                if !self_tombstones.contains(&element.0) {
-                    self.0.insert(index, element);
-                }
-            }
-        }
-    }
 }
 
 impl<T: Clone> CrdtValue for RegisterValue<T> {
@@ -147,6 +130,35 @@ impl<T: Clone> CrdtValue for RegisterValue<T> {
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         let index = some!(self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)).ok());
         self.0[index].0.site = site;
+    }
+
+    fn add_site_to_all(&mut self, site: u32) {
+        for element in &mut self.0 {
+            element.0.site = site;
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        for element in &self.0 {
+            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+        }
+        Ok(())
+    }
+
+    fn merge(&mut self, other: RegisterValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        self.0 =
+            mem::replace(&mut self.0, vec![])
+            .into_iter()
+            .filter(|e| other.0.contains(e) || !other_tombstones.contains(&e.0))
+            .collect();
+
+        for element in other.0 {
+            if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&element.0)) {
+                if !self_tombstones.contains(&element.0) {
+                    self.0.insert(index, element);
+                }
+            }
+        }
     }
 }
 

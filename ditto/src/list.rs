@@ -94,6 +94,11 @@ impl<T: Clone> ListValue<T> {
         self.0.iter()
     }
 
+    pub fn push(&mut self, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
+        let len = self.0.len();
+        self.insert(len, value, replica)
+    }
+
     pub fn insert(&mut self, index: usize, value: T, replica: &Replica) -> Result<RemoteOp<T>, Error> {
         let max_index = self.0.len();
         if index > max_index { return Err(Error::OutOfBounds) }
@@ -132,8 +137,41 @@ impl<T: Clone> ListValue<T> {
             }
         }
     }
+}
 
-    pub fn merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+impl<T: Clone> CrdtValue for ListValue<T> {
+    type LocalValue = Vec<T>;
+    type RemoteOp = RemoteOp<T>;
+    type LocalOp = LocalOp<T>;
+
+    fn local_value(&self) -> Vec<T> {
+        self.0.iter().map(|element| element.1.clone()).collect()
+    }
+
+    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
+        if let RemoteOp::Insert(Element(ref uid, _)) = *op {
+            let mut element = some!(self.0.remove(uid));
+            element.0.site = site;
+            let _ = self.0.insert(element);
+        }
+    }
+
+    fn add_site_to_all(&mut self, site: u32) {
+        let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
+        for mut element in old_tree {
+            element.0.site = site;
+            let _ = self.0.insert(element);
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        for element in &self.0 {
+            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+        }
+        Ok(())
+    }
+
+    fn merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let removed_uids: Vec<UID> = self.0.iter()
             .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site, e.0.counter))
             .map(|e| e.0.clone())
@@ -154,8 +192,34 @@ impl<T: Clone> ListValue<T> {
     }
 }
 
-impl<T: Clone + NestedValue> NestedValue for ListValue<T> {
-    fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
+    fn nested_add_site(&mut self, op: &RemoteOp<T>, site: u32) {
+        if let RemoteOp::Insert(Element(ref uid, _)) = *op {
+            let mut element = some!(self.0.remove(uid));
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+            self.0.insert(element).unwrap();
+        }
+    }
+
+    fn nested_add_site_to_all(&mut self, site: u32) {
+        let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
+        for mut element in old_tree {
+            element.0.site = site;
+            element.1.add_site_to_all(site);
+            let _ = self.0.insert(element);
+        }
+    }
+
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
+        for element in &self.0 {
+            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            try!(element.1.nested_validate_site(site));
+        }
+        Ok(())
+    }
+
+    fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
         {
             let removed_uids: Vec<UID> = self.0.iter()
                 .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site, e.0.counter))
@@ -170,60 +234,13 @@ impl<T: Clone + NestedValue> NestedValue for ListValue<T> {
         for element in other.0.into_iter() {
             if self.0.lookup(&element.0).is_some() {
                 let self_element = self.0.lookup_mut(&element.0).unwrap();
-                self_element.1.nested_merge(element.1, self_tombstones, other_tombstones);
+                self_element.1.nested_merge(element.1, self_tombstones, other_tombstones)?;
             } else if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
                 let _ = self.0.insert(element);
             }
         }
-    }
-}
 
-impl<T: Clone> CrdtValue for ListValue<T> {
-    type LocalValue = Vec<T>;
-    type RemoteOp = RemoteOp<T>;
-    type LocalOp = LocalOp<T>;
-
-    fn local_value(&self) -> Vec<T> {
-        let mut vec = vec![];
-        for element in self.0.iter() {
-            vec.push(element.1.clone())
-        }
-        vec
-    }
-
-    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
-        if let RemoteOp::Insert(Element(ref uid, _)) = *op {
-            let mut element = some!(self.0.remove(uid));
-            element.0.site = site;
-            let _ = self.0.insert(element);
-        }
-    }
-}
-
-impl<T: Clone + AddSiteToAll> AddSiteToAll for ListValue<T> {
-    fn add_site_to_all(&mut self, site: u32) {
-        let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
-        for mut element in old_tree {
-            element.0.site = site;
-            element.1.add_site_to_all(site);
-            let _ = self.0.insert(element);
-        }
-    }
-
-    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-        for element in &self.0 {
-            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
-            try!(element.1.validate_site_for_all(site));
-        }
         Ok(())
-    }
-}
-
-impl<T> order_statistic_tree::Element for Element<T> {
-    type Id = UID;
-
-    fn id(&self) -> &UID {
-        &self.0
     }
 }
 
@@ -252,6 +269,38 @@ impl<T> CrdtRemoteOp for RemoteOp<T> {
                 Ok(())
             }
         }
+    }
+}
+
+impl<T: NestedCrdtValue> NestedCrdtRemoteOp for RemoteOp<T> {
+    fn nested_add_site(&mut self, site: u32) {
+        match *self {
+            RemoteOp::Insert(ref mut element) => {
+                element.0.site = site;
+                element.1.add_site_to_all(site);
+            }
+            RemoteOp::Remove(ref mut uid) => {
+                if uid.site == 0 { uid.site = site };
+            }
+        }
+    }
+
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            RemoteOp::Remove(_) => Ok(()),
+            RemoteOp::Insert(ref element) => {
+                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                element.1.nested_validate_site(site)
+            }
+        }
+    }
+}
+
+impl<T> order_statistic_tree::Element for Element<T> {
+    type Id = UID;
+
+    fn id(&self) -> &UID {
+        &self.0
     }
 }
 

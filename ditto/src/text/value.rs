@@ -8,7 +8,7 @@ use super::element::{self, Element};
 use super::text_edit::TextEdit;
 use super::{RemoteOp, LocalOp, LocalChange};
 use sequence::uid::UID;
-use traits::{CrdtValue, AddSiteToAll};
+use traits::CrdtValue;
 use char_fns::CharFns;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 
@@ -21,6 +21,27 @@ impl TextValue {
     pub fn new() -> Self {
         TextValue(Tree::new(), None)
     }
+
+    /// Constructs a new TextValue from a str and a replica.
+    /// Each paragraph in the str is split into a separate element.
+    pub fn from_str(string: &str, replica: &Replica) -> Self {
+        let mut text = TextValue::new();
+        if string.is_empty() { return text }
+
+        let mut iter = string.rsplit('\n');
+        if !string.ends_with('\n') {
+            let last_substring = iter.next().unwrap().to_owned();
+            let _ = text.do_insert(0, last_substring, replica).unwrap();
+        }
+
+        for substring in iter {
+            let substring = format!("{}\n", substring);
+            let _ = text.do_insert(0, substring, replica).unwrap();
+        }
+
+        text
+    }
+
 
     /// Returns the number of unicode characters in the TextValue.
     pub fn len(&self) -> usize {
@@ -130,28 +151,6 @@ impl TextValue {
         }
     }
 
-    pub fn merge(&mut self, other: TextValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        let removed_uids: Vec<UID> = self.0.iter()
-            .filter(|e| other.0.get_idx(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
-            .map(|e| e.uid.clone())
-            .collect();
-
-        let new_elements: Vec<Element> = other.0.into_iter()
-            .filter(|e| self.0.get_idx(&e.uid).is_none() && !self_tombstones.contains_pair(e.uid.site, e.uid.counter))
-            .map(|e| e.clone())
-            .collect();
-
-        for uid in removed_uids {
-            let _ = self.0.remove(&uid);
-        }
-
-        for element in new_elements {
-            let _ = self.0.insert(element);
-        }
-
-        self.1 = None;
-    }
-
     fn remove_at(&mut self, index: usize) -> Result<(Element, usize), Error> {
         let (uid, offset) = {
             let (element, offset) = self.0.get_elt(index)?;
@@ -220,9 +219,7 @@ impl CrdtValue for TextValue {
             }
         }
     }
-}
 
-impl AddSiteToAll for TextValue {
     fn add_site_to_all(&mut self, site: u32) {
         let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
         for mut element in old_tree {
@@ -231,14 +228,35 @@ impl AddSiteToAll for TextValue {
         }
     }
 
-    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
         for element in self.0.iter() {
             try_assert!(element.uid.site == site, Error::InvalidRemoteOp);
         }
         Ok(())
     }
-}
 
+    fn merge(&mut self, other: TextValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        let removed_uids: Vec<UID> = self.0.iter()
+            .filter(|e| other.0.get_idx(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .map(|e| e.uid.clone())
+            .collect();
+
+        let new_elements: Vec<Element> = other.0.into_iter()
+            .filter(|e| self.0.get_idx(&e.uid).is_none() && !self_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .map(|e| e.clone())
+            .collect();
+
+        for uid in removed_uids {
+            let _ = self.0.remove(&uid);
+        }
+
+        for element in new_elements {
+            let _ = self.0.insert(element);
+        }
+
+        self.1 = None;
+    }
+}
 
 // rust-msgpack encodes NewType values nontransparently,
 // as single-element arrays. The TextValue struct used to be

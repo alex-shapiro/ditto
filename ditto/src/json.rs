@@ -210,7 +210,7 @@ impl JsonValue {
     }
 
     pub fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones)
+        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
     }
 
     fn split_pointer(pointer_str: &str) -> Result<Vec<&str>, Error> {
@@ -292,21 +292,6 @@ impl JsonValue {
     }
 }
 
-impl NestedValue for JsonValue {
-    fn nested_merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        match other {
-            JsonValue::Object(other_map) =>
-                ok!(self.as_map()).nested_merge(other_map, self_tombstones, other_tombstones),
-            JsonValue::Array(other_list) =>
-                ok!(self.as_list()).nested_merge(other_list, self_tombstones, other_tombstones),
-            JsonValue::String(other_text) =>
-                ok!(self.as_text()).merge(other_text, self_tombstones, other_tombstones),
-            _ => (),
-        }
-    }
-}
-
-
 impl CrdtValue for JsonValue {
     type RemoteOp = RemoteOp;
     type LocalOp = LocalOp;
@@ -337,12 +322,62 @@ impl CrdtValue for JsonValue {
     }
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
+        self.nested_add_site(op, site)
+    }
+
+    fn add_site_to_all(&mut self, site: u32) {
+        self.nested_add_site_to_all(site)
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        self.nested_validate_site(site)
+    }
+
+    fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
+    }
+}
+
+impl NestedCrdtValue for JsonValue {
+    fn nested_add_site(&mut self, op: &RemoteOp, site: u32) {
         let (value, _) = some!(self.get_nested_remote(&op.pointer));
         match (value, &op.op) {
-            (&mut JsonValue::Object(ref mut m), &RemoteOpInner::Object(ref op)) => add_site_map(m, op, site),
-            (&mut JsonValue::Array(ref mut l), &RemoteOpInner::Array(ref op)) => add_site_list(l, op, site),
+            (&mut JsonValue::Object(ref mut m), &RemoteOpInner::Object(ref op)) => m.nested_add_site(op, site),
+            (&mut JsonValue::Array(ref mut l), &RemoteOpInner::Array(ref op)) => l.nested_add_site(op, site),
             (&mut JsonValue::String(ref mut t), &RemoteOpInner::String(ref op)) => t.add_site(op, site),
             _ => return,
+        }
+    }
+
+    fn nested_add_site_to_all(&mut self, site: u32) {
+        match *self {
+            JsonValue::Object(ref mut m) => m.nested_add_site_to_all(site),
+            JsonValue::Array(ref mut l) => l.nested_add_site_to_all(site),
+            JsonValue::String(ref mut t) => t.add_site_to_all(site),
+            _ => return,
+        }
+    }
+
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
+        match *self {
+            JsonValue::Object(ref m) => m.nested_validate_site(site),
+            JsonValue::Array(ref l) => l.nested_validate_site(site),
+            JsonValue::String(ref t) => t.validate_site(site),
+            _ => Ok(())
+        }
+    }
+
+    fn nested_merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
+        match other {
+            JsonValue::Object(other_map) =>
+                self.as_map()?.nested_merge(other_map, self_tombstones, other_tombstones),
+            JsonValue::Array(other_list) =>
+                self.as_list()?.nested_merge(other_list, self_tombstones, other_tombstones),
+            JsonValue::String(other_text) => {
+                self.as_text()?.merge(other_text, self_tombstones, other_tombstones);
+                Ok(())
+            }
+            _ => Ok(()),
         }
     }
 }
@@ -357,6 +392,16 @@ impl CrdtRemoteOp for RemoteOp {
     }
 
     fn add_site(&mut self, site: u32) {
+        self.nested_add_site(site)
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        self.nested_validate_site(site)
+    }
+}
+
+impl NestedCrdtRemoteOp for RemoteOp {
+    fn nested_add_site(&mut self, site: u32) {
         // update sites in the pointer
         for uid in self.pointer.iter_mut() {
             match *uid {
@@ -371,40 +416,21 @@ impl CrdtRemoteOp for RemoteOp {
 
         // update sites in the op
         match self.op {
-            RemoteOpInner::Object(ref mut op) => add_site_map_op(op, site),
-            RemoteOpInner::Array(ref mut op) => add_site_list_op(op, site),
+            RemoteOpInner::Object(ref mut op) => op.nested_add_site(site),
+            RemoteOpInner::Array(ref mut op) => op.nested_add_site(site),
             RemoteOpInner::String(ref mut op) => op.add_site(site),
         }
     }
 
-    fn validate_site(&self, site: u32) -> Result<(), Error> {
+    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
         match self.op {
-            RemoteOpInner::Object(ref op) => validate_site_map_op(op, site),
-            RemoteOpInner::Array(ref op) => validate_site_list_op(op, site),
+            RemoteOpInner::Object(ref op) => op.nested_validate_site(site),
+            RemoteOpInner::Array(ref op) => op.nested_validate_site(site),
             RemoteOpInner::String(ref op) => op.validate_site(site),
         }
     }
 }
 
-impl AddSiteToAll for JsonValue {
-    fn add_site_to_all(&mut self, site: u32) {
-        match *self {
-            JsonValue::Object(ref mut m) => m.add_site_to_all(site),
-            JsonValue::Array(ref mut l) => l.add_site_to_all(site),
-            JsonValue::String(ref mut s) => s.add_site_to_all(site),
-            _ => return,
-        }
-    }
-
-    fn validate_site_for_all(&self, site: u32) -> Result<(), Error> {
-        match *self {
-            JsonValue::Object(ref m) => m.validate_site_for_all(site),
-            JsonValue::Array(ref l) => l.validate_site_for_all(site),
-            JsonValue::String(ref s) => s.validate_site_for_all(site),
-            _ => Ok(())
-        }
-    }
-}
 
 impl IntoJson for JsonValue {
     #[inline]
@@ -480,74 +506,6 @@ impl IntoJson for f64 {
 impl IntoJson for bool {
     fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
         Ok(JsonValue::Bool(self))
-    }
-}
-
-fn add_site_map(map_value: &mut MapValue<String, JsonValue>, op: &map::RemoteOp<String, JsonValue>, site: u32) {
-    if let map::RemoteOp::Insert{ref key, ref element, ..} = *op {
-        let elements = some!(map_value.0.get_mut(key));
-        let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
-        let ref mut element = elements[index];
-        element.0.site = site;
-        element.1.add_site_to_all(site);
-    }
-}
-
-fn add_site_list(list_value: &mut ListValue<JsonValue>, op: &list::RemoteOp<JsonValue>, site: u32) {
-    if let list::RemoteOp::Insert(list::Element(ref uid, _)) = *op {
-        let mut element = some!(list_value.0.remove(uid));
-        element.0.site = site;
-        element.1.add_site_to_all(site);
-        list_value.0.insert(element).unwrap();
-    }
-}
-
-fn add_site_map_op(op: &mut map::RemoteOp<String, JsonValue>, site: u32) {
-    match *op {
-        map::RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
-            element.0.site = site;
-            element.1.add_site_to_all(site);
-            for replica in removed {
-                if replica.site == 0 { replica.site = site; }
-            }
-        }
-        map::RemoteOp::Remove{ref mut removed, ..} => {
-            for replica in removed {
-                if replica.site == 0 { replica.site = site; }
-            }
-        }
-    }
-}
-
-fn add_site_list_op(op: &mut list::RemoteOp<JsonValue>, site: u32) {
-    match *op {
-        list::RemoteOp::Insert(ref mut element) => {
-            element.0.site = site;
-            element.1.add_site_to_all(site);
-        }
-        list::RemoteOp::Remove(ref mut uid) => {
-            if uid.site == 0 { uid.site = site };
-        }
-    }
-}
-
-fn validate_site_map_op(op: &map::RemoteOp<String, JsonValue>, site: u32) -> Result<(), Error> {
-    match *op {
-        map::RemoteOp::Remove{..} => Ok(()),
-        map::RemoteOp::Insert{ref element, ..} => {
-            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
-            element.1.validate_site_for_all(site)
-        }
-    }
-}
-
-fn validate_site_list_op(op: &list::RemoteOp<JsonValue>, site: u32) -> Result<(), Error> {
-    match *op {
-        list::RemoteOp::Remove(_) => Ok(()),
-        list::RemoteOp::Insert(ref element) => {
-            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
-            element.1.validate_site_for_all(site)
-        }
     }
 }
 
@@ -886,12 +844,12 @@ mod tests {
         // check that the remote ops' elements have the correct sites
         let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
         assert!(element.0.site == 11);
-        assert!(element.1.validate_site_for_all(11).is_ok());
+        assert!(element.1.validate_site(11).is_ok());
         assert!(replicas.is_empty());
 
         let element = list_insert_op_element(remote_ops.next().unwrap());
         assert!(element.0.site == 11);
-        assert!(element.1.validate_site_for_all(11).is_ok());
+        assert!(element.1.validate_site(11).is_ok());
 
         let element = text_remote_op(remote_ops.next().unwrap());
         assert!(element.removes.is_empty());
@@ -921,11 +879,11 @@ mod tests {
         assert!(crdt2.site() == 22);
 
         let object = nested_value(&mut crdt2, "/foo").unwrap();
-        assert!(object.validate_site_for_all(22).is_ok());
+        assert!(object.validate_site(22).is_ok());
 
         let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
         assert!(element.0.site == 22);
-        assert!(element.1.validate_site_for_all(22).is_ok());
+        assert!(element.1.validate_site(22).is_ok());
         assert!(replicas.is_empty());
     }
 

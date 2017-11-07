@@ -1,8 +1,10 @@
 extern crate base64;
 extern crate char_fns;
+extern crate either;
 #[macro_use] extern crate lazy_static;
 extern crate num;
 extern crate order_statistic_tree;
+extern crate quickxml_dom;
 extern crate rand;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
@@ -30,6 +32,7 @@ pub mod map;
 pub mod register;
 pub mod set;
 pub mod text;
+pub mod xml;
 
 mod error;
 mod map_tuple_vec;

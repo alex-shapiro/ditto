@@ -141,9 +141,47 @@ impl<T: SetElement> SetValue<T> {
             }
         }
     }
+}
 
-    /// Merges two SetValues into one.
-    pub fn merge(&mut self, mut other: SetValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
+impl<T: SetElement> CrdtValue for SetValue<T> {
+    type LocalValue = HashSet<T>;
+    type RemoteOp = RemoteOp<T>;
+    type LocalOp = LocalOp<T>;
+
+    fn local_value(&self) -> HashSet<T> {
+        let mut hash_set = HashSet::new();
+        for key in self.0.keys() {
+            hash_set.insert(key.clone());
+        }
+        hash_set
+    }
+
+    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
+        if let RemoteOp::Insert{ref value, ref replica} = *op {
+            let ref mut replicas = some!(self.0.get_mut(value));
+            let index = some!(replicas.binary_search_by(|r| r.cmp(replica)).ok());
+            replicas[index].site = site;
+        }
+    }
+
+    fn add_site_to_all(&mut self, site: u32) {
+        for replicas in self.0.values_mut() {
+            for replica in replicas.iter_mut() {
+                replica.site = site;
+            }
+        }
+    }
+
+    fn validate_site(&self, site: u32) -> Result<(), Error> {
+        for replicas in self.0.values() {
+            for replica in replicas.iter() {
+                try_assert!(replica.site == site, Error::InvalidRemoteOp);
+            }
+        }
+        Ok(())
+    }
+
+    fn merge(&mut self, mut other: SetValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let self_elements = mem::replace(&mut self.0, HashMap::new());
 
         for (key, replicas) in self_elements {
@@ -174,28 +212,6 @@ impl<T: SetElement> SetValue<T> {
             if !replicas.is_empty() {
                 self.0.insert(key, replicas);
             }
-        }
-    }
-}
-
-impl<T: SetElement> CrdtValue for SetValue<T> {
-    type LocalValue = HashSet<T>;
-    type RemoteOp = RemoteOp<T>;
-    type LocalOp = LocalOp<T>;
-
-    fn local_value(&self) -> HashSet<T> {
-        let mut hash_set = HashSet::new();
-        for key in self.0.keys() {
-            hash_set.insert(key.clone());
-        }
-        hash_set
-    }
-
-    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
-        if let RemoteOp::Insert{ref value, ref replica} = *op {
-            let ref mut replicas = some!(self.0.get_mut(value));
-            let index = some!(replicas.binary_search_by(|r| r.cmp(replica)).ok());
-            replicas[index].site = site;
         }
     }
 }

@@ -1,7 +1,10 @@
 Ditto
 =====
 
-Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs and provides a standard interface for generating ops, executing remote ops, and serialization. All CRDTs are op-based and tombstoneless. All remote ops are idempotent, so CRDTs can handle duplicate ops (eg due to a network outage) without losing consistency.
+Ditto is a CRDT library focused on usability. It contains `Register`, `Set`, `Map`, `List`, `Text`, `Json`, and `Xml` CRDTs and provides a standard interface for creating, updating, and serializing. All Ditto CRDTs have the following properties:
+
+* They can be updated both incrementally (op-based) and by merging (state-based).
+* All incremental operations and merges are idempotent.
 
 ## Usage
 
@@ -42,6 +45,8 @@ For more examples, take a look at the integration tests.
 
 **Json** is a container for any kind of data that can be represented via Json - objects, arrays, text, numbers, bools, and null. Its supported operations are `insert`, `remove`, and `replace_text`. Numbers, bools, and nulls are immutable.
 
+**Xml** is a container for XML documents. It supports both XML 1.0 and 1.1. Its supported operations are `insert`, `remove`, `insert_attribute`, `remove_attribute`, and `replace_text`.
+
 ## Notes
 
 Although Ditto CRDTs handle pre-site operations and site addition gracefully, they do not provide site allocation or any other networking feature. Site allocation in particular must be handled carefully; if two or more clients use the same site concurrently you WILL have consistency errors.
@@ -50,4 +55,4 @@ Ditto CRDTs are all op-based. Therefore, all remote operations received from som
 
 The root value of a `Json` CRDT cannot be replaced. This means that if you create a `Json` CRDT with a `Number` or `Bool` root type, your CRDT is immutable.
 
-CRDTs are much larger than their equivalent native types. The `Text` and `List` CRDTs in particular may require 5x or more memory than `String` or `Vec`. If the only operation you need for a `Text` CRDT is full replacement, consider using `Register<String>` instead.
+CRDTs are inherently larger than their native equivalents. A `Text` or `List` CRDT may use up to 3x the space of an equivalent `String` or `Vec`. If the only operation you need for text is full replacement, consider using `Register<String>` instead.
