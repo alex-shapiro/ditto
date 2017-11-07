@@ -1,7 +1,11 @@
 Ditto
 =====
 
-Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, and `Json` CRDTs and provides a standard interface for generating ops, executing remote ops, and serialization. All CRDTs are op-based and tombstoneless. All remote ops are idempotent, so CRDTs can handle duplicate ops (eg due to a network outage) without losing consistency.
+Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, `Json`, and `Xml` CRDTs and provides a standard interface for creating, updating, and serializing. All Ditto CRDTs have the following properties:
+
+* They can be updated by both remote operations and remote state merges.
+* All remote operations and merges are idempotent.
+* Remote operations must be sent in the order they were generated.
 
 ## Usage
 
@@ -41,6 +45,8 @@ For more examples, take a look at the integration tests.
 **Text** is a string-like CRDT for mutable text. Its supported operation is `replace`, which replaces a range of unicode characters with a new string.
 
 **Json** is a container for any kind of data that can be represented via Json - objects, arrays, text, numbers, bools, and null. Its supported operations are `insert`, `remove`, and `replace_text`. Numbers, bools, and nulls are immutable.
+
+**Xml** is a container for XML documents. It supports both XML 1.0 and 1.1. Its supported operations are `insert`, `remove`, `insert_attribute`, `remove_attribute`, and `replace_text`.
 
 ## Notes
 
