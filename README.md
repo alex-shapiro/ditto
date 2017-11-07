@@ -1,11 +1,10 @@
 Ditto
 =====
 
-Ditto is a CRDT library focused on simplicity. It contains `Register`, `Set`, `Map`, `List`, `Text`, `Json`, and `Xml` CRDTs and provides a standard interface for creating, updating, and serializing. All Ditto CRDTs have the following properties:
+Ditto is a CRDT library focused on usability. It contains `Register`, `Set`, `Map`, `List`, `Text`, `Json`, and `Xml` CRDTs and provides a standard interface for creating, updating, and serializing. All Ditto CRDTs have the following properties:
 
-* They can be updated by both remote operations and remote state merges.
-* All remote operations and merges are idempotent.
-* Remote operations must be sent in the order they were generated.
+* They can be updated both incrementally (op-based) and by merging (state-based).
+* All incremental operations and merges are idempotent.
 
 ## Usage
 
