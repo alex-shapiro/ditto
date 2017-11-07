@@ -50,4 +50,4 @@ Ditto CRDTs are all op-based. Therefore, all remote operations received from som
 
 The root value of a `Json` CRDT cannot be replaced. This means that if you create a `Json` CRDT with a `Number` or `Bool` root type, your CRDT is immutable.
 
-CRDTs are much larger than their equivalent native types. The `Text` and `List` CRDTs in particular may require 5x or more memory than `String` or `Vec`. If the only operation you need for a `Text` CRDT is full replacement, consider using `Register<String>` instead.
+CRDTs are inherently larger than their native equivalents. A `Text` or `List` CRDT may use up to 3x the space of an equivalent `String` or `Vec`. If the only operation you need for text is full replacement, consider using `Register<String>` instead.

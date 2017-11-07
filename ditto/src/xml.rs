@@ -740,11 +740,89 @@ mod tests {
         crdt1.merge(crdt2.clone_state());
         crdt2.merge(crdt1_state);
 
-        println!("\n{:#?}", crdt1.local_value());
-        println!("\n{:#?}", crdt2.local_value());
-
         assert!(crdt1.value == crdt2.value);
         assert!(crdt1.tombstones == crdt2.tombstones);
+    }
+
+    #[test]
+    fn test_add_site() {
+        let string = r#"<?xml version="1.0"?><list><metadata/><items></items></list>"#;
+        let crdt1 = Xml::from_str(string).unwrap();
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        assert_matches!(crdt2.insert("/1/0", "<li>A</li>"), Err(Error::AwaitingSite));
+        assert_matches!(crdt2.replace_text("/1/0/0", 0, 1, "B"), Err(Error::AwaitingSite));
+
+        let ops = crdt2.add_site(2).unwrap();
+        assert_matches!(ops[0].op, RemoteOpInner::Child(_));
+        assert_matches!(ops[1].op, RemoteOpInner::ReplaceText(_));
+    }
+
+    #[test]
+    fn test_add_site_already_has_site() {
+        let string = r#"<?xml version="1.0"?><list><metadata/><items></items></list>"#;
+        let mut crdt = Xml::from_str(string).unwrap();
+        assert!(crdt.add_site(33).unwrap_err() == Error::AlreadyHasSite);
+    }
+
+    #[test]
+    fn test_serialize() {
+        let string = r#"<?xml version="1.0"?><list><metadata/><items><li>A</li><li>B</li></items></list>"#;
+        let crdt1 = Xml::from_str(string).unwrap();
+
+        let s_json = serde_json::to_string(&crdt1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&crdt1).unwrap();
+        let crdt2: Xml = serde_json::from_str(&s_json).unwrap();
+        let crdt3: Xml = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(crdt1 == crdt2);
+        assert!(crdt1 == crdt3);
+    }
+
+    #[test]
+    fn test_serialize_state() {
+        let string = r#"<?xml version="1.0"?><list><metadata/><items><li>A</li><li>B</li></items></list>"#;
+        let crdt   = Xml::from_str(string).unwrap();
+        let state1 = crdt.clone_state();
+
+        let s_json = serde_json::to_string(&state1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&state1).unwrap();
+        let state2: XmlState = serde_json::from_str(&s_json).unwrap();
+        let state3: XmlState = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(state1 == state2);
+        assert!(state1 == state3);
+    }
+
+    #[test]
+    fn test_serialize_remote_op() {
+        let string = r#"<?xml version="1.0"?><list><metadata/><items><li>A</li><li>B</li></items></list>"#;
+        let mut crdt = Xml::from_str(string).unwrap();
+        let remote_op1 = crdt.insert("/1/2", "<li>C</li>").unwrap();
+
+        let s_json = serde_json::to_string(&remote_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
+        let remote_op2: RemoteOp = serde_json::from_str(&s_json).unwrap();
+        let remote_op3: RemoteOp = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(remote_op1 == remote_op2);
+        assert!(remote_op1 == remote_op3);
+    }
+
+    #[test]
+    fn test_serialize_local_op() {
+        let string = r#"<?xml version="1.0"?><list><metadata/><items><li>A</li><li>B</li></items></list>"#;
+        let mut crdt1 = Xml::from_str(string).unwrap();
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 2);
+        let remote_op = crdt1.insert("/1/2", "<li>C</li>").unwrap();
+        let local_op1 = crdt2.execute_remote(&remote_op).unwrap();
+
+        let s_json = serde_json::to_string(&local_op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
+        let local_op2: LocalOp = serde_json::from_str(&s_json).unwrap();
+        let local_op3: LocalOp = rmp_serde::from_slice(&s_msgpack).unwrap();
+
+        assert!(local_op1 == local_op2);
+        assert!(local_op1 == local_op3);
     }
 
     #[test]
