@@ -50,3 +50,4 @@ pub use map::{Map, MapState};
 pub use register::{Register, RegisterState};
 pub use set::{Set, SetState};
 pub use text::{Text, TextState};
+pub use xml::{Xml, XmlState};
