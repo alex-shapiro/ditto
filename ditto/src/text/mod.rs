@@ -56,6 +56,15 @@ impl Text {
         Text{replica, value, tombstones, awaiting_site: vec![]}
     }
 
+    /// Constructs and returns a new `Text` crdt from a string.
+    /// Each paragraph is split into a separate element.
+    pub fn from_str(string: &str) -> Self {
+        let replica = Replica::new(1, 0);
+        let value = TextValue::from_str(string, &replica);
+        let tombstones = Tombstones::new();
+        Text{replica, value, tombstones, awaiting_site: vec![]}
+    }
+
     /// Returns the number of unicode characters in the text.
     pub fn len(&self) -> usize {
         self.value.len()
