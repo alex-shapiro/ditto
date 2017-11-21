@@ -38,9 +38,10 @@ pub struct LocalOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LocalChange {
-    Insert{index: usize, text: String},
-    Remove{index: usize, len: usize},
+pub struct LocalChange {
+    idx:  usize,
+    len:  usize,
+    text: String,
 }
 
 impl Text {

@@ -132,14 +132,14 @@ impl TextValue {
         for uid in &op.removes {
             if let Some(char_index) = self.0.get_idx(&uid) {
                 let element = self.0.remove(&uid).expect("Element must exist H!");
-                changes.push(LocalChange::Remove{index: char_index, len: element.len});
+                changes.push(LocalChange{idx: char_index, len: element.len, text: "".into()});
             }
         }
 
         for element in &op.inserts {
             if let Ok(_) = self.0.insert(element.clone()) {
                 let char_index = self.0.get_idx(&element.uid).expect("Element must exist I!");
-                changes.push(LocalChange::Insert{index: char_index, text: element.text.clone()});
+                changes.push(LocalChange{idx: char_index, len: 0, text: element.text.clone()});
             }
         }
 
@@ -190,10 +190,7 @@ impl TextValue {
         let edit = some!(self.1.take());
         let edit = changes.iter().fold(Some(edit), |edit, change| {
             let edit = try_opt!(edit);
-            match *change {
-                LocalChange::Insert{index, ref text} => edit.shift_or_destroy(index, 0, text),
-                LocalChange::Remove{index, len} => edit.shift_or_destroy(index, len, ""),
-            }
+            edit.shift_or_destroy(change.idx, change.len, &change.text)
         });
 
         self.1 = edit;
@@ -549,11 +546,11 @@ mod tests {
         assert!(changes2.len() == 2);
         assert!(changes3.len() == 2);
 
-        assert_insert(&changes1[0], 0, "the brown");
-        assert_remove(&changes2[0], 0, 9);
-        assert_insert(&changes2[1], 0, "the quick brown");
-        assert_remove(&changes3[0], 0, 15);
-        assert_insert(&changes3[1], 0, "the quack brown");
+        assert_eq!(changes1[0], LocalChange{idx: 0, len: 0, text: "the brown".into()});
+        assert_eq!(changes2[0], LocalChange{idx: 0, len: 9, text: "".into()});
+        assert_eq!(changes2[1], LocalChange{idx: 0, len: 0, text: "the quick brown".into()});
+        assert_eq!(changes3[0], LocalChange{idx: 0, len: 15, text: "".into()});
+        assert_eq!(changes3[1], LocalChange{idx: 0, len: 0, text: "the quack brown".into()});
     }
 
     #[test]
@@ -591,23 +588,5 @@ mod tests {
         assert!(element.text == text);
         assert!(element.len == element.text.char_len());
         element
-    }
-
-    fn assert_insert(local_change: &LocalChange, index: usize, text: &'static str) {
-        if let LocalChange::Insert{index: i, text: ref t} = *local_change {
-            assert!(i == index);
-            assert!(t == text);
-        } else {
-            assert!(false, "Not an insert!");
-        }
-    }
-
-    fn assert_remove(local_change: &LocalChange, index: usize, len: usize) {
-        if let LocalChange::Remove{index: i, len: l} = *local_change {
-            assert!(i == index);
-            assert!(l == len);
-        } else {
-            assert!(false, "Not a remove!");
-        }
     }
 }
