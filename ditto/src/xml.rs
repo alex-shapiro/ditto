@@ -12,6 +12,7 @@ use quickxml_dom as dom;
 use std::borrow::Cow;
 use std::io::{Read, Cursor};
 use std::str::FromStr;
+use std::string::ToString;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Xml {
@@ -73,16 +74,13 @@ enum RemoteOpInner {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LocalOp {
-    pointer: Vec<usize>,
-    op: LocalOpInner,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-enum LocalOpInner {
-    Attribute(map::LocalOp<String, String>),
-    Child(list::LocalOp<Child>),
-    ReplaceText(text::LocalOp),
+#[serde(tag = "op", rename_all = "snake_case")]
+pub enum LocalOp {
+    Insert{pointer: Vec<usize>, value: String},
+    Remove{pointer: Vec<usize>},
+    InsertAttribute{pointer: Vec<usize>, key: String, value: String},
+    RemoveAttribute{pointer: Vec<usize>, key: String},
+    ReplaceText{pointer: Vec<usize>, changes: Vec<text::LocalChange>},
 }
 
 impl Xml {
@@ -175,22 +173,36 @@ impl XmlValue {
     fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
         match remote_op.op {
             RemoteOpInner::Child(ref op) => {
-                let (child, pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
+                let (child, mut pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
                 let element = try_opt!(child.left());
-                let local_op = try_opt!(element.children.execute_remote(op));
-                Some(LocalOp{pointer, op: LocalOpInner::Child(local_op)})
+                match try_opt!(element.children.execute_remote(op)) {
+                    list::LocalOp::Insert{index, value} => {
+                        pointer.push(index);
+                        let x: dom::Child = value.local_value();
+                        let y = x.to_string();
+                        Some(LocalOp::Insert{pointer, value: y})
+                    }
+                    list::LocalOp::Remove{index} => {
+                        pointer.push(index);
+                        Some(LocalOp::Remove{pointer})
+                    }
+                }
             }
             RemoteOpInner::Attribute(ref op) => {
                 let (child, pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
                 let element = try_opt!(child.left());
-                let local_op = try_opt!(element.attributes.execute_remote(op));
-                Some(LocalOp{pointer, op: LocalOpInner::Attribute(local_op)})
+                match try_opt!(element.attributes.execute_remote(op)) {
+                    map::LocalOp::Insert{key, value} =>
+                        Some(LocalOp::InsertAttribute{pointer, key, value}),
+                    map::LocalOp::Remove{key} =>
+                        Some(LocalOp::RemoveAttribute{pointer, key}),
+                }
             }
             RemoteOpInner::ReplaceText(ref op) => {
                 let (child, pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
                 let text_value = try_opt!(child.right());
-                let local_op = try_opt!(text_value.execute_remote(op));
-                Some(LocalOp{pointer, op: LocalOpInner::ReplaceText(local_op)})
+                let text_op = try_opt!(text_value.execute_remote(op));
+                Some(LocalOp::ReplaceText{pointer, changes: text_op.0})
             }
         }
     }
@@ -310,9 +322,14 @@ impl NestedCrdtValue for XmlValue {
 impl CrdtValue for Child {
     type RemoteOp = <XmlValue as CrdtValue>::RemoteOp;
     type LocalOp = <XmlValue as CrdtValue>::LocalOp;
-    type LocalValue = <XmlValue as CrdtValue>::LocalValue;
+    type LocalValue = dom::Child;
 
-    fn local_value(&self) -> Self::LocalValue { unreachable!() }
+    fn local_value(&self) -> Self::LocalValue {
+        match *self {
+            Child::Element(ref e) => dom::Child::Element(e.dom()),
+            Child::Text(ref t) => dom::Child::Text(t.local_value()),
+        }
+    }
 
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
         self.nested_add_site(op, site)
@@ -677,8 +694,11 @@ mod tests {
 
         assert!(crdt1.value() == crdt2.value());
         assert!(crdt1.local_value().to_string().unwrap() == string2);
-        assert!(local_op.pointer == Vec::<usize>::new());
-        assert_matches!(local_op.op, LocalOpInner::Child(list::LocalOp::Insert{..}));
+        if let LocalOp::Insert{pointer, ..} = local_op {
+            assert_eq!(pointer, [1]);
+        } else {
+            panic!("Expected an Insert op");
+        }
     }
 
     #[test]
@@ -693,8 +713,13 @@ mod tests {
 
         assert!(crdt1.value() == crdt2.value());
         assert!(crdt1.local_value().to_string().unwrap() == string2);
-        assert!(local_op.pointer == Vec::<usize>::new());
-        assert_matches!(local_op.op, LocalOpInner::Attribute(map::LocalOp::Insert{..}));
+        if let LocalOp::InsertAttribute{pointer, key, value} = local_op {
+            assert_eq!(pointer, Vec::<usize>::new());
+            assert_eq!(key, "name");
+            assert_eq!(value, "foo");
+        } else {
+            panic!("Expected an InsertAttribute op");
+        }
     }
 
     #[test]
@@ -709,8 +734,17 @@ mod tests {
 
         assert!(crdt1.value() == crdt2.value());
         assert!(crdt1.local_value().to_string().unwrap() == string2);
-        assert!(local_op.pointer == [0]);
-        assert_matches!(local_op.op, LocalOpInner::ReplaceText(text::LocalOp{..}));
+        if let LocalOp::ReplaceText{pointer, changes} = local_op {
+            assert_eq!(pointer, [0]);
+            assert_eq!(changes, [
+                text::LocalChange{idx: 0, len: 5, text: "".into()},
+                text::LocalChange{idx: 0, len: 0, text: "Hi".into()},
+                text::LocalChange{idx: 2, len: 0, text: " There".into()},
+                text::LocalChange{idx: 8, len: 0, text: "!".into()},
+            ]);
+        } else {
+            panic!("Expected a ReplaceText op");
+        }
     }
 
     #[test]
@@ -821,8 +855,9 @@ mod tests {
         let local_op2: LocalOp = serde_json::from_str(&s_json).unwrap();
         let local_op3: LocalOp = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-        assert!(local_op1 == local_op2);
-        assert!(local_op1 == local_op3);
+        assert_eq!(s_json, r#"{"op":"insert","pointer":[1,2],"value":"<li>C</li>"}"#);
+        assert_eq!(local_op1, local_op2);
+        assert_eq!(local_op1, local_op3);
     }
 
     #[test]

@@ -8,17 +8,18 @@ use quick_xml::reader::Reader as XmlReader;
 use quick_xml::writer::Writer as XmlWriter;
 use std::borrow::Borrow;
 use std::collections::HashMap;
+use std::fmt;
 use std::io::{BufRead, BufReader, Write, Cursor};
 use std::str;
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub struct Element {
     pub name: String,
     pub attributes: HashMap<String, String>,
     pub children: Vec<Child>,
 }
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum Child {
     Element(Element),
     Text(String),
@@ -164,6 +165,17 @@ impl Child {
 
     pub fn into_element(self) -> Option<Element> {
         if let Child::Element(element) = self { Some(element) } else { None }
+    }
+}
+
+impl fmt::Display for Child {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        let mut bytes = vec![];
+        {
+            let mut xml_writer = XmlWriter::new(&mut bytes);
+            self.to_writer(&mut xml_writer).unwrap();
+        }
+        write!(f, "{}", String::from_utf8(bytes).unwrap())
     }
 }
 

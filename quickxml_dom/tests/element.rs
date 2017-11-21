@@ -1,8 +1,6 @@
-#[macro_use]
-extern crate assert_matches;
 extern crate quickxml_dom;
 
-use quickxml_dom::{Child, Error};
+use quickxml_dom::Child;
 
 #[test]
 fn test_element_from_str() {
@@ -19,6 +17,14 @@ fn test_text_from_str() {
     let string = "&lt;Hello&gt;You&apos;re looking at text&lt;/Hello&gt;";
     let child = Child::from_str(string).unwrap().into_text().unwrap();
     assert!(child == "<Hello>You're looking at text</Hello>");
+}
+
+#[test]
+fn test_to_string() {
+    let string1 = r#"<Hello>You&apos;re looking at an element</Hello>"#;
+    let child   = Child::from_str(string1).unwrap();
+    let string2 = child.to_string();
+    assert_eq!(string1, string2);
 }
 
 #[test]

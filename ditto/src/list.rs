@@ -510,16 +510,11 @@ mod tests {
         list1.merge(list2.clone_state());
         list2.merge(list1_state);
 
-        assert!(list1.value == list2.value);
-        assert!(list1.tombstones == list2.tombstones);
-        assert!(list1.local_value() == vec![12, 12, 15]);
-
-        assert!(element_at(&list1, 0).0.site    == 1);
-        assert!(element_at(&list1, 0).0.counter == 5);
-        assert!(element_at(&list1, 1).0.site    == 2);
-        assert!(element_at(&list1, 1).0.counter == 1);
-        assert!(element_at(&list1, 2).0.site    == 2);
-        assert!(element_at(&list1, 2).0.counter == 2);
+        assert_eq!(list1.value, list2.value);
+        assert_eq!(list1.tombstones, list2.tombstones);
+        assert_eq!(list1.local_value(), [12, 12, 15]);
+        assert_eq!(element_at(&list1, 2).0.site,    2);
+        assert_eq!(element_at(&list1, 2).0.counter, 2);
         assert!(list1.tombstones.contains_pair(1,2));
     }
 

@@ -58,7 +58,7 @@ pub enum RemoteUID {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-#[serde(tag = "op", rename_all="lowercase")]
+#[serde(tag = "op", rename_all="snake_case")]
 pub enum LocalOp {
     Insert{pointer: Vec<LocalUID>, value: SJValue},
     Remove{pointer: Vec<LocalUID>},
