@@ -78,9 +78,9 @@ fn test_execute_remote() {
     let local_op3  = text2.execute_remote(&remote_op3).unwrap();
 
     assert!(text1.value() == text2.value());
-    assert!(local_op1.changes.len() == 1);
-    assert!(local_op2.changes.len() == 2);
-    assert!(local_op3.changes.len() == 2);
+    assert!(local_op1.0.len() == 1);
+    assert!(local_op2.0.len() == 2);
+    assert!(local_op3.0.len() == 2);
 }
 
 #[test]
@@ -202,6 +202,7 @@ fn test_serialize_local_op() {
     let local_op2: LocalOp = serde_json::from_str(&s_json).unwrap();
     let local_op3: LocalOp = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-    assert!(local_op1 == local_op2);
-    assert!(local_op1 == local_op3);
+    assert_eq!(s_json, r#"[{"idx":0,"len":5,"text":""},{"idx":0,"len":0,"text":"hebonjourllo"}]"#);
+    assert_eq!(local_op1, local_op2);
+    assert_eq!(local_op1, local_op3);
 }

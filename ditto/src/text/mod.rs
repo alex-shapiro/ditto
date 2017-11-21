@@ -33,15 +33,13 @@ pub struct RemoteOp {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LocalOp {
-    pub changes: Vec<LocalChange>,
-}
+pub struct LocalOp(pub Vec<LocalChange>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct LocalChange {
-    idx:  usize,
-    len:  usize,
-    text: String,
+    pub idx:  usize,
+    pub len:  usize,
+    pub text: String,
 }
 
 impl Text {

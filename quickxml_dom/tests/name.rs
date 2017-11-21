@@ -1,4 +1,3 @@
-#[macro_use]
 extern crate quickxml_dom;
 
 use quickxml_dom::name;
