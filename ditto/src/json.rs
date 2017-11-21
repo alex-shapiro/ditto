@@ -58,19 +58,15 @@ pub enum RemoteUID {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LocalOp {
-    pub pointer: Vec<LocalUID>,
-    pub op: LocalOpInner,
+#[serde(tag = "op", rename_all="lowercase")]
+pub enum LocalOp {
+    Insert{pointer: Vec<LocalUID>, value: SJValue},
+    Remove{pointer: Vec<LocalUID>},
+    ReplaceText{pointer: Vec<LocalUID>, changes: Vec<text::LocalChange>},
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum LocalOpInner {
-    Object(map::LocalOp<String, JsonValue>),
-    Array(list::LocalOp<JsonValue>),
-    String(text::LocalOp),
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[serde(untagged)]
 pub enum LocalUID {
     Object(String),
     Array(usize),
@@ -191,19 +187,35 @@ impl JsonValue {
     }
 
     pub fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
-        let (json_value, local_pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
+        let (json_value, mut pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
         match (json_value, &remote_op.op) {
             (&mut JsonValue::Object(ref mut map), &RemoteOpInner::Object(ref op)) => {
-                let local_op = try_opt!(map.execute_remote(op));
-                Some(LocalOp{pointer: local_pointer, op: LocalOpInner::Object(local_op)})
+                match try_opt!(map.execute_remote(op)) {
+                    map::LocalOp::Insert{key, value} => {
+                        pointer.push(LocalUID::Object(key));
+                        Some(LocalOp::Insert{pointer, value: value.local_value()})
+                    }
+                    map::LocalOp::Remove{key} => {
+                        pointer.push(LocalUID::Object(key));
+                        Some(LocalOp::Remove{pointer})
+                    }
+                }
             }
             (&mut JsonValue::Array(ref mut list), &RemoteOpInner::Array(ref op)) => {
-                let local_op = try_opt!(list.execute_remote(op));
-                Some(LocalOp{pointer: local_pointer, op: LocalOpInner::Array(local_op)})
+                match try_opt!(list.execute_remote(op)) {
+                    list::LocalOp::Insert{index, value} => {
+                        pointer.push(LocalUID::Array(index));
+                        Some(LocalOp::Insert{pointer, value: value.local_value()})
+                    }
+                    list::LocalOp::Remove{index} => {
+                        pointer.push(LocalUID::Array(index));
+                        Some(LocalOp::Remove{pointer})
+                    }
+                }
             }
             (&mut JsonValue::String(ref mut text), &RemoteOpInner::String(ref op)) => {
-                let local_op = try_opt!(text.execute_remote(op));
-                Some(LocalOp{pointer: local_pointer, op: LocalOpInner::String(local_op)})
+                let text_op = try_opt!(text.execute_remote(op));
+                Some(LocalOp::ReplaceText{pointer, changes: text_op.0})
             }
             _ => None,
         }
@@ -739,7 +751,11 @@ mod tests {
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
         assert!(crdt1.value() == crdt2.value());
-        assert!(local_op.pointer.is_empty());
+        if let LocalOp::Insert{pointer, ..} = local_op {
+            assert_eq!(pointer, [LocalUID::Object("baz".to_owned())]);
+        } else {
+            panic!("expected an insert op");
+        }
     }
 
     #[test]
@@ -749,8 +765,13 @@ mod tests {
         let remote_op = crdt1.insert("/foo/0", 54.0).unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
+
         assert!(crdt1.value() == crdt2.value());
-        assert!(local_op.pointer == [LocalUID::Object("foo".to_owned())]);
+        if let LocalOp::Insert{pointer, ..} = local_op {
+            assert_eq!(pointer, [LocalUID::Object("foo".to_owned()),LocalUID::Array(0)]);
+        } else {
+            panic!("expected an insert op");
+        }
     }
 
     #[test]
@@ -761,7 +782,11 @@ mod tests {
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
         assert!(crdt1.value() == crdt2.value());
-        assert!(local_op.pointer == [LocalUID::Object("foo".to_owned()), LocalUID::Array(2)]);
+        if let LocalOp::ReplaceText{pointer, ..} = local_op {
+            assert_eq!(pointer, [LocalUID::Object("foo".to_owned()), LocalUID::Array(2)]);
+        } else {
+            panic!("expected an insert op");
+        }
     }
 
     #[test]
@@ -963,8 +988,9 @@ mod tests {
         let local_op2: LocalOp = serde_json::from_str(&s_json).unwrap();
         let local_op3: LocalOp = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-        assert!(local_op1 == local_op2);
-        assert!(local_op1 == local_op3);
+        assert_eq!(s_json, r#"{"op":"insert","pointer":["foo","bar"],"value":{"a":[[1.0],["hello everyone!"],{"x":3.0}],"b":{"cat":true,"dog":false}}}"#);
+        assert_eq!(local_op1, local_op2);
+        assert_eq!(local_op1, local_op3);
     }
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {

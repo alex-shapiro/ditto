@@ -147,7 +147,7 @@ impl TextValue {
 
         match changes.len() {
             0 => None,
-            _ => Some(LocalOp{changes: changes})
+            _ => Some(LocalOp(changes))
         }
     }
 
@@ -537,9 +537,9 @@ mod tests {
         let op3 = text1.replace(6, 1, "a", &REPLICA1).unwrap();
 
         let mut text2 = TextValue::new();
-        let changes1 = text2.execute_remote(&op1).unwrap().changes;
-        let changes2 = text2.execute_remote(&op2).unwrap().changes;
-        let changes3 = text2.execute_remote(&op3).unwrap().changes;
+        let changes1 = text2.execute_remote(&op1).unwrap().0;
+        let changes2 = text2.execute_remote(&op2).unwrap().0;
+        let changes3 = text2.execute_remote(&op3).unwrap().0;
 
         assert!(text1 == text2);
         assert!(changes1.len() == 1);
