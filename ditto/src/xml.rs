@@ -1,4 +1,4 @@
-//! An `Xml` CRDT stores an XML document.
+//! A CRDT that stores an XML document.
 
 use {Error, Replica, Tombstones};
 use list::{self, ListValue};

@@ -1,4 +1,4 @@
-//! A `Text` CRDT is a string-like CRDT for mutable text.
+//! A CRDT that stores text.
 
 mod value;
 mod element;

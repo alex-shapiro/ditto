@@ -1,6 +1,4 @@
-//! A `Register` is a container that stores a single value.
-//! The container may update the value it holds, but the
-//! value itself is immutable.
+//! A CRDT that stores a single value.
 
 use {Error, Replica, Tombstones};
 use traits::*;

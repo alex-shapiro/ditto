@@ -8,28 +8,28 @@ macro_rules! crdt_impl {
     ($tipe:ident, $state_ident:ident, $state:ty, $state_static:ty, $value:ty) => {
 
         /// Returns the CRDT's site
-        pub fn site(&self) -> u32 {
+        pub(crate) fn site(&self) -> u32 {
             self.replica.site
         }
 
         /// Returns the CRDT's counter
-        pub fn counter(&self) -> u32 {
+        pub(crate) fn counter(&self) -> u32 {
             self.replica.counter
         }
 
         /// Returns a reference to the CRDT's inner value
-        pub fn value(&self) -> &$value {
+        pub(crate) fn value(&self) -> &$value {
             &self.value
         }
 
         /// Returns a reference to the remote ops which are
         /// awaiting a site before being returned
-        pub fn awaiting_site(&self) -> &[<$value as CrdtValue>::RemoteOp] {
+        pub(crate) fn awaiting_site(&self) -> &[<$value as CrdtValue>::RemoteOp] {
             &self.awaiting_site
         }
 
         /// Returns a reference to the CRDT's tombstones
-        pub fn tombstones(&self) -> &Tombstones {
+        pub(crate) fn tombstones(&self) -> &Tombstones {
             &self.tombstones
         }
 

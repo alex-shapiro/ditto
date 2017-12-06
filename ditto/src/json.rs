@@ -1,5 +1,4 @@
-//! A `Json` CRDT stores any value that can be represented
-//! as JSON - objects, arrays, text, numbers, bools, and null.
+//! A CRDT that stores a JSON value.
 
 use {Error, Replica, Tombstones};
 use list::{self, ListValue};

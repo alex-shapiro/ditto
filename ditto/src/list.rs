@@ -1,5 +1,4 @@
-//! A `List` stores an ordered sequence of elements.
-//! Elements in the list are immutable.
+//! A CRDT that stores an ordered sequence of elements
 
 use {Error, Replica, Tombstones};
 use order_statistic_tree::{self, Tree};

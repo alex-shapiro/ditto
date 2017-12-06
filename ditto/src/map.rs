@@ -1,5 +1,4 @@
-//! A `Map` stores a collection of key-value pairs.
-//! The values in the map are immutable.
+//! A CRDT that stores a collection of key-value pairs.
 
 use {Error, Replica, Tombstones};
 use map_tuple_vec;

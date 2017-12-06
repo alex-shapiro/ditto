@@ -1,5 +1,4 @@
-//! A `Set` stores a collection of distinct elements.
-//! The elements in the set are immutable.
+//! A CRDT that stores a collection of distinct elements.
 
 use {Error, Replica, Tombstones};
 use map_tuple_vec;
