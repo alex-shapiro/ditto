@@ -66,8 +66,7 @@
 //! id 1. ***You*** are responsible for assigning all other sites;
 //! Ditto will not do it for you.
 //!
-//! There are a number of viable strategies for assigning site
-//! identifiers:
+//! Here are some strategies for assigning site identifiers:
 //!
 //! * If your system has a fixed number of clients each with an id,
 //!   you can reuse that ID.
