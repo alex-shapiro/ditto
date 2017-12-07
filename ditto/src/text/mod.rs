@@ -1,4 +1,4 @@
-//! A `Text` CRDT is a string-like CRDT for mutable text.
+//! A CRDT that stores mutable text.
 
 mod value;
 mod element;
@@ -44,10 +44,7 @@ pub struct LocalChange {
 
 impl Text {
 
-    crdt_impl!(Text, TextState, TextState, TextState<'static>, TextValue);
-
-    /// Constructs and returns a new `Text` crdt.
-    /// The crdt has site 1 and counter 0.
+    /// Constructs and returns a new `Text` CRDT with site 1.
     pub fn new() -> Self {
         let replica = Replica::new(1, 0);
         let value = TextValue::new();
@@ -56,7 +53,6 @@ impl Text {
     }
 
     /// Constructs and returns a new `Text` crdt from a string.
-    /// Each paragraph is split into a separate element.
     pub fn from_str(string: &str) -> Self {
         let replica = Replica::new(1, 0);
         let value = TextValue::from_str(string, &replica);
@@ -77,6 +73,8 @@ impl Text {
         let op = self.value.replace(index, len, text, &self.replica)?;
         self.after_op(op)
     }
+
+    crdt_impl!(Text, TextState, TextState, TextState<'static>, TextValue);
 }
 
 impl RemoteOp {

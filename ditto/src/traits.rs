@@ -7,27 +7,32 @@ use {Error, Replica, Tombstones};
 macro_rules! crdt_impl {
     ($tipe:ident, $state_ident:ident, $state:ty, $state_static:ty, $value:ty) => {
 
+        #[doc(hidden)]
         /// Returns the CRDT's site
         pub fn site(&self) -> u32 {
             self.replica.site
         }
 
+        #[doc(hidden)]
         /// Returns the CRDT's counter
         pub fn counter(&self) -> u32 {
             self.replica.counter
         }
 
+        #[doc(hidden)]
         /// Returns a reference to the CRDT's inner value
         pub fn value(&self) -> &$value {
             &self.value
         }
 
+        #[doc(hidden)]
         /// Returns a reference to the remote ops which are
         /// awaiting a site before being returned
         pub fn awaiting_site(&self) -> &[<$value as CrdtValue>::RemoteOp] {
             &self.awaiting_site
         }
 
+        #[doc(hidden)]
         /// Returns a reference to the CRDT's tombstones
         pub fn tombstones(&self) -> &Tombstones {
             &self.tombstones
@@ -57,14 +62,21 @@ macro_rules! crdt_impl {
             }
         }
 
-        /// Constructs a new CRDT from a state and a site.
-        pub fn from_state(state: $state, site: u32) -> Self {
-            $tipe{
+        /// Constructs a new CRDT from a state and an site, if one is
+        /// already allocated. The site must be nonzero.
+        pub fn from_state(state: $state, site: Option<u32>) -> Result<Self, Error> {
+            let site = match site {
+                None => 0,
+                Some(0) => return Err(Error::InvalidSite),
+                Some(s) => s,
+            };
+
+            Ok($tipe{
                 replica: Replica{site, counter: 0},
                 value: state.value.into_owned(),
                 tombstones: state.tombstones.into_owned(),
                 awaiting_site: vec![],
-            }
+            })
         }
 
         /// Returns the CRDT value's equivalent local value.
@@ -119,6 +131,7 @@ macro_rules! crdt_impl {
     };
 }
 
+#[doc(hidden)]
 /// Required functions for CRDT values.
 pub trait CrdtValue {
     type RemoteOp: CrdtRemoteOp;
@@ -141,6 +154,7 @@ pub trait CrdtValue {
     fn merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);
 }
 
+#[doc(hidden)]
 /// Functions for nested CRDT values.
 pub trait NestedCrdtValue: CrdtValue {
     /// Adds a site to a value in the CRDT and all its descendants.

@@ -1,5 +1,4 @@
-//! A `List` stores an ordered sequence of elements.
-//! Elements in the list are immutable.
+//! A CRDT that stores an ordered sequence of elements
 
 use {Error, Replica, Tombstones};
 use order_statistic_tree::{self, Tree};
@@ -41,10 +40,7 @@ pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
 
-    crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
-
-    /// Constructs and returns a new list.
-    /// Th list has site 1 and counter 0.
+    /// Constructs and returns a new list CRDT with site 1.
     pub fn new() -> Self {
         let replica = Replica::new(1,0);
         let value = ListValue::new();
@@ -82,6 +78,22 @@ impl<T: Clone> List<T> {
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
         let op = self.value.remove(index)?;
         self.after_op(op)
+    }
+
+    crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
+}
+
+impl<T: Clone> From<Vec<T>> for List<T> {
+    fn from(local_value: Vec<T>) -> Self {
+        let replica = Replica::new(1,0);
+        let mut value = ListValue::new();
+
+        for element in local_value {
+            let _ = value.push(element, &replica);
+        }
+
+        let tombstones = Tombstones::new();
+        List{replica, value, tombstones, awaiting_site: vec![]}
     }
 }
 
@@ -434,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_insert_remove_awaiting_site() {
-        let mut list: List<i64> = List::from_state(List::new().clone_state(), 0);
+        let mut list: List<i64> = List::from_state(List::new().clone_state(), None).unwrap();
         assert!(list.insert(0, 123).unwrap_err() == Error::AwaitingSite);
         assert!(list.len() == 1);
         assert!(list.awaiting_site.len() == 1);
@@ -499,7 +511,7 @@ mod tests {
         let _ = list1.insert(2, 9);
         let _ = list1.remove(1);
 
-        let mut list2 = List::from_state(list1.clone_state(), 2);
+        let mut list2 = List::from_state(list1.clone_state(), Some(2)).unwrap();
         let _ = list2.remove(0);
         let _ = list2.insert(1, 12);
         let _ = list2.insert(2, 15);
@@ -520,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_add_site() {
-        let mut list: List<u32> = List::from_state(List::new().clone_state(), 0);
+        let mut list: List<u32> = List::from_state(List::new().clone_state(), None).unwrap();
         let _ = list.insert(0, 51);
         let _ = list.insert(1, 52);
         let _ = list.remove(0);
@@ -538,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut list: List<u32> = List::from_state(List::new().clone_state(), 12);
+        let mut list: List<u32> = List::from_state(List::new().clone_state(), Some(12)).unwrap();
         let _ = list.insert(0, 51);
         let _ = list.insert(1, 52);
         let _ = list.remove(0);

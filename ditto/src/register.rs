@@ -1,6 +1,4 @@
-//! A `Register` is a container that stores a single value.
-//! The container may update the value it holds, but the
-//! value itself is immutable.
+//! A CRDT that stores a single value.
 
 use {Error, Replica, Tombstones};
 use traits::*;
@@ -46,8 +44,6 @@ impl<T: Clone> PartialEq for Element<T> {
 
 impl<T: Clone> Register<T> {
 
-    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterState<'static, T>, RegisterValue<T>);
-
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.
     pub fn new(value: T) -> Self {
@@ -72,6 +68,8 @@ impl<T: Clone> Register<T> {
         let op = self.value.update(new_value, &self.replica);
         self.after_op(op)
     }
+
+    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterState<'static, T>, RegisterValue<T>);
 }
 
 impl<T: Clone> RegisterValue<T> {
@@ -225,8 +223,8 @@ mod tests {
     #[test]
     fn test_execute_remote_concurrent() {
         let mut register1: Register<&'static str> = Register::new("a");
-        let mut register2: Register<&'static str> = Register::from_state(register1.clone_state(), 2);
-        let mut register3: Register<&'static str> = Register::from_state(register1.clone_state(), 3);
+        let mut register2: Register<&'static str> = Register::from_state(register1.clone_state(), Some(2)).unwrap();
+        let mut register3: Register<&'static str> = Register::from_state(register1.clone_state(), Some(3)).unwrap();
 
         let remote_op1 = register1.update("b").unwrap();
         let remote_op2 = register2.update("c").unwrap();
@@ -241,7 +239,7 @@ mod tests {
     #[test]
     fn test_execute_remote_dupe() {
         let mut register1: Register<&'static str> = Register::new("a");
-        let mut register2 = Register::from_state(register1.clone_state(), 2);
+        let mut register2 = Register::from_state(register1.clone_state(), Some(2)).unwrap();
 
         let remote_op = register1.update("b").unwrap();
         let local_op = register2.execute_remote(&remote_op).unwrap();
@@ -255,7 +253,7 @@ mod tests {
     #[test]
     fn test_merge() {
         let mut register1 = Register::new(123);
-        let mut register2 = Register::from_state(register1.clone_state(), 2);
+        let mut register2 = Register::from_state(register1.clone_state(), Some(2)).unwrap();
         let _ = register1.update(456);
         let _ = register2.update(789);
         register1.merge(register2.clone_state());
@@ -268,7 +266,7 @@ mod tests {
     #[test]
     fn test_add_site() {
         let mut register1 = Register::new(123);
-        let mut register2 = Register::from_state(register1.clone_state(), 0);
+        let mut register2 = Register::from_state(register1.clone_state(), None).unwrap();
         assert!(register2.update(456).unwrap_err() == Error::AwaitingSite);
 
         let remote_ops = register2.add_site(2).unwrap();
@@ -279,7 +277,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut register = Register::from_state(Register::new(123).clone_state(), 42);
+        let mut register = Register::from_state(Register::new(123).clone_state(), Some(42)).unwrap();
         assert!(register.add_site(44).unwrap_err() == Error::AlreadyHasSite);
     }
 

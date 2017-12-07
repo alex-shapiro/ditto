@@ -1,5 +1,4 @@
-//! A `Map` stores a collection of key-value pairs.
-//! The values in the map are immutable.
+//! A CRDT that stores a collection of key-value pairs.
 
 use {Error, Replica, Tombstones};
 use map_tuple_vec;
@@ -75,8 +74,6 @@ impl<V> Ord for Element<V> {
 
 impl<K: Key, V: Value> Map<K, V> {
 
-    crdt_impl!(Map, MapState, MapState<K,V>, MapState<'static, K,V>, MapValue<K,V>);
-
     /// Constructs and returns a new map.
     /// The map has site 1 and counter 0.
     pub fn new() -> Self {
@@ -112,6 +109,22 @@ impl<K: Key, V: Value> Map<K, V> {
     pub fn remove(&mut self, key: &K) -> Result<RemoteOp<K,V>, Error> {
         let op = self.value.remove(key)?;
         self.after_op(op)
+    }
+
+    crdt_impl!(Map, MapState, MapState<K,V>, MapState<'static, K,V>, MapValue<K,V>);
+}
+
+impl<K: Key, V: Value> From<HashMap<K, V>> for Map<K, V> {
+    fn from(local_value: HashMap<K, V>) -> Self {
+        let replica = Replica::new(1,0);
+        let mut value = MapValue::new();
+
+        for (k, v) in local_value {
+            let _ = value.insert(k, v, &replica);
+        }
+
+        let tombstones = Tombstones::new();
+        Map{replica, value, tombstones, awaiting_site: vec![]}
     }
 }
 
@@ -503,7 +516,7 @@ mod tests {
 
     #[test]
     fn test_insert_awaiting_site() {
-        let mut map: Map<u32, String> = Map::from_state(Map::new().clone_state(), 0);
+        let mut map: Map<u32, String> = Map::from_state(Map::new().clone_state(), None).unwrap();
         assert!(map.insert(123, "abc".to_owned()).unwrap_err() == Error::AwaitingSite);
         assert!(map.get(&123).unwrap() == "abc");
         assert!(map.awaiting_site.len() == 1);
@@ -529,7 +542,7 @@ mod tests {
 
     #[test]
     fn test_remove_awaiting_site() {
-        let mut map: Map<bool, i8> = Map::from_state(Map::new().clone_state(), 0);
+        let mut map: Map<bool, i8> = Map::from_state(Map::new().clone_state(), None).unwrap();
         let _ = map.insert(true, 3);
         assert!(map.remove(&true).unwrap_err() == Error::AwaitingSite);
         assert!(map.get(&true).is_none());
@@ -538,7 +551,7 @@ mod tests {
     #[test]
     fn test_execute_remote_insert() {
         let mut map1: Map<i32, u64> = Map::new();
-        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 2);
+        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
         let remote_op = map1.insert(123, 1010).unwrap();
         let local_op  = map2.execute_remote(&remote_op).unwrap();
 
@@ -549,7 +562,7 @@ mod tests {
     #[test]
     fn test_execute_remote_insert_concurrent() {
         let mut map1: Map<i32, u64> = Map::new();
-        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 2);
+        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
         let remote_op1 = map1.insert(123, 2222).unwrap();
         let remote_op2 = map2.insert(123, 1111).unwrap();
         let local_op1  = map1.execute_remote(&remote_op2);
@@ -564,7 +577,7 @@ mod tests {
     #[test]
     fn test_execute_remote_insert_dupe() {
         let mut map1: Map<i32, u64> = Map::new();
-        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 2);
+        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
         let remote_op = map1.insert(123, 2222).unwrap();
         let _ = map2.execute_remote(&remote_op);
         assert!(map2.execute_remote(&remote_op).is_none());
@@ -573,7 +586,7 @@ mod tests {
     #[test]
     fn test_execute_remote_remove() {
         let mut map1: Map<i32, u64> = Map::new();
-        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 2);
+        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
         let remote_op1 = map1.insert(123, 2222).unwrap();
         let remote_op2 = map1.remove(&123).unwrap();
         let _ = map2.execute_remote(&remote_op1).unwrap();
@@ -586,7 +599,7 @@ mod tests {
     #[test]
     fn test_execute_remote_remove_does_not_exist() {
         let mut map1: Map<i32, u64> = Map::new();
-        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 2);
+        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
         let _ = map1.insert(123, 2222);
         let remote_op = map1.remove(&123).unwrap();
         assert!(map2.execute_remote(&remote_op).is_none());
@@ -595,8 +608,8 @@ mod tests {
     #[test]
     fn test_execute_remote_remove_some_replicas_remain() {
         let mut map1: Map<i32, u64> = Map::new();
-        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 2);
-        let mut map3: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 3);
+        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
+        let mut map3: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(3)).unwrap();
         let remote_op1 = map2.insert(123, 1111).unwrap();
         let remote_op2 = map1.insert(123, 2222).unwrap();
         let remote_op3 = map1.remove(&123).unwrap();
@@ -612,7 +625,7 @@ mod tests {
     #[test]
     fn test_execute_remote_remove_dupe() {
         let mut map1: Map<i32, u64> = Map::new();
-        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 2);
+        let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
         let remote_op1 = map1.insert(123, 2222).unwrap();
         let remote_op2 = map1.remove(&123).unwrap();
 
@@ -629,7 +642,7 @@ mod tests {
         let _ = map1.remove(&2);
         let _ = map1.insert(3, true);
 
-        let mut map2 = Map::from_state(map1.clone_state(), 2);
+        let mut map2 = Map::from_state(map1.clone_state(), Some(2)).unwrap();
         let _ = map2.remove(&3);
         let _ = map2.insert(4, true);
         let _ = map2.remove(&4);
@@ -661,7 +674,7 @@ mod tests {
 
     #[test]
     fn test_add_site() {
-        let mut map: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 0);
+        let mut map: Map<i32, u64> = Map::from_state(Map::new().clone_state(), None).unwrap();
         let _ = map.insert(10, 56);
         let _ = map.insert(20, 57);
         let _ = map.remove(&10);
@@ -681,7 +694,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut map: Map<i32, u64> = Map::from_state(Map::new().clone_state(), 123);
+        let mut map: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(123)).unwrap();
         let _ = map.insert(10, 56).unwrap();
         let _ = map.insert(20, 57).unwrap();
         let _ = map.remove(&10).unwrap();

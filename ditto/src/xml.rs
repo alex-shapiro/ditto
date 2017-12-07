@@ -1,4 +1,4 @@
-//! An `Xml` CRDT stores an XML document.
+//! A CRDT that stores an XML document.
 
 use {Error, Replica, Tombstones};
 use list::{self, ListValue};
@@ -84,8 +84,6 @@ pub enum LocalOp {
 }
 
 impl Xml {
-    crdt_impl!(Xml, XmlState, XmlState, XmlState<'static>, XmlValue);
-
     pub fn from_reader<R: Read>(mut reader: R) -> Result<Self, Error> {
         let mut replica = Replica::new(1, 0);
         let local_xml = dom::Document::from_reader(&mut reader).map_err(|_| Error::InvalidXml)?;
@@ -123,6 +121,8 @@ impl Xml {
         let op = self.value.replace_text(pointer_str, idx, len, text, &self.replica)?;
         self.after_op(op)
     }
+
+    crdt_impl!(Xml, XmlState, XmlState, XmlState<'static>, XmlValue);
 }
 
 impl XmlValue {
@@ -674,7 +674,7 @@ mod tests {
         let string2 = r#"<?xml version="1.0"?><A>Hello And Goodbye</A>"#;
 
         let remote_crdt = Xml::from_str(string1).unwrap();
-        let mut crdt = Xml::from_state(remote_crdt.clone_state(), 0);
+        let mut crdt = Xml::from_state(remote_crdt.clone_state(), None).unwrap();
         assert!(crdt.replace_text("/0", 5, 0, " And Goodbye").unwrap_err() == Error::AwaitingSite);
         assert!(crdt.local_value().to_string().unwrap() == string2);
 
@@ -688,7 +688,7 @@ mod tests {
         let string2 = r#"<?xml version="1.0"?><A>Hello<b>GoodBye</b></A>"#;
 
         let mut crdt1 = Xml::from_str(string1).unwrap();
-        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), None).unwrap();
         let remote_op = crdt1.insert("/1", "<b>GoodBye</b>").unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
@@ -707,7 +707,7 @@ mod tests {
         let string2 = r#"<?xml version="1.0"?><A name="foo"/>"#;
 
         let mut crdt1 = Xml::from_str(string1).unwrap();
-        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), None).unwrap();
         let remote_op = crdt1.insert_attribute("/", "name", "foo").unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
@@ -728,7 +728,7 @@ mod tests {
         let string2 = r#"<?xml version="1.0"?><A>Hi There!</A>"#;
 
         let mut crdt1 = Xml::from_str(string1).unwrap();
-        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), None).unwrap();
         let remote_op = crdt1.replace_text("/0", 2, 2, " There").unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
@@ -750,7 +750,7 @@ mod tests {
     #[test]
     fn test_execute_remote_missing_pointer() {
         let mut crdt1 = Xml::from_str(r#"<?xml version="1.0"?><A>Hiya!</A>"#).unwrap();
-        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 2);
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), Some(2)).unwrap();
         let remote_op = crdt1.remove("/0").unwrap();
         let _         = crdt2.remove("/0").unwrap();
         assert!(crdt2.execute_remote(&remote_op).is_none());
@@ -761,7 +761,7 @@ mod tests {
         let string1 = r#"<?xml version="1.0"?><list><metadata/><items></items></list>"#;
 
         let mut crdt1 = Xml::from_str(string1).unwrap();
-        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 2);
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), Some(2)).unwrap();
         crdt1.insert_attribute("/0", "category", "letters").unwrap();
         crdt1.insert("/1/0", "<li>A</li>").unwrap();
         crdt1.insert("/1/1", "<li>B</li>").unwrap();
@@ -782,7 +782,7 @@ mod tests {
     fn test_add_site() {
         let string = r#"<?xml version="1.0"?><list><metadata/><items></items></list>"#;
         let crdt1 = Xml::from_str(string).unwrap();
-        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), None).unwrap();
         assert_matches!(crdt2.insert("/1/0", "<li>A</li>"), Err(Error::AwaitingSite));
         assert_matches!(crdt2.replace_text("/1/0/0", 0, 1, "B"), Err(Error::AwaitingSite));
 
@@ -846,7 +846,7 @@ mod tests {
     fn test_serialize_local_op() {
         let string = r#"<?xml version="1.0"?><list><metadata/><items><li>A</li><li>B</li></items></list>"#;
         let mut crdt1 = Xml::from_str(string).unwrap();
-        let mut crdt2 = Xml::from_state(crdt1.clone_state(), 2);
+        let mut crdt2 = Xml::from_state(crdt1.clone_state(), Some(2)).unwrap();
         let remote_op = crdt1.insert("/1/2", "<li>C</li>").unwrap();
         let local_op1 = crdt2.execute_remote(&remote_op).unwrap();
 
