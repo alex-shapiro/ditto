@@ -248,7 +248,7 @@ impl<T: Element> Node<T> {
     /// Delete an element from a tree, returning the removed element.
     /// The root node must contain at least MIN_LEN + 1 elements.
     fn remove(&mut self, id: &T::Id) -> Option<T> {
-        let (contains_element, mut idx) =
+        let (contains_element, idx) =
             match self.elements.binary_search_by(|elt| elt.id().cmp(id)) {
                 Ok(idx) => (true, idx),
                 Err(idx) => (false, idx),
@@ -289,13 +289,7 @@ impl<T: Element> Node<T> {
 
             } else {
                 self.merge_children(idx);
-                if self.is_leaf() {
-                    self.remove(id)
-                } else {
-                    let element = self.children[idx].remove(id);
-                    if let Some(ref e) = element { self.len -= e.element_len() }
-                    element
-                }
+                self.remove(id)
             }
 
         // if the parent is internal and does not contain the element
@@ -325,7 +319,8 @@ impl<T: Element> Node<T> {
                         child.children.push(c);
                     }
                 } else {
-                    if self.children.len()-1 == idx { idx -= 1 }
+                    let mut idx = idx;
+                    if idx == self.children.len() - 1 { idx -= 1 }
                     self.merge_children(idx);
                     return self.remove(id)
                 }
