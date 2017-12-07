@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "ditto",
+    "order_statistic_tree",
+    "quickxml_dom",
+]
