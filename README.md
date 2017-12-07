@@ -1,57 +1,86 @@
 Ditto
 =====
 
-Ditto is a CRDT library focused on usability. It contains `Register`, `Set`, `Map`, `List`, `Text`, `Json`, and `Xml` CRDTs and provides a standard interface for creating, updating, and serializing. All Ditto CRDTs have the following properties:
+Ditto is a library for using [CRDTs](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type), or conflict-free replicated data types. It provides a number of commonly-used data types:
 
-* They can be updated both incrementally (op-based) and by merging (state-based).
-* All incremental operations and merges are idempotent.
+**Register\<T\>:** A container for a single value.
 
-## Usage
+**Set\<T\>:** A collection of unique values, (like `HashSet`())
 
-```rust
-use ditto::List;
+**Map\<T\>:** A collection of key-value pairs (like `HashMap`)
 
-// site 1 creates the CRDT and sends its original value to site 2.
-let mut list1: List<u32> = List::new();
-let mut list2: List<u32> = List::from_state(list1.clone_state(), 2);
+**List\<T\>:** An ordered sequence of elements (like `Vec`)
 
-// each site concurrently inserts a different number at index 0
-let remote_op1 = list1.insert(0, 7).unwrap();
-let remote_op2 = list2.insert(0, 11).unwrap();
+**Text:** A container for mutable text
 
-// each site executes the other's op
-let _ = list1.execute_remote(&remote_op2).unwrap();
-let _ = list2.execute_remote(&remote_op1).unwrap();
+**Json:** A JSON value
 
-// now the two sites have lists that contain either [7,11]
-// or [11, 7]. In either case, the lists have the same order.
-assert!(list1.value() == list2.value());
-assert!(list1.value)
+**Xml:** An XML document
+
+Ditto's goal is to be as easy to use as possible. If you have any questions, requests, or other feedback, feel free to open an issue or a pull request. Contributions are encouraged!
+
+## Example
+
+```
+extern crate ditto;
+extern crate serde_json;
+use ditto::{List, ListState};
+
+fn main() {
+    // create a List CRDT
+    let mut list1 = List::from(vec![100,200,300]);
+
+    // Send the list's state over a network to a second site
+    let encoded_state = serde_json::to_string(&list1.state()).unwrap();
+    let decoded_state: ListState<u32> = serde_json::from_str(&encoded_state).unwrap();
+    let mut list2 = List::from_state(decoded_state, 2);
+
+    // edit the list concurrently at both the first and second site
+    let op1 = list1.insert(0, 400).unwrap();
+    let op2 = list2.remove(0).unwrap();
+
+    // each site sends its op to the other site for execution.
+    // The encoding and decoding has been left out for brevity.
+    list1.execute_remote(&op2);
+    list2.execute_remote(&op1);
+
+    // Now both sites have the same value:
+    assert_eq!(list1.state(), list2.state());
+    assert_eq!(list1.local_value(), vec![400, 200, 300]);
+}
 ```
 
-For more examples, take a look at the integration tests.
+You can find more examples in the tests directory.
 
-## CRDT Types
+## Assigning Sites
 
-**Register&lt;T&gt;** stores a single value. Its supported operation is `update`, which replaces the value with a new value.
+A CRDT may be distributed across multiple *sites*. A site is just a fancy distributed systems term for "client". Each site that wishes to edit the CRDT must have a unique `u32` identifier.
 
-**Set&lt;T&gt;** stores a collection of distinct elements. Its supported operations are `insert` and `remove`, which insert and remove items, respectively.
+The site that creates the CRDT is automatically assigned to id 1. ***You*** are responsible for assigning all other sites; Ditto will not do it for you.
 
-**Map&lt;K,V&gt;** stores a collection of key-value pairs. The values in the map are immutable. Its supported operations are `insert` and `remove`, which insert and remove key-value pairs, respectively.
+There are a number of viable strategies for assigning site identifiers:
 
-**List&lt;T&gt;** stores an ordered sequence of values. Values in the list are immutable. Its supported operations are `insert` and `remove`, which insert and remove list value, respectively.
+* If your system has a fixed number of clients each with an id, you can reuse that ID.
+* If you have a central server, use that server to allocate site ids.
+* If you are in a truly distributed environment where nodes are mostly available, you can use a consensus algorithm like Raft to elect new site ids.
 
-**Text** is a string-like CRDT for mutable text. Its supported operation is `replace`, which replaces a range of unicode characters with a new string.
+Site IDs can be allocated lazily. If a site only needs read access to a CRDT, it doesn't need a site ID. If a site without an ID edits the CRDT, the CRDT will update locally but all ops will be cached. When the site receives an ID, that ID will be retroactively applied to all of the site's edits, and the cached ops will be returned to be sent over the network.
 
-**Json** is a container for any kind of data that can be represented via Json - objects, arrays, text, numbers, bools, and null. Its supported operations are `insert`, `remove`, and `replace_text`. Numbers, bools, and nulls are immutable.
+## Sending ops vs. sending state
 
-**Xml** is a container for XML documents. It supports both XML 1.0 and 1.1. Its supported operations are `insert`, `remove`, `insert_attribute`, `remove_attribute`, and `replace_text`.
+Usually, the most compact way to send a change between sites is to send an *op*. An op is just a fancy distributed systems term for "change". Each time you edit a CRDT locally, you receive an op that can be sent to other sites and executed.
 
-## Notes
+However, there may be times when it is faster and more compact to send the whole CRDT state to other sites (e.g. if you're sending 100 or 1000 edits at once). All Ditto CRDTs can merge with remote states.
 
-Although Ditto CRDTs handle pre-site operations and site addition gracefully, they do not provide site allocation or any other networking feature. Site allocation in particular must be handled carefully; if two or more clients use the same site concurrently you WILL have consistency errors.
+**Note:** All ops from a site must be sent in the order they were generated. That is, if a site performs edit A and then edit B, it must send op A before it sends op B.
 
-Ditto CRDTs are all op-based. Therefore, all remote operations received from some site **S** must be executed in the order that they were generated at **S**. Out-of-order remote execution WILL lead to consistency errors.
+## Serializing CRDTs
+
+All CRDTs and ops are serialized with [Serde](https://serde.rs). Serialization is tested against `serde_json` and `rmp_serde`.
+
+In general, you should distribute a CRDT to new sites by sending its state, not by sending the CRDT itself, because the CRDT struct contains site-specific metadata.
+
+## Other Notes
 
 The root value of a `Json` CRDT cannot be replaced. This means that if you create a `Json` CRDT with a `Number` or `Bool` root type, your CRDT is immutable.
 
