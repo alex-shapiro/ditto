@@ -20,7 +20,7 @@ or a pull request.
 
 ## Example
 
-```
+```rust
 extern crate ditto;
 extern crate serde_json;
 use ditto::List;
