@@ -1,26 +1,22 @@
 //! # Ditto
 //!
 //! Ditto is a library for using [CRDTs](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type),
-//! or conflict-free replicated data types. It provides a number
-//! of commonly-used data types:
+//! or conflict-free replicated data types. CRDTs are data structures
+//! which can be replicated across multiple sites, edited concurrently,
+//! and merged together without leading to conflicts. Ditto provides
+//! a number of commonly used data types:
 //!
-//! **Register\<T\>:** A container for a single value.
-//!
-//! **Set\<T\>:** A collection of unique values, (like `HashSet`())
-//!
-//! **Map\<T\>:** A collection of key-value pairs (like `HashMap`)
-//!
-//! **List\<T\>:** An ordered sequence of elements (like `Vec`)
-//!
-//! **Text:** A container for mutable text
-//!
-//! **Json:** A JSON value
-//!
-//! **Xml:** An XML document
+//! * **[Register\<T\>](register/Register.t.html):** A container for a single value.
+//! * **[Set\<T\>](set/Set.t.html):** A HashSet-like collection of unique values
+//! * **[Map\<T\>:](map/Map.t.html)** A HashMap-like collection of key-value pairs
+//! * **[List\<T\>:](list/List.t.html)** A Vec-like ordered sequence of elements
+//! * **[Text:](text/Text.t.html)** A String-like container for mutable text
+//! * **[Json:](json/Json.t.html)** A JSON value
+//! * **[Xml:](xml/Xml.t.html)** An XML document
 //!
 //! Ditto's goal is to be as fast and easy to use as possible. If you have any
 //! questions, suggestions, or other feedback, feel free to open an issue
-//! or a pull request. Contributions are encouraged!
+//! or a pull request.
 //!
 //! ## Example
 //!
@@ -30,19 +26,20 @@
 //! use ditto::List;
 //!
 //! fn main() {
-//!     // create a List CRDT
+//!     // Create a List CRDT. The site that creates the CRDT
+//!     // is automatically assigned id 1.
 //!     let mut list1 = List::from(vec![100,200,300]);
 //!
-//!     // Send the list's state over a network to a second site
+//!     // Send the list's state over a network to a second site with id 2.
 //!     let encoded_state = serde_json::to_string(&list1.state()).unwrap();
 //!     let decoded_state = serde_json::from_str(&encoded_state).unwrap();
 //!     let mut list2 = List::from_state(decoded_state, Some(2)).unwrap();
 //!
-//!     // edit the list concurrently at both the first and second site
+//!     // Edit the list concurrently at both the first and second site.
 //!     let op1 = list1.insert(0, 400).unwrap();
 //!     let op2 = list2.remove(0).unwrap();
 //!
-//!     // each site sends its op to the other site for execution.
+//!     // Each site sends its op to the other site for execution.
 //!     // The encoding and decoding has been left out for brevity.
 //!     list1.execute_remote(&op2);
 //!     list2.execute_remote(&op1);
@@ -53,7 +50,8 @@
 //! }
 //! ```
 //!
-//! You can find more examples in the tests directory.
+//! You can find more examples in the examples and tests directories in the
+//! crate repo.
 //!
 //! ## Assigning Sites
 //!
@@ -68,12 +66,9 @@
 //!
 //! Here are some strategies for assigning site identifiers:
 //!
-//! * If your system has a fixed number of clients each with an id,
-//!   you can reuse that ID.
-//! * If you have a central server, use that server to allocate site ids.
-//! * If you are in a truly distributed environment where nodes are mostly
-//!   available, you can use a consensus algorithm like Raft to elect
-//!   new site ids.
+//! * Reuse existing site identifiers (e.g. numeric client ids)
+//! * Use a central server to allocate site ids on a per-CRDT basis
+//! * Use a consensus algorithm like Raft or Paxos decide on a new site's id
 //!
 //! Site IDs can be allocated lazily. If a site only needs read access
 //! to a CRDT, it doesn't need a site ID. If a site without an ID edits
@@ -100,22 +95,22 @@
 //! ## Serializing CRDTs
 //!
 //! All CRDTs and ops are serialized with [Serde](https://serde.rs).
-//! Serialization is tested against `serde_json` and `rmp_serde`.
+//! Serialization is tested against `serde_json` and `rmp_serde` but
+//! may work with other formats as well.
 //!
-//! In general, you should distribute a CRDT to new sites by sending its
-//! state, not by sending the CRDT itself, because the CRDT struct contains
-//! site-specific metadata.
+//! In general, you should distribute a CRDT to new sites by serializing
+//! and sending its state, not the CRDT itself, because the CRDT struct
+//! contains site-specific metadata.
 //!
 //! ## Other Notes
 //!
-//! The root value of a `Json` CRDT cannot be replaced. This means that if
-//! you create a `Json` CRDT with a `Number` or `Bool` root type, your
-//! CRDT is immutable.
+//! The root value of a `Json` CRDT (typically an object or array) cannot
+//! be replaced. A Json CRDT that is created as an object will stay an object.
+//! This has the effect that any `Json` CRDT with a numeric, boolean, or null
+//! root is immutable.
 //!
-//! CRDTs are inherently larger than their native equivalents. A `Text` or
-//! `List` CRDT may use up to 3x the space of an equivalent `String` or
-//! `Vec`. If the only operation you need for text is full replacement,
-//! consider using `Register<String>` instead.
+//! CRDTs are inherently larger than their native equivalents. A CRDT persisted
+//! with MsgPack uses up to 3x the space of its non-CRDT Rust equivalent.
 
 extern crate base64;
 extern crate char_fns;
