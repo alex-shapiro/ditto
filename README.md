@@ -33,7 +33,7 @@ fn main() {
     // Send the list's state over a network to a second site
     let encoded_state = serde_json::to_string(&list1.state()).unwrap();
     let decoded_state: ListState<u32> = serde_json::from_str(&encoded_state).unwrap();
-    let mut list2 = List::from_state(decoded_state, 2);
+    let mut list2 = List::from_state(decoded_state, Some(2)).unwrap();
 
     // edit the list concurrently at both the first and second site
     let op1 = list1.insert(0, 400).unwrap();
@@ -62,7 +62,7 @@ There are a number of viable strategies for assigning site identifiers:
 
 * If your system has a fixed number of clients each with an id, you can reuse that ID.
 * If you have a central server, use that server to allocate site ids.
-* If you are in a truly distributed environment where nodes are mostly available, you can use a consensus algorithm like Raft to elect new site ids.
+* If you are in a truly distributed environment where nodes are mostly available, you can use a consensus algorithm like Raft.
 
 Site IDs can be allocated lazily. If a site only needs read access to a CRDT, it doesn't need a site ID. If a site without an ID edits the CRDT, the CRDT will update locally but all ops will be cached. When the site receives an ID, that ID will be retroactively applied to all of the site's edits, and the cached ops will be returned to be sent over the network.
 

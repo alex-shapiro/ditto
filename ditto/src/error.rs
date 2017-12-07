@@ -17,6 +17,7 @@ pub enum Error {
     InvalidLocalOp,
     InvalidPointer,
     InvalidRemoteOp,
+    InvalidSite,
     InvalidXml,
     KeyDoesNotExist,
     Noop,

@@ -295,7 +295,7 @@ mod tests {
     #[test]
     fn test_insert_awaiting_site() {
         let set1: Set<u32> = Set::new();
-        let mut set2: Set<u32> = Set::from_state(set1.clone_state(), 0);
+        let mut set2: Set<u32> = Set::from_state(set1.clone_state(), None).unwrap();
         assert!(set2.insert(123).unwrap_err() == Error::AwaitingSite);
         assert!(set2.contains(&123));
     }
@@ -322,7 +322,7 @@ mod tests {
     #[test]
     fn test_remove_awaiting_site() {
         let set1: Set<u32> = Set::new();
-        let mut set2: Set<u32> = Set::from_state(set1.clone_state(), 0);
+        let mut set2: Set<u32> = Set::from_state(set1.clone_state(), None).unwrap();
         let _ = set2.insert(123);
         assert!(set2.remove(&123).unwrap_err() == Error::AwaitingSite);
         assert!(!set2.contains(&123));
@@ -331,7 +331,7 @@ mod tests {
     #[test]
     fn test_site() {
         let set1: Set<u64> = Set::new();
-        let set2: Set<u64> = Set::from_state(set1.clone_state(), 8403);
+        let set2: Set<u64> = Set::from_state(set1.clone_state(), Some(8403)).unwrap();
         assert!(set1.site() == 1);
         assert!(set2.site() == 8403);
     }
@@ -339,7 +339,7 @@ mod tests {
     #[test]
     fn execute_remote_insert() {
         let mut set1: Set<u64> = Set::new();
-        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), 8403);
+        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(8403)).unwrap();
         let remote_op = set1.insert(22).unwrap();
         let local_op = set2.execute_remote(&remote_op).unwrap();
         assert_matches!(local_op, LocalOp::Insert(22));
@@ -348,7 +348,7 @@ mod tests {
     #[test]
     fn execute_remote_insert_value_already_exists() {
         let mut set1: Set<u64> = Set::new();
-        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), 2);
+        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
         let remote_op = set1.insert(22).unwrap();
         let _         = set2.insert(22).unwrap();
 
@@ -359,7 +359,7 @@ mod tests {
     #[test]
     fn execute_remote_insert_dupe() {
         let mut set1: Set<u64> = Set::new();
-        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), 2);
+        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
         let remote_op = set1.insert(22).unwrap();
 
         assert!(set2.execute_remote(&remote_op).is_some());
@@ -371,7 +371,7 @@ mod tests {
     fn execute_remote_remove() {
         let mut set1: Set<u64> = Set::new();
         let _ = set1.insert(10).unwrap();
-        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), 2);
+        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
         let remote_op = set1.remove(&10).unwrap();
         let local_op = set2.execute_remote(&remote_op).unwrap();
 
@@ -382,7 +382,7 @@ mod tests {
     #[test]
     fn execute_remote_remove_does_not_exist() {
         let mut set1: Set<u64> = Set::new();
-        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), 2);
+        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
         let _ = set1.insert(10).unwrap();
         let remote_op = set1.remove(&10).unwrap();
         assert!(set2.execute_remote(&remote_op).is_none());
@@ -392,7 +392,7 @@ mod tests {
     #[test]
     fn execute_remote_remove_some_replicas_remain() {
         let mut set1: Set<u64> = Set::new();
-        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), 2);
+        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
         let _ = set1.insert(10).unwrap();
         let _ = set2.insert(10).unwrap();
         let remote_op = set1.remove(&10).unwrap();
@@ -403,7 +403,7 @@ mod tests {
     #[test]
     fn execute_remote_remove_dupe() {
         let mut set1: Set<u64> = Set::new();
-        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), 2);
+        let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
         let remote_op1 = set1.insert(10).unwrap();
         let remote_op2 = set1.remove(&10).unwrap();
         assert!(set2.execute_remote(&remote_op1).is_some());
@@ -419,7 +419,7 @@ mod tests {
         let _ = set1.insert(2);
         let _ = set1.remove(&2);
 
-        let mut set2 = Set::from_state(set1.clone_state(), 2);
+        let mut set2 = Set::from_state(set1.clone_state(), Some(2)).unwrap();
         let _ = set1.insert(3);
         let _ = set2.insert(3);
         let _ = set2.insert(4);
@@ -445,7 +445,7 @@ mod tests {
 
     #[test]
     fn test_add_site() {
-        let mut set: Set<u64> = Set::from_state(Set::new().clone_state(), 0);
+        let mut set: Set<u64> = Set::from_state(Set::new().clone_state(), None).unwrap();
         let _ = set.insert(10);
         let _ = set.insert(20);
         let _ = set.remove(&10);
@@ -463,7 +463,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut set: Set<u64> = Set::from_state(Set::new().clone_state(), 123);
+        let mut set: Set<u64> = Set::from_state(Set::new().clone_state(), Some(123)).unwrap();
         let _ = set.insert(10);
         let _ = set.insert(20);
         let _ = set.remove(&10);

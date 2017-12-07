@@ -56,7 +56,7 @@ fn test_remove_out_of_bounds() {
 
 #[test]
 fn test_insert_remove_awaiting_site() {
-    let mut text = Text::from_state(Text::new().clone_state(), 0);
+    let mut text = Text::from_state(Text::new().clone_state(), None).unwrap();
     assert!(text.replace(0, 0, "Hello").unwrap_err() == Error::AwaitingSite);
     assert!(text.replace(0, 1, "").unwrap_err() == Error::AwaitingSite);
     assert!(text.local_value() == "ello");
@@ -68,7 +68,7 @@ fn test_insert_remove_awaiting_site() {
 #[test]
 fn test_execute_remote() {
     let mut text1 = Text::new();
-    let mut text2 = Text::from_state(text1.clone_state(), 0);
+    let mut text2 = Text::from_state(text1.clone_state(), None).unwrap();
 
     let remote_op1 = text1.replace(0, 0, "hello").unwrap();
     let remote_op2 = text1.replace(0, 1, "").unwrap();
@@ -86,7 +86,7 @@ fn test_execute_remote() {
 #[test]
 fn test_execute_remote_dupe() {
     let mut text1 = Text::new();
-    let mut text2 = Text::from_state(text1.clone_state(), 0);
+    let mut text2 = Text::from_state(text1.clone_state(), None).unwrap();
     let remote_op = text1.replace(0, 0, "hello").unwrap();
     assert!(text2.execute_remote(&remote_op).is_some());
     assert!(text2.execute_remote(&remote_op).is_none());
@@ -102,7 +102,7 @@ fn test_merge() {
     let _ = text1.replace(16, 0, "fox");
     let _ = text1.replace(4, 6, "");
 
-    let mut text2 = Text::from_state(text1.clone_state(), 2);
+    let mut text2 = Text::from_state(text1.clone_state(), Some(2)).unwrap();
     let _ = text2.replace(4, 6, "");
     let _ = text2.replace(4, 0, "yellow ");
     let _ = text1.replace(4, 0, "slow ");
@@ -118,7 +118,7 @@ fn test_merge() {
 
 #[test]
 fn test_add_site() {
-    let mut text = Text::from_state(Text::new().clone_state(), 0);
+    let mut text = Text::from_state(Text::new().clone_state(), None).unwrap();
     let _ = text.replace(0, 0, "hello");
     let _ = text.replace(5, 0, "there");
     let _ = text.replace(4, 1, "");
@@ -136,7 +136,7 @@ fn test_add_site() {
 
 #[test]
 fn test_add_site_already_has_site() {
-    let mut text = Text::from_state(Text::new().clone_state(), 123);
+    let mut text = Text::from_state(Text::new().clone_state(), Some(123)).unwrap();
     let _ = text.replace(0, 0, "hello").unwrap();
     let _ = text.replace(5, 0, "there").unwrap();
     let _ = text.replace(4, 1, "").unwrap();
@@ -191,7 +191,7 @@ fn test_serialize_remote_op() {
 #[test]
 fn test_serialize_local_op() {
     let mut text1 = Text::new();
-    let mut text2 = Text::from_state(text1.clone_state(), 2);
+    let mut text2 = Text::from_state(text1.clone_state(), Some(2)).unwrap();
     let remote_op1 = text1.replace(0, 0, "hello").unwrap();
     let remote_op2 = text1.replace(2, 0, "bonjour").unwrap();
     let _ = text2.execute_remote(&remote_op1).unwrap();

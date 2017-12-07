@@ -521,6 +521,12 @@ impl IntoJson for f64 {
     }
 }
 
+impl IntoJson for i64 {
+    fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
+        Ok(JsonValue::Number(self as f64))
+    }
+}
+
 impl IntoJson for bool {
     fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
         Ok(JsonValue::Bool(self))
@@ -599,7 +605,7 @@ mod tests {
     #[test]
     fn test_object_insert_awaiting_site() {
         let crdt1 = Json::from_str("{}").unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let result = crdt2.insert("/foo", 19.7);
 
         assert!(result.unwrap_err() == Error::AwaitingSite);
@@ -640,7 +646,7 @@ mod tests {
     #[test]
     fn test_object_remove_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         assert!(crdt2.remove("/abc/2/def").unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
         assert!(nested_value(&mut crdt2, "/abc/2/def").is_none());
@@ -671,7 +677,7 @@ mod tests {
     #[test]
     fn test_array_insert_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         assert!(crdt2.insert("/things/1", true).unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
         assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Bool(true));
@@ -702,7 +708,7 @@ mod tests {
     #[test]
     fn test_array_remove_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         assert!(crdt2.remove("/things/1").unwrap_err() == Error::AwaitingSite);
 
         let remote_op = crdt2.awaiting_site.pop().unwrap();
@@ -738,7 +744,7 @@ mod tests {
     #[test]
     fn test_replace_text_awaiting_site() {
         let remote_crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
-        let mut crdt = Json::from_state(remote_crdt.clone_state(), 0);
+        let mut crdt = Json::from_state(remote_crdt.clone_state(), None).unwrap();
         assert!(crdt.replace_text("/1", 1, 2, "åⱡ").unwrap_err() == Error::AwaitingSite);
         assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
 
@@ -752,7 +758,7 @@ mod tests {
     #[test]
     fn test_execute_remote_object() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let remote_op = crdt1.insert("/baz", 54.0).unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
@@ -767,7 +773,7 @@ mod tests {
     #[test]
     fn test_execute_remote_array() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let remote_op = crdt1.insert("/foo/0", 54.0).unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
@@ -783,7 +789,7 @@ mod tests {
     #[test]
     fn test_execute_remote_string() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let remote_op = crdt1.replace_text("/foo/2", 1, 2, "ab").unwrap();
         let local_op  = crdt2.execute_remote(&remote_op).unwrap();
 
@@ -798,7 +804,7 @@ mod tests {
     #[test]
     fn test_execute_remote_missing_pointer() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
         let remote_op = crdt1.remove("/bar").unwrap();
         let _         = crdt2.remove("/bar").unwrap();
         assert!(crdt2.execute_remote(&remote_op).is_none());
@@ -807,7 +813,7 @@ mod tests {
     #[test]
     fn test_merge() {
         let mut crdt1 = Json::from_str(r#"{"x":[{"a": 1},{"b": 2},{"c":true},{"d":false}]}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
         let _ = crdt1.insert("/x/0/e", 222.0).unwrap();
         let _ = crdt1.insert("/x/3/e", 333.0).unwrap();
         let _ = crdt1.remove("/x/2").unwrap();
@@ -826,7 +832,7 @@ mod tests {
     #[test]
     fn test_add_site() {
         let crdt1 = Json::from_str(r#"{"foo":[1,2,3],"bar":"hello"}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let _ = crdt2.insert("/baz", json!({"abc":[true, false, 84.0]}));
         let _ = crdt2.insert("/baz/abc/1", 61.0);
 
@@ -900,7 +906,7 @@ mod tests {
     #[test]
     fn test_add_site_nested() {
         let crdt1 = Json::from_str("{}").unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let _ = crdt2.insert("/foo", json!({
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}
@@ -930,7 +936,7 @@ mod tests {
     #[test]
     fn test_execute_remote_dupe() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 0);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let remote_op = crdt1.remove("/bar").unwrap();
         assert!(crdt2.execute_remote(&remote_op).is_some());
         assert!(crdt2.execute_remote(&remote_op).is_none());
@@ -982,7 +988,7 @@ mod tests {
     #[test]
     fn test_serialize_local_op() {
         let mut crdt1 = Json::from_str(r#"{"foo":{}}"#).unwrap();
-        let mut crdt2 = Json::from_state(crdt1.clone_state(), 2);
+        let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
         let remote_op = crdt1.insert("/foo/bar", json!({
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}

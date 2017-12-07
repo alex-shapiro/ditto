@@ -446,7 +446,7 @@ mod tests {
 
     #[test]
     fn test_insert_remove_awaiting_site() {
-        let mut list: List<i64> = List::from_state(List::new().clone_state(), 0);
+        let mut list: List<i64> = List::from_state(List::new().clone_state(), None).unwrap();
         assert!(list.insert(0, 123).unwrap_err() == Error::AwaitingSite);
         assert!(list.len() == 1);
         assert!(list.awaiting_site.len() == 1);
@@ -511,7 +511,7 @@ mod tests {
         let _ = list1.insert(2, 9);
         let _ = list1.remove(1);
 
-        let mut list2 = List::from_state(list1.clone_state(), 2);
+        let mut list2 = List::from_state(list1.clone_state(), Some(2)).unwrap();
         let _ = list2.remove(0);
         let _ = list2.insert(1, 12);
         let _ = list2.insert(2, 15);
@@ -532,7 +532,7 @@ mod tests {
 
     #[test]
     fn test_add_site() {
-        let mut list: List<u32> = List::from_state(List::new().clone_state(), 0);
+        let mut list: List<u32> = List::from_state(List::new().clone_state(), None).unwrap();
         let _ = list.insert(0, 51);
         let _ = list.insert(1, 52);
         let _ = list.remove(0);
@@ -550,7 +550,7 @@ mod tests {
 
     #[test]
     fn test_add_site_already_has_site() {
-        let mut list: List<u32> = List::from_state(List::new().clone_state(), 12);
+        let mut list: List<u32> = List::from_state(List::new().clone_state(), Some(12)).unwrap();
         let _ = list.insert(0, 51);
         let _ = list.insert(1, 52);
         let _ = list.remove(0);

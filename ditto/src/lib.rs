@@ -27,7 +27,7 @@
 //! ```
 //! extern crate ditto;
 //! extern crate serde_json;
-//! use ditto::{List, ListState};
+//! use ditto::List;
 //!
 //! fn main() {
 //!     // create a List CRDT
@@ -35,8 +35,8 @@
 //!
 //!     // Send the list's state over a network to a second site
 //!     let encoded_state = serde_json::to_string(&list1.state()).unwrap();
-//!     let decoded_state: ListState<u32> = serde_json::from_str(&encoded_state).unwrap();
-//!     let mut list2 = List::from_state(decoded_state, 2);
+//!     let decoded_state = serde_json::from_str(&encoded_state).unwrap();
+//!     let mut list2 = List::from_state(decoded_state, Some(2)).unwrap();
 //!
 //!     // edit the list concurrently at both the first and second site
 //!     let op1 = list1.insert(0, 400).unwrap();

@@ -62,14 +62,21 @@ macro_rules! crdt_impl {
             }
         }
 
-        /// Constructs a new CRDT from a state and a site.
-        pub fn from_state(state: $state, site: u32) -> Self {
-            $tipe{
+        /// Constructs a new CRDT from a state and an site, if one is
+        /// already allocated. The site must be nonzero.
+        pub fn from_state(state: $state, site: Option<u32>) -> Result<Self, Error> {
+            let site = match site {
+                None => 0,
+                Some(0) => return Err(Error::InvalidSite),
+                Some(s) => s,
+            };
+
+            Ok($tipe{
                 replica: Replica{site, counter: 0},
                 value: state.value.into_owned(),
                 tombstones: state.tombstones.into_owned(),
                 awaiting_site: vec![],
-            }
+            })
         }
 
         /// Returns the CRDT value's equivalent local value.
