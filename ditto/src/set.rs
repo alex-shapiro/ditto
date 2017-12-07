@@ -47,8 +47,6 @@ pub enum LocalOp<T> {
 
 impl<T: SetElement> Set<T> {
 
-    crdt_impl!(Set, SetState, SetState<T>, SetState<'static, T>, SetValue<T>);
-
     /// Constructs and returns a new set CRDT.
     /// The set has site 1 and counter 0.
     pub fn new() -> Self {
@@ -80,6 +78,8 @@ impl<T: SetElement> Set<T> {
         let op = self.value.remove(value)?;
         self.after_op(op)
     }
+
+    crdt_impl!(Set, SetState, SetState<T>, SetState<'static, T>, SetValue<T>);
 }
 
 impl<T: SetElement> SetValue<T> {

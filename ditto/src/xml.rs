@@ -84,8 +84,6 @@ pub enum LocalOp {
 }
 
 impl Xml {
-    crdt_impl!(Xml, XmlState, XmlState, XmlState<'static>, XmlValue);
-
     pub fn from_reader<R: Read>(mut reader: R) -> Result<Self, Error> {
         let mut replica = Replica::new(1, 0);
         let local_xml = dom::Document::from_reader(&mut reader).map_err(|_| Error::InvalidXml)?;
@@ -123,6 +121,8 @@ impl Xml {
         let op = self.value.replace_text(pointer_str, idx, len, text, &self.replica)?;
         self.after_op(op)
     }
+
+    crdt_impl!(Xml, XmlState, XmlState, XmlState<'static>, XmlValue);
 }
 
 impl XmlValue {

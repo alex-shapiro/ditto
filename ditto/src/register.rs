@@ -44,8 +44,6 @@ impl<T: Clone> PartialEq for Element<T> {
 
 impl<T: Clone> Register<T> {
 
-    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterState<'static, T>, RegisterValue<T>);
-
     /// Constructs and returns a new register CRDT.
     /// The register has site 1 and counter 0.
     pub fn new(value: T) -> Self {
@@ -70,6 +68,8 @@ impl<T: Clone> Register<T> {
         let op = self.value.update(new_value, &self.replica);
         self.after_op(op)
     }
+
+    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterState<'static, T>, RegisterValue<T>);
 }
 
 impl<T: Clone> RegisterValue<T> {

@@ -44,8 +44,6 @@ pub struct LocalChange {
 
 impl Text {
 
-    crdt_impl!(Text, TextState, TextState, TextState<'static>, TextValue);
-
     /// Constructs and returns a new `Text` crdt.
     /// The crdt has site 1 and counter 0.
     pub fn new() -> Self {
@@ -77,6 +75,8 @@ impl Text {
         let op = self.value.replace(index, len, text, &self.replica)?;
         self.after_op(op)
     }
+
+    crdt_impl!(Text, TextState, TextState, TextState<'static>, TextValue);
 }
 
 impl RemoteOp {

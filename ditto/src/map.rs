@@ -74,8 +74,6 @@ impl<V> Ord for Element<V> {
 
 impl<K: Key, V: Value> Map<K, V> {
 
-    crdt_impl!(Map, MapState, MapState<K,V>, MapState<'static, K,V>, MapValue<K,V>);
-
     /// Constructs and returns a new map.
     /// The map has site 1 and counter 0.
     pub fn new() -> Self {
@@ -112,6 +110,8 @@ impl<K: Key, V: Value> Map<K, V> {
         let op = self.value.remove(key)?;
         self.after_op(op)
     }
+
+    crdt_impl!(Map, MapState, MapState<K,V>, MapState<'static, K,V>, MapValue<K,V>);
 }
 
 impl<K: Key, V: Value> From<HashMap<K, V>> for Map<K, V> {
