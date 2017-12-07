@@ -18,8 +18,8 @@
 //!
 //! **Xml:** An XML document
 //!
-//! Ditto's goal is to be as easy to use as possible. If you have any
-//! questions, requests, or other feedback, feel free to open an issue
+//! Ditto's goal is to be as fast and easy to use as possible. If you have any
+//! questions, suggestions, or other feedback, feel free to open an issue
 //! or a pull request. Contributions are encouraged!
 //!
 //! ## Example
