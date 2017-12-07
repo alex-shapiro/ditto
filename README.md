@@ -111,3 +111,16 @@ root is immutable.
 
 CRDTs are inherently larger than their native equivalents. A CRDT persisted
 with MsgPack uses up to 3x the space of its non-CRDT Rust equivalent.
+
+## License
+
+Ditto is licensed under either of
+
+* XMLApache License, Version 2.0, ([LICENSE-APACHE](LICENSE_APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+* MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
+
+at your option.
+
+### Contribution
+
+Unless you explicitly state otherwise, any contribution intentionally submitted for inclusion in Ditto by you, as defined in the Apache-2.0 license, shall be dual licensed as above, without any additional terms or conditions.
