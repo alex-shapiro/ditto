@@ -40,10 +40,7 @@ pub struct Element<T>(pub UID, pub T);
 
 impl<T: Clone> List<T> {
 
-    crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
-
-    /// Constructs and returns a new list.
-    /// Th list has site 1 and counter 0.
+    /// Constructs and returns a new list CRDT with site 1.
     pub fn new() -> Self {
         let replica = Replica::new(1,0);
         let value = ListValue::new();
@@ -81,6 +78,22 @@ impl<T: Clone> List<T> {
     pub fn remove(&mut self, index: usize) -> Result<RemoteOp<T>, Error> {
         let op = self.value.remove(index)?;
         self.after_op(op)
+    }
+
+    crdt_impl!(List, ListState, ListState<T>, ListState<'static, T>, ListValue<T>);
+}
+
+impl<T: Clone> From<Vec<T>> for List<T> {
+    fn from(local_value: Vec<T>) -> Self {
+        let replica = Replica::new(1,0);
+        let mut value = ListValue::new();
+
+        for element in local_value {
+            let _ = value.push(element, &replica);
+        }
+
+        let tombstones = Tombstones::new();
+        List{replica, value, tombstones, awaiting_site: vec![]}
     }
 }
 

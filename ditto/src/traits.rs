@@ -7,29 +7,34 @@ use {Error, Replica, Tombstones};
 macro_rules! crdt_impl {
     ($tipe:ident, $state_ident:ident, $state:ty, $state_static:ty, $value:ty) => {
 
+        #[doc(hidden)]
         /// Returns the CRDT's site
-        pub(crate) fn site(&self) -> u32 {
+        pub fn site(&self) -> u32 {
             self.replica.site
         }
 
+        #[doc(hidden)]
         /// Returns the CRDT's counter
-        pub(crate) fn counter(&self) -> u32 {
+        pub fn counter(&self) -> u32 {
             self.replica.counter
         }
 
+        #[doc(hidden)]
         /// Returns a reference to the CRDT's inner value
-        pub(crate) fn value(&self) -> &$value {
+        pub fn value(&self) -> &$value {
             &self.value
         }
 
+        #[doc(hidden)]
         /// Returns a reference to the remote ops which are
         /// awaiting a site before being returned
-        pub(crate) fn awaiting_site(&self) -> &[<$value as CrdtValue>::RemoteOp] {
+        pub fn awaiting_site(&self) -> &[<$value as CrdtValue>::RemoteOp] {
             &self.awaiting_site
         }
 
+        #[doc(hidden)]
         /// Returns a reference to the CRDT's tombstones
-        pub(crate) fn tombstones(&self) -> &Tombstones {
+        pub fn tombstones(&self) -> &Tombstones {
             &self.tombstones
         }
 
@@ -119,6 +124,7 @@ macro_rules! crdt_impl {
     };
 }
 
+#[doc(hidden)]
 /// Required functions for CRDT values.
 pub trait CrdtValue {
     type RemoteOp: CrdtRemoteOp;
@@ -141,6 +147,7 @@ pub trait CrdtValue {
     fn merge(&mut self, other: Self, self_tombstones: &Tombstones, other_tombstones: &Tombstones);
 }
 
+#[doc(hidden)]
 /// Functions for nested CRDT values.
 pub trait NestedCrdtValue: CrdtValue {
     /// Adds a site to a value in the CRDT and all its descendants.

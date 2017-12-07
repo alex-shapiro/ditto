@@ -27,6 +27,7 @@ pub struct JsonState<'a> {
     tombstones: Cow<'a, Tombstones>,
 }
 
+#[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum JsonValue {
     Object(MapValue<String, JsonValue>),
@@ -77,22 +78,27 @@ pub trait IntoJson {
 
 impl Json {
 
-    crdt_impl!(Json, JsonState, JsonState, JsonState<'static>, JsonValue);
-
-    /// Constructs and returns a new `Json` CRDT from a JSON string.
-    /// The crdt has site 1 and counter 0.
-    pub fn from_str(json_str: &str) -> Result<Self, Error> {
+    /// Constructs and returns a new `Json` CRDT from any value that
+    /// satisfies the [`IntoJson`](IntoJson.t.html) trait.
+    pub fn new<T: IntoJson>(local_value: T) -> Result<Self, Error> {
         let mut replica = Replica::new(1, 0);
-        let local_json: SJValue = serde_json::from_str(json_str)?;
-        let value = local_json.into_json(&replica)?;
+        let value = local_value.into_json(&replica)?;
         let tombstones = Tombstones::new();
         replica.counter += 1;
         Ok(Json{value, replica, tombstones, awaiting_site: vec![]})
     }
 
-    /// Inserts a value into the Json CRDT at the given pointer.
-    /// The enclosing node may be an object or an array and the
-    /// value being inserted must satisfy the IntoJson trait.
+    /// Constructs and returns a new `Json` CRDT from an unparsed
+    /// JSON string. The CRDT has site 1.
+    pub fn from_str(json_str: &str) -> Result<Self, Error> {
+        let local_value: SJValue = serde_json::from_str(json_str)?;
+        let crdt = Json::new(local_value)?;
+        Ok(crdt)
+    }
+
+    /// Inserts a value into the Json CRDT at the given json pointer.
+    /// The enclosing value may be an object or an array and the
+    /// inserted value must satisfy the [`IntoJson`](IntoJson.t.html) trait.
     ///
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
@@ -102,20 +108,20 @@ impl Json {
         self.after_op(op)
     }
 
-    /// Inserts a value into the Json CRDT at the given pointer.
-    /// The enclosing node may be an object or an array and the
+    /// Inserts a value into the Json CRDT at the given json pointer.
+    /// The enclosing value may be an object or an array and the
     /// value being inserted is stringified JSON.
     ///
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn insert_json(&mut self, pointer: &str, value: &str) -> Result<RemoteOp, Error> {
+    pub fn insert_str(&mut self, pointer: &str, value: &str) -> Result<RemoteOp, Error> {
         let json: SJValue = serde_json::from_str(&value)?;
         self.insert(pointer, json)
     }
 
-    /// Removes a value from the Json CRDT. If the enclosing
-    /// node is an object, it deletes the key-value pair. If
-    /// the enclosing node is an array, it deletes the value
+    /// Removes a value at the given JSON pointer from the Json CRDT.
+    /// If the enclosing value is an object, it deletes the key-value
+    /// pair. If the enclosing value is an array, it deletes the value
     /// at the array index.
     ///
     /// If the CRDT does not have a site allocated, it caches
@@ -125,14 +131,15 @@ impl Json {
         self.after_op(op)
     }
 
-    /// Replaces a text range in a text node in the Json CRDT.
-    ///
+    /// Replaces a text range in a text value in the Json CRDT.
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
         let op = self.value.replace_text(pointer, index, len, text, &self.replica)?;
         self.after_op(op)
     }
+
+    crdt_impl!(Json, JsonState, JsonState, JsonState<'static>, JsonValue);
 }
 
 impl JsonValue {
@@ -543,7 +550,7 @@ mod tests {
     #[test]
     fn test_object_insert() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
-        let remote_op1 = crdt.insert_json("/foo", r#"{"bar": 3.5}"#).unwrap();
+        let remote_op1 = crdt.insert_str("/foo", r#"{"bar": 3.5}"#).unwrap();
         let remote_op2 = crdt.insert("/foo/baz", true).unwrap();
 
         assert!(crdt.replica.counter == 3);
@@ -561,7 +568,7 @@ mod tests {
     #[test]
     fn test_object_insert_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
-        let result = crdt.insert_json("/foo/bar", r#"{"bar": 3.5}"#);
+        let result = crdt.insert_str("/foo/bar", r#"{"bar": 3.5}"#);
         assert!(result.unwrap_err() == Error::DoesNotExist);
     }
 

@@ -25,26 +25,32 @@
 //! ## Example
 //!
 //! ```
-//! // create a List CRDT
-//! let mut list1 = List::from(vec![100,200,300]);
+//! extern crate ditto;
+//! extern crate serde_json;
+//! use ditto::{List, ListState};
 //!
-//! // Send the list's state over a network to a second site
-//! let encoded_state = serde_json::to_string(&list1.state()).unwrap();
-//! let decoded_state: ListState<u32> = serde_json::from_str(&encoded_state).unwrap();
-//! let mut list2 = List::from_state(decoded_state, 2);
+//! fn main() {
+//!     // create a List CRDT
+//!     let mut list1 = List::from(vec![100,200,300]);
 //!
-//! // edit the list concurrently at both the first and second site
-//! let op1 = list1.insert(0, 400)?;
-//! let op2 = list2.remove(0)?;
+//!     // Send the list's state over a network to a second site
+//!     let encoded_state = serde_json::to_string(&list1.state()).unwrap();
+//!     let decoded_state: ListState<u32> = serde_json::from_str(&encoded_state).unwrap();
+//!     let mut list2 = List::from_state(decoded_state, 2);
 //!
-//! // each site sends its op to the other site for execution.
-//! // The encoding and decoding has been left out for brevity.
-//! list1.execute_remote(&op2)?;
-//! list2.execute_remote(&op1)?;
+//!     // edit the list concurrently at both the first and second site
+//!     let op1 = list1.insert(0, 400).unwrap();
+//!     let op2 = list2.remove(0).unwrap();
 //!
-//! // Now both sites have the same value:
-//! assert_eq!(list1.value(), list2.value());
-//! assert_eq!(list1.local_value(), vec![400, 200, 300]);
+//!     // each site sends its op to the other site for execution.
+//!     // The encoding and decoding has been left out for brevity.
+//!     list1.execute_remote(&op2);
+//!     list2.execute_remote(&op1);
+//!
+//!     // Now both sites have the same value:
+//!     assert_eq!(list1.state(), list2.state());
+//!     assert_eq!(list1.local_value(), vec![400, 200, 300]);
+//! }
 //! ```
 //!
 //! You can find more examples in the tests directory.
@@ -154,7 +160,7 @@ mod replica;
 mod sequence;
 mod vlq;
 
-pub use traits::{CrdtValue, CrdtRemoteOp};
+pub use traits::CrdtRemoteOp;
 pub use error::Error;
 pub use replica::{Replica, Tombstones};
 

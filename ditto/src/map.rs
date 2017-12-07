@@ -114,6 +114,20 @@ impl<K: Key, V: Value> Map<K, V> {
     }
 }
 
+impl<K: Key, V: Value> From<HashMap<K, V>> for Map<K, V> {
+    fn from(local_value: HashMap<K, V>) -> Self {
+        let replica = Replica::new(1,0);
+        let mut value = MapValue::new();
+
+        for (k, v) in local_value {
+            let _ = value.insert(k, v, &replica);
+        }
+
+        let tombstones = Tombstones::new();
+        Map{replica, value, tombstones, awaiting_site: vec![]}
+    }
+}
+
 impl<K: Key, V: Value> MapValue<K, V> {
 
     /// Constructs and returns a new map value.
