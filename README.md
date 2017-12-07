@@ -116,7 +116,7 @@ with MsgPack uses up to 3x the space of its non-CRDT Rust equivalent.
 
 Ditto is licensed under either of
 
-* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE_APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
+* Apache License, Version 2.0, ([LICENSE-APACHE](LICENSE-APACHE) or http://www.apache.org/licenses/LICENSE-2.0)
 * MIT license ([LICENSE-MIT](LICENSE-MIT) or http://opensource.org/licenses/MIT)
 
 at your option.
