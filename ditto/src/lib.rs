@@ -75,7 +75,8 @@
 //! ### Sending ops and state
 //!
 //! CRDTs and ops are serializable with [Serde](https://serde.rs).
-//! Serialization is tested against `serde_json` (JSON) and `rmp_serde`
+//! Serialization is tested against [`serde_json`](https://github.com/serde-rs/json)
+//! (JSON) and [`rmp-serde`](https://github.com/3Hren/msgpack-rust)
 //! (MsgPack) but may work with other formats as well.
 //!
 //! Ops must be sent in the order they were generated. That is, if
