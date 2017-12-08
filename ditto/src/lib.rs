@@ -57,11 +57,11 @@
 //! ## Using CRDTs
 //!
 //! Ditto CRDTs are designed to mimic standard data type APIs as much
-//! as possible. You can insert `insert` and `remove` list and map
+//! as possible. You can `insert` and `remove` list and map
 //! elements, `replace` text elements, etc. Each edit generates an op
 //! that can be sent to other sites for execution. When you execute an
 //! op sent from another site, you receive a `LocalOp` that shows
-//! exactly what changed in the CRDT's corresponding local value.
+//! exactly how the CRDT's value has changed.
 //!
 //! The two complications of CRDTs that users have to worry about are:
 //!
@@ -88,7 +88,7 @@
 //!
 //! In general, when replicating a CRDT state you should send its
 //! state struct, not the CRDT struct, because the CRDT struct includes
-//! site-specific metadata. For example, it you want to replicate a
+//! the site id. For example, to replicate a
 //! `Json` CRDT you should send the serialized `JsonState`, which
 //! can be created by calling `json_crdt.state()`.
 //!
@@ -133,7 +133,7 @@
 //!
 //! ### Duplicate ops
 //!
-//! Ditto CRDTs are *idempotent* - executing an op twice
+//! Ditto CRDTs are *idempotent* — executing an op twice
 //! has no effect. As long as ops from a site are executed in
 //! the order they were generated, the CRDT will maintain consistency.
 //!
@@ -147,13 +147,13 @@
 //! However, there may be times when it is faster and more compact
 //! to send the whole CRDT state (e.g. if you're sending 100 or 1000
 //! edits at once). You should replicate exclusively via state if you
-//! cannot guarantee in-order op delivery for some reason.
+//! cannot guarantee in-order op delivery.
 //!
 //! ### Other Notes
 //!
 //! Collection CRDTs are inherently larger than their native equivalents
-//! because each element must be given a unique id. Overhead is most
-//! significant when storing a collection of very small values - a `List<u8>`
+//! because each element must have a unique id. Overhead is most
+//! significant when storing a collection of very small values — a `List<u8>`
 //! will be many times larger than a `Vec<u8>`. If the collection itself
 //! is immutable, you can significantly reduce overhead by switching from
 //! a `List<T>` or `Map<K,V>` to a `Register<Vec<T>>` or `Register<Map<K,V>>`.
