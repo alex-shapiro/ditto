@@ -115,12 +115,16 @@ impl CounterValue {
         let Op{site, inc, counter} = *op;
         match self.0.entry(site) {
             Entry::Vacant(entry) => {
-                entry.insert(SiteCount{inc, counter});
-                Some(LocalOp(inc))
+                if counter == 0 {
+                    entry.insert(SiteCount{inc, counter});
+                    Some(LocalOp(inc))
+                } else {
+                    None
+                }
             }
             Entry::Occupied(mut entry) => {
                 let site_count = entry.get_mut();
-                if site_count.counter < counter {
+                if site_count.counter + 1 == counter {
                     site_count.inc += inc;
                     site_count.counter = counter;
                     Some(LocalOp(inc))

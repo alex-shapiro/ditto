@@ -67,6 +67,23 @@ fn test_execute_remote_dupe() {
 }
 
 #[test]
+fn test_execute_remote_out_of_order() {
+    let mut counter1 = Counter::new(17);
+    let mut counter2 = Counter::from_state(counter1.clone_state(), Some(2)).unwrap();
+
+    let op11 = counter1.increment(-2).unwrap();
+    let _    = counter1.increment(5).unwrap();
+    let op13 = counter1.increment(1).unwrap();
+
+    let _    = counter2.increment(12).unwrap();
+    let op22 = counter2.increment(1).unwrap();
+
+    assert!(counter2.execute_remote(&op11).is_some());
+    assert_eq!(counter2.execute_remote(&op13), None);
+    assert_eq!(counter1.execute_remote(&op22), None);
+}
+
+#[test]
 fn test_merge() {
     let mut counter1 = Counter::new(-99);
     let mut counter2 = Counter::from_state(counter1.clone_state(), Some(2)).unwrap();
