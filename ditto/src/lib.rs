@@ -21,7 +21,7 @@
 //!
 //! ## Example
 //!
-//! ```
+//! ```rust
 //! extern crate ditto;
 //! extern crate serde_json;
 //! use ditto::List;
@@ -37,6 +37,8 @@
 //!     let mut list2 = List::from_state(decoded_state, Some(2)).unwrap();
 //!
 //!     // Edit the list concurrently at both the first and second site.
+//!     // Whenever you edit a CRDT, you receive an op that can be sent
+//!     // to other sites.
 //!     let op1 = list1.insert(0, 400).unwrap();
 //!     let op2 = list2.remove(0).unwrap();
 //!
