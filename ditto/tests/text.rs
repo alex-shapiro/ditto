@@ -1,6 +1,6 @@
 extern crate ditto;
-extern crate serde_json;
-extern crate rmp_serde;
+
+mod common;
 
 use ditto::Error;
 use ditto::text::*;
@@ -148,61 +148,32 @@ fn test_serialize() {
     let mut text1 = Text::new();
     let _ = text1.replace(0, 0, "hello");
     let _ = text1.replace(5, 0, "there");
-
-    let s_json = serde_json::to_string(&text1).unwrap();
-    let s_msgpack = rmp_serde::to_vec(&text1).unwrap();
-    let text2: Text = serde_json::from_str(&s_json).unwrap();
-    let text3: Text = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-    assert!(text1 == text2);
-    assert!(text1 == text3);
+    common::test_serde(text1);
 }
 
 #[test]
-fn test_serialize_value() {
+fn test_serialize_state() {
     let mut text1 = Text::new();
     let _ = text1.replace(0, 0, "hello");
     let _ = text1.replace(5, 0, "there");
-
-    let s_json = serde_json::to_string(text1.value()).unwrap();
-    let s_msgpack = rmp_serde::to_vec(text1.value()).unwrap();
-    let value2: TextValue = serde_json::from_str(&s_json).unwrap();
-    let value3: TextValue = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-    assert!(*text1.value() == value2);
-    assert!(*text1.value() == value3);
+    common::test_serde(text1.into_state());
 }
 
 #[test]
-fn test_serialize_remote_op() {
+fn test_serialize_op() {
     let mut text = Text::new();
     let _ = text.replace(0, 0, "hello").unwrap();
-    let remote_op1 = text.replace(2, 0, "bonjour").unwrap();
-
-    let s_json = serde_json::to_string(&remote_op1).unwrap();
-    let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
-    let remote_op2: RemoteOp = serde_json::from_str(&s_json).unwrap();
-    let remote_op3: RemoteOp = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-    assert!(remote_op1 == remote_op2);
-    assert!(remote_op1 == remote_op3);
+    let op = text.replace(2, 0, "bonjour").unwrap();
+    common::test_serde(op);
 }
 
 #[test]
 fn test_serialize_local_op() {
     let mut text1 = Text::new();
     let mut text2 = Text::from_state(text1.clone_state(), Some(2)).unwrap();
-    let remote_op1 = text1.replace(0, 0, "hello").unwrap();
-    let remote_op2 = text1.replace(2, 0, "bonjour").unwrap();
-    let _ = text2.execute_remote(&remote_op1).unwrap();
-    let local_op1 = text2.execute_remote(&remote_op2).unwrap();
-
-    let s_json = serde_json::to_string(&local_op1).unwrap();
-    let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
-    let local_op2: LocalOp = serde_json::from_str(&s_json).unwrap();
-    let local_op3: LocalOp = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-    assert_eq!(s_json, r#"[{"idx":0,"len":5,"text":""},{"idx":0,"len":0,"text":"hebonjourllo"}]"#);
-    assert_eq!(local_op1, local_op2);
-    assert_eq!(local_op1, local_op3);
+    let op1 = text1.replace(0, 0, "hello").unwrap();
+    let op2 = text1.replace(2, 0, "bonjour").unwrap();
+    let _   = text2.execute_remote(&op1).unwrap();
+    let local_op = text2.execute_remote(&op2).unwrap();
+    common::test_serde(local_op);
 }
