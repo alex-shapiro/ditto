@@ -110,8 +110,12 @@
 //! This has the effect that any `Json` CRDT with a numeric, boolean, or null
 //! root is immutable.
 //!
-//! CRDTs are inherently larger than their native equivalents. A CRDT persisted
-//! with MsgPack uses up to 3x the space of its non-CRDT Rust equivalent.
+//! Collection CRDTs are inherently larger than their native equivalents
+//! because each element must be given a unique id. Overhead is most
+//! significant when storing a collection of very small values - a `List<u8>`
+//! will be many times larger than a `Vec<u8>`. If the collection itself
+//! is immutable, you can significantly reduce overhead by switching from
+//! a `List<T>` or `Map<K,V>` to a `Register<Vec<T>>` or `Register<Map<K,V>>`.
 
 extern crate base64;
 extern crate char_fns;
