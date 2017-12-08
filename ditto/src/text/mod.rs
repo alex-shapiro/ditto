@@ -12,6 +12,26 @@ use traits::*;
 
 use std::borrow::Cow;
 
+/// Text is a string-wise CRDT. It can efficient manipulate
+/// small and large utf8 strings, and it is indexed by unicode
+/// character.
+///
+/// An *N*-character Text's performance characteristics are:
+///
+///   * [`replace`](#method.replace) is approximately *O(log N)*
+///   * [`len`](#method.len) is *O(1)*
+///   * [`execute_remote`](#method.remove) is approximately *O(log N)*
+///
+/// Internally, Text is based on LSEQ, with a number of optimizations
+/// to minimize size and reduce semantic conflicts during concurrent
+/// text editing. It can be used as a CmRDT or a CvRDT, providing
+/// eventual consistency  via both op execution and state merges.
+/// This flexibility comes with tradeoffs:
+///
+///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
+///   * Unlike a pure CvRDT, it requires each site to replicate its ops
+///     in their order of generation.
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Text {
     value: TextValue,

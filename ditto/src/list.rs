@@ -6,6 +6,26 @@ use sequence::uid::{self, UID};
 use traits::*;
 use std::borrow::Cow;
 
+/// A List is a `Vec`-like ordered sequence of elements.
+/// To allow for CRDT replication, List elements must implement
+/// the `Clone`, `Serialize`, and `Deserialize` traits.
+///
+/// An *N*-element List's performance characteristics are:
+///
+///   * [`insert`](#method.insert) is approximately *O(log N)*
+///   * [`remove`](#method.remove) is approximately *O(log N)*
+///   * [`execute_remote`](#method.remove) is approximately *O(log N)*
+///   * [`get`](#method.get) is approximately *O(1)*
+///   * [`len`](#method.insert) is *O(1)*
+///
+/// Internally, List is based on LSEQ. It can be used as a CmRDT or a CvRDT,
+/// providing eventual consistency via both op execution and state merges.
+/// This flexibility comes with tradeoffs:
+///
+///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
+///   * Unlike a pure CvRDT, it requires each site to replicate its ops
+///     in their order of generation.
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct List<T: 'static> {
     value: ListValue<T>,

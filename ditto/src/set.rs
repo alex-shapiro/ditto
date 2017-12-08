@@ -14,6 +14,27 @@ use std::mem;
 pub trait SetElement: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 
+/// A Set is a `HashSet`-like collection of distinct elements.
+/// As with `HashSet`, `Set` requires that the elements implement
+/// the `Eq` and `Hash` traits. To allow for CRDT replication, they
+/// must also implement the `Clone`, `Serialize`, and `Deserialize`
+/// traits.
+///
+/// Set's performance characteristics are similar to HashSet:
+///
+///   * [`insert`](#method.insert) is approximately *O(1)*
+///   * [`remove`](#method.remove) is approximately *O(1)*
+///   * [`contains`](#method.contains) is approximately *O(1)*
+///   * [`execute_remote`](#method.execute_remote) is approximately *O(1)*
+///
+/// Internally, Set is an OR-Set. It can be used as a CmRDT or a CvRDT,
+/// providing eventual consistency via both op execution and state merges.
+/// This flexibility comes with tradeoffs:
+///
+///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
+///   * Unlike a pure CvRDT, it requires each site to replicate its ops
+///     in their order of generation.
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
 pub struct Set<T: SetElement> {

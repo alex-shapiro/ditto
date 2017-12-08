@@ -18,6 +18,28 @@ impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> Key for T {}
 pub trait Value: Clone + PartialEq + Serialize + DeserializeOwned {}
 impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 
+/// A Map is a `HashMap`-like collection of key-value pairs.
+/// As with `HashMap`, `Map` requires that the elements implement
+/// the `Eq` and `Hash` traits. To allow for CRDT replication, they
+/// must also implement the `Clone`, `Serialize`, and `Deserialize`
+/// traits.
+///
+/// Map's performance characteristics are similar to HashMap:
+///
+///   * [`insert`](#method.insert) is approximately *O(1)*
+///   * [`remove`](#method.remove) is approximately *O(1)*
+///   * [`contains_key`](#method.contains_key) is *O(1)*
+///   * [`get`](#method.get) is approximately *O(1)*
+///   * [`execute_remote`](#method.execute_remote) is approximately *O(1)*
+///
+/// Internally, Map is based on an OR-Set. It can be used as a CmRDT or a CvRDT,
+/// providing eventual consistency via both op execution and state merges.
+/// This flexibility comes with tradeoffs:
+///
+///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
+///   * Unlike a pure CvRDT, it requires each site to replicate its ops
+///     in their order of generation.
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
 pub struct Map<K: Key, V: Value> {
