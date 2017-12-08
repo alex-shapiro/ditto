@@ -3,8 +3,7 @@
 use {Error, Replica, Tombstones};
 use traits::*;
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::collections::hash_map::Entry;
+use std::collections::hash_map::{HashMap, Entry};
 
 type SiteId = u32;
 
@@ -18,7 +17,7 @@ type SiteId = u32;
 /// * It is larger than a pure CmRDT (which is just an `i64` value),
 ///   but it can perform stateful merges (which a pure CmRDT cannot do).
 ///
-/// * Unlike a pure CvRDT (eg a G-counter or PN-counter), it requires
+/// * Unlike a pure CvRDT (e.g. a G-counter or PN-counter), it requires
 ///   each site to replicate its ops in their order of generation.
 ///   However, it requires much less storage space than a CvRDT because
 ///   it stores the *net* increment value from each site rather than *all*
@@ -185,6 +184,6 @@ impl CrdtRemoteOp for Op {
 
 impl Op {
     pub fn site(&self) -> SiteId { self.site }
-    pub fn counter(&self) -> SiteId { self.counter }
-    pub fn inc(&self) -> SiteId { self.inc }
+    pub fn counter(&self) -> u32 { self.counter }
+    pub fn inc(&self) -> i64 { self.inc }
 }

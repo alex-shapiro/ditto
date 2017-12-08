@@ -5,6 +5,27 @@ use traits::*;
 use std::borrow::Cow;
 use std::mem;
 
+/// A Register is a replaceable value that can be updated
+/// via the [`update`](#method.update) function.
+///
+/// Internally, Register is both a CmRDT and a CvRDT - it
+/// can provide eventual consistency via both operations and
+/// state merges. This flexibility comes with a set of tradeoffs:
+///
+/// * It is larger than a pure CmRDT, which does not require tombstones,
+///   but it can perform stateful merges, which a pure CmRDT cannot do.
+///
+/// * Unlike a pure CvRDT, it requires each site to replicate its ops
+///   in their order of generation. In some cases replicating a
+///   Register via an op requires less data than replicating a CvRDT,
+///   but in practice this is only true if the Register is being used
+///   in a highly-concurrent, high-latency environment.
+///
+/// Register is offered here for the sake of library completeness. It
+/// is probably not as ideal as a pure CvRDT, but differences are minimal.
+/// If you need a pure CvRDT register, let the maintainers know and
+/// they will work on making improvements.
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Register<T: Clone> {
     value: RegisterValue<T>,
@@ -42,27 +63,6 @@ impl<T: Clone> PartialEq for Element<T> {
     }
 }
 
-/// A Register is a replaceable value that can be updated
-/// via the [`update`](#method.update) function.
-///
-/// Internally, Register is both a CmRDT and a CvRDT - it
-/// can provide eventual consistency via both operations and
-/// state merges. This flexibility comes with a set of tradeoffs:
-///
-/// * It is larger than a pure CmRDT, which does not require tombstones,
-///   but it can perform stateful merges, which a pure CmRDT cannot do.
-///
-/// * Unlike a pure CvRDT, it requires each site to replicate its ops
-///   in their order of generation. In some cases replicating a
-///   Register via an op requires less data than replicating a CvRDT,
-///   but in practice this is only true if the Register is being used
-///   in a highly-concurrent, high-latency environemtn.
-///
-/// Register is offered here for the sake of library completeness. It
-/// is probably not as ideal as a pure CvRDT, but differences are minimal.
-/// If you need a pure CvRDT register, let the maintainers know and
-/// they will work on making improvements.
-///
 impl<T: Clone> Register<T> {
 
     /// Constructs and returns a new Register with site 1.
