@@ -1,4 +1,4 @@
-//! A CRDT that stores an updatedable value
+//! A CRDT that stores an `i64` value that increments
 
 use {Error, Replica, Tombstones};
 use traits::*;

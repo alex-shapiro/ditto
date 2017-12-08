@@ -1,4 +1,4 @@
-//! A CRDT that stores a single value.
+//! A CRDT that stores a replaceable value
 
 use {Error, Replica, Tombstones};
 use traits::*;
