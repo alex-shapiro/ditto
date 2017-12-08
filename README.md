@@ -6,9 +6,10 @@ which can be replicated across multiple sites, edited concurrently,
 and merged together without leading to conflicts. Ditto provides
 a number of commonly used data types:
 
-* **Register\<T\>:** A container for a single value.
+* **Register\<T\>:** A replaceable value
+* **Counter:** An i64 value that increments
 * **Set\<T\>:** A HashSet-like collection of unique values
-* **Map\<T\>:** A HashMap-like collection of key-value pairs
+* **Map\<K, V\>:** A HashMap-like collection of key-value pairs
 * **List\<T\>:** A Vec-like ordered sequence of elements
 * **Text:** A String-like container for mutable text
 * **Json:** A JSON value
@@ -50,8 +51,7 @@ fn main() {
 }
 ```
 
-You can find more examples in the examples and tests directories in the
-crate repo.
+You can find more examples in the examples and tests directories.
 
 ## Assigning Sites
 

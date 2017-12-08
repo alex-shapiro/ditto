@@ -6,9 +6,10 @@
 //! and merged together without leading to conflicts. Ditto provides
 //! a number of commonly used data types:
 //!
-//! * **[Register\<T\>](register/Register.t.html):** A container for a single value.
+//! * **[Register\<T\>](register/Register.t.html):** A replaceable value
+//! * **[Counter\<T\>](counter/Counter.t.html):** An i64 value that increments
 //! * **[Set\<T\>](set/Set.t.html):** A HashSet-like collection of unique values
-//! * **[Map\<T\>:](map/Map.t.html)** A HashMap-like collection of key-value pairs
+//! * **[Map\<K, V\>:](map/Map.t.html)** A HashMap-like collection of key-value pairs
 //! * **[List\<T\>:](list/List.t.html)** A Vec-like ordered sequence of elements
 //! * **[Text:](text/Text.t.html)** A String-like container for mutable text
 //! * **[Json:](json/Json.t.html)** A JSON value
@@ -140,6 +141,7 @@ extern crate rmp_serde;
 #[macro_use] mod macros;
 #[macro_use] mod traits;
 
+pub mod counter;
 pub mod json;
 pub mod list;
 pub mod map;
@@ -158,6 +160,7 @@ pub use traits::CrdtRemoteOp;
 pub use error::Error;
 pub use replica::{Replica, Tombstones};
 
+pub use counter::{Counter, CounterState};
 pub use json::{Json, JsonState};
 pub use list::{List, ListState};
 pub use map::{Map, MapState};
