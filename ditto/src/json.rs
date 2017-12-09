@@ -13,6 +13,26 @@ use std::collections::HashMap;
 use std::hash::Hash;
 use std::str::FromStr;
 
+/// Json is a CRDT that stores a JSON value. It can handle
+/// any kind of JSON value (object, array, string, number, bool, and null)
+/// and allows arbitrarily-nested values. A nested Json value is indexed by a
+/// [JSON pointer](https://tools.ietf.org/html/rfc6901).
+///
+/// Internally, Json is built on Ditto's [`Map`](../map/Map.t.html),
+/// [`List`](../list/List.t.html), and [`Text`](../text/Text.t.html)
+/// CRDTs. It can be used as a CmRDT or a CvRDT, providing both
+/// op-based and state-based replication. This flexibility comes
+/// with tradeoffs:
+///
+///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
+///   * Unlike a pure CvRDT, it requires each site to replicate its ops
+///     in their order of generation.
+///
+/// The root value of a Json CRDT (typically an object or array) cannot
+/// be replaced; for example, a Json CRDT whose root is an array will
+/// always have its root be an array. This constraint means that any Json
+/// CRDT with a numeric, boolean, or null root is immutable.
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Json {
     value: JsonValue,
@@ -78,8 +98,8 @@ pub trait IntoJson {
 
 impl Json {
 
-    /// Constructs and returns a new `Json` CRDT from any value that
-    /// satisfies the [`IntoJson`](IntoJson.t.html) trait.
+    /// Constructs and returns a new `Json` CRDT with site 1 from any
+    /// value that satisfies the [`IntoJson`](IntoJson.t.html) trait.
     pub fn new<T: IntoJson>(local_value: T) -> Result<Self, Error> {
         let mut replica = Replica::new(1, 0);
         let value = local_value.into_json(&replica)?;
@@ -88,8 +108,8 @@ impl Json {
         Ok(Json{value, replica, tombstones, awaiting_site: vec![]})
     }
 
-    /// Constructs and returns a new `Json` CRDT from an unparsed
-    /// JSON string. The CRDT has site 1.
+    /// Constructs and returns a new `Json` CRDT with site 1 from an
+    /// unparsed JSON string.
     pub fn from_str(json_str: &str) -> Result<Self, Error> {
         let local_value: SJValue = serde_json::from_str(json_str)?;
         let crdt = Json::new(local_value)?;

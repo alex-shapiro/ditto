@@ -62,8 +62,8 @@ macro_rules! crdt_impl {
             }
         }
 
-        /// Constructs a new CRDT from a state and an site, if one is
-        /// already allocated. The site must be nonzero.
+        /// Constructs a new CRDT from a state and optional site.
+        /// If the site is present, it must be nonzero.
         pub fn from_state(state: $state, site: Option<u32>) -> Result<Self, Error> {
             let site = match site {
                 None => 0,
@@ -99,13 +99,13 @@ macro_rules! crdt_impl {
             Ok(self.execute_remote(op))
         }
 
-        /// Merges remote CRDT state with the local CRDT.
+        /// Merges remote CRDT state into the CRDT.
         pub fn merge(&mut self, other: $state) {
             self.value.merge(other.value.into_owned(), &self.tombstones, &other.tombstones);
             self.tombstones.merge(&other.tombstones);
         }
 
-        /// Updates the CRDT's site and returns any cached ops.
+        /// Assigns a site and returns any cached ops.
         pub fn add_site(&mut self, site: u32) -> Result<Vec<<$value as CrdtValue>::RemoteOp>, Error> {
             use std::mem;
 
