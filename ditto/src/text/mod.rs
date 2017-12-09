@@ -25,7 +25,7 @@ use std::borrow::Cow;
 /// Internally, Text is based on LSEQ, with a number of optimizations
 /// to minimize size and reduce semantic conflicts during concurrent
 /// text editing. It can be used as a CmRDT or a CvRDT, providing
-/// eventual consistency  via both op execution and state merges.
+/// eventual consistency via both op execution and state merges.
 /// This flexibility comes with tradeoffs:
 ///
 ///   * Unlike a pure CmRDT, it requires tombstones, which increase size.

@@ -14,6 +14,20 @@ use std::io::{Read, Cursor};
 use std::str::FromStr;
 use std::string::ToString;
 
+/// Xml is a CRDT that stores an XML 1.0 or 1.1 document.
+/// A nested XML value is indexed by a pointer string
+/// of node indices separated by `/`.
+///
+/// Internally, Xml is built on Ditto's [`Map`](../map/Map.t.html),
+/// [`List`](../list/List.t.html), and [`Text`](../text/Text.t.html)
+/// CRDTs. It can be used as a CmRDT or a CvRDT, providing both
+/// op-based and state-based replication. This flexibility comes
+/// with tradeoffs:
+///
+///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
+///   * Unlike a pure CvRDT, it requires each site to replicate its ops
+///     in their order of generation.
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Xml {
     value: XmlValue,

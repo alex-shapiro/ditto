@@ -161,11 +161,6 @@
 //! is immutable, you can significantly reduce overhead by switching from
 //! a `List<T>` or `Map<K,V>` to a `Register<Vec<T>>` or `Register<Map<K,V>>`.
 //!
-//! The root value of a `Json` CRDT (typically an object or array) cannot
-//! be replaced; for example, a `Json` CRDT created as an object will always
-//! be an object. This constraint means that any `Json` CRDT with a numeric,
-//! boolean, or null root is immutable.
-//!
 //! ## License
 //!
 //! Ditto is licensed under either of
