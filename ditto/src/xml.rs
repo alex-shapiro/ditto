@@ -98,6 +98,9 @@ pub enum LocalOp {
 }
 
 impl Xml {
+
+    /// Constructs and returns a new `Xml` CRDT with site 1 from
+    /// any type `R` that implements `std::io::Read`.
     pub fn from_reader<R: Read>(mut reader: R) -> Result<Self, Error> {
         let mut replica = Replica::new(1, 0);
         let local_xml = dom::Document::from_reader(&mut reader).map_err(|_| Error::InvalidXml)?;
@@ -107,30 +110,53 @@ impl Xml {
         Ok(Xml{value, replica, tombstones, awaiting_site: vec![]})
     }
 
+    /// Constructs and returns a new `Xml` CRDT with site 1 from
+    /// an unparsed XML document string.
     pub fn from_str(xml_str: &str) -> Result<Self, Error> {
         Self::from_reader(Cursor::new(xml_str.as_bytes()))
     }
 
+    /// Inserts a text or element node into the `Xml` CRDT
+    /// at the given pointer. The type may be any value that
+    /// satisfies the [`IntoXmlNode`](IntoXmlNode.t.html) trait.
+    ///
+    /// If the CRDT does not have a site allocated, it caches
+    /// the op and returns an `AwaitingSite` error.
     pub fn insert<T: IntoXmlNode>(&mut self, pointer_str: &str, node: T) -> Result<RemoteOp, Error> {
         let op = self.value.insert(pointer_str, node, &self.replica)?;
         self.after_op(op)
     }
 
+    /// Removes a node from the `Xml` CRDT at the given pointer.
+    /// If the CRDT does not have a site allocated, it caches
+    /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, pointer_str: &str) -> Result<RemoteOp, Error> {
         let op = self.value.remove(pointer_str)?;
         self.after_op(op)
     }
 
+    /// Inserts an attribute into the element at the given pointer.
+    /// If the node at the pointer is not an element, it returns an `InvalidPointer` error.
+    /// If the CRDT does not have a site allocated, it caches
+    /// the op and returns an `AwaitingSite` error.
     pub fn insert_attribute(&mut self, pointer_str: &str, key: &str, value: &str) -> Result<RemoteOp, Error> {
         let op = self.value.insert_attribute(pointer_str, key, value, &self.replica)?;
         self.after_op(op)
     }
 
+    /// Removes an attribute from the element at the given pointer.
+    /// If the node at the pointer is not an element, it returns an `InvalidPointer` error.
+    /// If the CRDT does not have a site allocated, it caches
+    /// the op and returns an `AwaitingSite` error.
     pub fn remove_attribute(&mut self, pointer_str: &str, key: &str) -> Result<RemoteOp, Error> {
         let op = self.value.remove_attribute(pointer_str, key)?;
         self.after_op(op)
     }
 
+    /// Replaces text in the text node at the given pointer.
+    /// If the node at the pointer is not text, it returns an `InvalidPointer` error.
+    /// If the CRDT does not have a site allocated, it caches
+    /// the op and returns an `AwaitingSite` error.
     pub fn replace_text(&mut self, pointer_str: &str, idx: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
         let op = self.value.replace_text(pointer_str, idx, len, text, &self.replica)?;
         self.after_op(op)
