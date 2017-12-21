@@ -7,7 +7,7 @@
 //! a number of commonly used data types:
 //!
 //! * **[Register\<T\>](register/Register.t.html):** A replaceable value
-//! * **[Counter\<T\>](counter/Counter.t.html):** An i64 value that increments
+//! * **[Counter](counter/Counter.t.html):** An i64 value that increments
 //! * **[Set\<T\>](set/Set.t.html):** A HashSet-like collection of unique values
 //! * **[Map\<K, V\>:](map/Map.t.html)** A HashMap-like collection of key-value pairs
 //! * **[List\<T\>:](list/List.t.html)** A Vec-like ordered sequence of elements
