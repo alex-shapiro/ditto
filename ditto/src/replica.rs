@@ -2,6 +2,9 @@ use map_tuple_vec;
 use std::cmp::max;
 use std::collections::HashMap;
 
+pub type SiteId = u32;
+pub type Counter = u32;
+
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Replica {
     pub site: u32,
