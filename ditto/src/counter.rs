@@ -34,7 +34,7 @@ pub struct Counter {
 pub struct CounterState<'a>(Cow<'a, CounterInner>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct CounterInner(HashMap<SiteId, SiteInc>);
+pub(crate) struct CounterInner(HashMap<SiteId, SiteInc>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 struct SiteInc {
