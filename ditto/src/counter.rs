@@ -111,11 +111,6 @@ impl Counter {
         })
     }
 
-    /// Returns the counter's equivalent local value.
-    pub fn local_value(&self) -> i64 {
-        self.inner.get()
-    }
-
     /// Executes an Op and returns the equivalent increment.
     /// If the op has already been executed or superceded,
     /// nothing is done.
@@ -201,7 +196,7 @@ impl CounterInner {
     }
 
     fn add_site_id(&mut self, site_id: SiteId) {
-        let site_inc = some!(self.0.remove(&site_id));
+        let site_inc = some!(self.0.remove(&0));
         self.0.insert(site_id, site_inc);
     }
 }

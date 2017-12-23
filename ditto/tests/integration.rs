@@ -77,31 +77,23 @@ fn test_map() {
 
 #[test]
 fn test_register() {
-    let mut register1: Register<u32> = Register::new(56);
-    let mut register2: Register<u32> = Register::from_state(register1.clone_state(), Some(2)).unwrap();
-    let mut register3: Register<u32> = Register::from_state(register1.clone_state(), Some(3)).unwrap();
+    let mut register1 = Register::new(56u32);
+    let mut register2 = Register::from_state(register1.state(), Some(2)).unwrap();
+    let mut register3 = Register::from_state(register1.state(), Some(3)).unwrap();
 
-    let remote_op1 = register2.update(41).unwrap();
-    let remote_op2 = register1.update(32).unwrap();
-    let remote_op3 = register3.update(28).unwrap();
+    let op1 = register1.update(32).unwrap();
+    let op2 = register2.update(41).unwrap();
+    let op3 = register3.update(28).unwrap();
 
-    let local_op11 = register1.execute_remote(&via_json(&remote_op1));
-    let local_op12 = register1.execute_remote(&via_json(&remote_op3));
-    assert_matches!(local_op11, None);
-    assert_matches!(local_op12, None);
+    assert_eq!(&32, register1.execute_op(via_json(&op2)));
+    assert_eq!(&32, register1.execute_op(via_json(&op3)));
+    assert_eq!(&41, register2.execute_op(via_json(&op3)));
+    assert_eq!(&32, register2.execute_op(via_json(&op1)));
+    assert_eq!(&41, register3.execute_op(via_json(&op2)));
+    assert_eq!(&32, register3.execute_op(via_json(&op1)));
 
-    let local_op21 = register2.execute_remote(&via_json(&remote_op2)).unwrap();
-    let local_op22 = register2.execute_remote(&via_json(&remote_op3));
-    assert!(local_op21.new_value == 32);
-    assert_matches!(local_op22, None);
-
-    let local_op31 = register3.execute_remote(&via_json(&remote_op1)).unwrap();
-    let local_op32 = register3.execute_remote(&via_json(&remote_op2)).unwrap();
-    assert!(local_op31.new_value == 41);
-    assert!(local_op32.new_value == 32);
-
-    assert!(register1.value() == register2.value());
-    assert!(register1.value() == register3.value());
+    assert_eq!(register1.state(), register2.state());
+    assert_eq!(register1.state(), register3.state());
 }
 
 #[test]
