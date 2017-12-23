@@ -9,23 +9,22 @@ use std::mem;
 /// A Register is a replaceable value that can be updated
 /// via the [`update`](#method.update) function.
 ///
-/// Internally, Register is both a CmRDT and a CvRDT - it
-/// can provide eventual consistency via both operations and
-/// state merges. This flexibility comes with a set of tradeoffs:
+/// Register allows op-based replication via [`execute_op`](#method.execute_op)
+/// and state-based replication via [`merge`](#method.merge).
+/// Both replication methods are idempotent and can handle
+/// out-of-order delivery.
 ///
-/// * It is larger than a pure CmRDT, which does not require tombstones,
-///   but it can perform stateful merges, which a pure CmRDT cannot do.
+/// `Register` has a spatial complexity of *O(N + S)*, where
+/// *N* is the number of values concurrently held in the `Register` and
+/// *S* is the number of sites that have updated the `Register`.
+/// It has the following performance characteristics:
 ///
-/// * Unlike a pure CvRDT, it requires each site to replicate its ops
-///   in their order of generation. In some cases replicating a
-///   Register via an op requires less data than replicating a CvRDT,
-///   but in practice this is only true if the Register is being used
-///   in a highly-concurrent, high-latency environment.
-///
-/// Register is offered here for the sake of library completeness. It
-/// is probably not as ideal as a pure CvRDT, but differences are minimal.
-/// If you need a pure CvRDT register, let the maintainers know and
-/// they will work on making improvements.
+///   * [`update`](#method.update): *O(1)*
+///   * [`execute_op`](#method.execute_op): *O(N)*, where *N* is
+///     the number of values concurrently held in the `Register`.
+///   * [`merge`](#method.merge): *O(N + M)*, where *N* and *M* are
+///     the number of values concurrently held in the `Register` being
+///     merged into and the `RegisterState` being merged, respectively.
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Register<T: Clone> {
@@ -73,8 +72,8 @@ impl<T: Clone> Register<T> {
         &self.elements.values().next().as_ref().unwrap().value
     }
 
-    /// Updates the register's value and returns an op
-    /// that can be sent to remote sites for replication.
+    /// Updates the `Register`'s value and returns an op
+    /// that can be replciated to other sites.
     /// If the register does not have a site id allocated, it
     /// caches the op and returns an `AwaitingSiteId` error.
     pub fn update(&mut self, value: T) -> Result<Op<T>, Error> {

@@ -14,12 +14,14 @@ use std::collections::HashMap;
 /// replication methods are idempotent and can handle out-of-order
 /// delivery.
 ///
-/// Counter has the following performance characteristics:
+/// `Counter` has a spatial complexity of *O(S)*, where
+/// *S* is the number of sites that have incremented the `Counter`.
+/// It has the following performance characteristics:
 ///
-///   * [`increment`](#method.increment): O(1)
-///   * [`execute_op`](#method.execute_op): O(1)
-///   * [`merge`](#method.merge): O(*N*), where *N* is the number of sites that have incremented the counter
-///   * space: O(*N*), where *N* is the number of sites that have incremented the counter
+///   * [`increment`](#method.increment): *O(1)*
+///   * [`execute_op`](#method.execute_op): *O(1)*
+///   * [`merge`](#method.merge): *O(S)*, where *S* is the number of
+///     sites that have incremented the `Counter`
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Counter {
@@ -75,27 +77,27 @@ impl Counter {
         }
     }
 
-    /// Returns the Counter site id.
+    /// Returns the `Counter`'s site id.
     pub fn site_id(&self) -> SiteId {
         self.site_id
     }
 
-    /// Returns a reference to the Counter state.
+    /// Returns a reference to the `Counter` state.
     pub fn state(&self) -> CounterState {
         CounterState(Cow::Borrowed(&self.inner))
     }
 
-    /// Clones and returns the Counter state.
+    /// Clones and returns the `Counter` state.
     pub fn clone_state(&self) -> CounterState<'static> {
         CounterState(Cow::Owned(self.inner.clone()))
     }
 
-    /// Consumes the Counter and returns its state.
+    /// Consumes the `Counter` and returns its state.
     pub fn into_state(self) -> CounterState<'static> {
         CounterState(Cow::Owned(self.inner))
     }
 
-    /// Constructs a new Counter from a state and optional site id.
+    /// Constructs a new `Counter` from a state and optional site id.
     /// If the site is given, it must be nonzero.
     pub fn from_state(state: CounterState, site_id: Option<SiteId>) -> Result<Self, Error> {
         let site_id = match site_id {
