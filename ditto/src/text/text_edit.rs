@@ -187,7 +187,6 @@ mod tests {
     fn merge_wrapping_replacement() {
         let mut edit = new(3, 2, "helloworld!");
         let merged_edit = edit.merge_or_replace(1, 20, "x∆∅");
-        println!("{:?}", merged_edit);
         assert!(merged_edit == new(1, 20, "x∆∅"));
     }
 

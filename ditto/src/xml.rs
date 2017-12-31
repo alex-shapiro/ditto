@@ -668,7 +668,6 @@ mod tests {
 
         let mut crdt = Xml::from_str(string1).unwrap();
         let op = crdt.insert_attribute("/", "class", "zebra").unwrap();
-        println!("{}", crdt.local_value().to_string().unwrap());
         assert!(crdt.local_value().to_string().unwrap() == string2);
         assert_matches!(op.op, RemoteOpInner::Attribute(map::RemoteOp::Insert{..}));
     }
@@ -680,7 +679,6 @@ mod tests {
 
         let mut crdt = Xml::from_str(string1).unwrap();
         let op = crdt.remove_attribute("/", "class").unwrap();
-        println!("{}", crdt.local_value().to_string().unwrap());
         assert!(crdt.local_value().to_string().unwrap() == string2);
         assert_matches!(op.op, RemoteOpInner::Attribute(map::RemoteOp::Remove{..}));
     }

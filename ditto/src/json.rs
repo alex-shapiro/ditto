@@ -855,17 +855,8 @@ mod tests {
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let _ = crdt2.insert("/baz", json!({"abc":[true, false, 84.0]}));
         let _ = crdt2.insert("/baz/abc/1", 61.0);
-
-        println!("\nAAA\n{:#?}", crdt2);
-
         let _ = crdt2.replace_text("/bar", 5, 0, " everyone!");
-
-        println!("\nBBB\n{:#?}", crdt2);
-
         let _ = crdt2.replace_text("/bar", 0, 1, "");
-
-        println!("\nCCC\n{:#?}", crdt2);
-
         let _ = crdt2.remove("/baz/abc/2");
         let _ = crdt2.remove("/foo");
 
@@ -884,9 +875,6 @@ mod tests {
         }
         {
             let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());
-
-            println!("{:#?}", text);
-
             let mut text_elements = text.0.iter();
             assert!(text_elements.next().unwrap().uid.site == 11);
             assert!(text_elements.next().unwrap().uid.site == 11);
