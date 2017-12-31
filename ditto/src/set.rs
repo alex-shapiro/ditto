@@ -20,8 +20,6 @@ impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 /// must also implement the `Clone`, `Serialize`, and `Deserialize`
 /// traits.
 ///
-/// Set's performance characteristics are similar to HashSet:
-///
 /// Internally, Set is a variant of OR-Set. It allows op-based replication
 /// via [`execute_op`](#method.execute_op) and state-based replication
 /// via [`merge`](#method.merge). Both replication methods are idempotent
@@ -142,9 +140,8 @@ impl<T: SetElement> Inner<T> {
     }
 
     fn execute_op(&mut self, op: Op<T>) -> Option<LocalOp<T>> {
-        let replicas_result = self.0.remove(&op.value);
-        let exists_before = replicas_result.is_some();
-        let mut replicas = replicas_result.unwrap_or(vec![]);
+        let mut replicas  = self.0.remove(&op.value).unwrap_or(vec![]);
+        let exists_before = !replicas.is_empty();
         replicas.retain(|r| !op.removed_replicas.contains(r));
 
         if let Some(new_replica) = op.inserted_replica {
@@ -185,7 +182,9 @@ impl<T: SetElement> Inner<T> {
         // insert any element that is in other but not yet inserted into self
         for (value, mut replicas) in other_elements.to_owned() {
             replicas.retain(|r| !summary.contains(r));
-            self.0.insert(value, replicas);
+            if !replicas.is_empty() {
+                self.0.insert(value, replicas);
+            }
         }
     }
 
@@ -199,7 +198,7 @@ impl<T: SetElement> Inner<T> {
 
     fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
         for replicas in self.0.values() {
-            for replica in replicas.iter() {
+            for replica in &replicas {
                 if replica.site == 0 {
                     return Err(Error::InvalidSiteId);
                 }
@@ -224,6 +223,7 @@ impl<T: SetElement> Op<T> {
     /// Returns a reference to the `Op`'s removed replicas.
     pub fn removed_replicas(&self) -> &[Replica] { &self.removed_replicas }
 
+    /// Assigns a site id to any unassigned inserts and removes
     pub fn add_site_id(&mut self, site_id: SiteId) {
         if let Some(ref mut r) = self.inserted_replica {
             if r.site == 0 { r.site = site_id };
