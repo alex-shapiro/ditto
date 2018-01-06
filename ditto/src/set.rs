@@ -22,8 +22,8 @@ impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 ///
 /// Internally, Set is a variant of OR-Set. It allows op-based replication
 /// via [`execute_op`](#method.execute_op) and state-based replication
-/// via [`merge`](#method.merge). Both replication methods are idempotent
-/// and can handle out-of-order delivery.
+/// via [`merge`](#method.merge). State-based replication allows
+/// out-of-order delivery but op-based replication does not.
 ///
 /// `Set` has a spatial complexity of *O(N + S)*, where
 /// *N* is the number of values concurrently held in the `Set` and
