@@ -25,21 +25,22 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 /// must also implement the `Clone`, `Serialize`, and `Deserialize`
 /// traits.
 ///
+/// Internally, Map is based on OR-Set. It allows op-based replication
+/// via [`execute_op`](#method.execute_op) and state-based replication
+/// via [`merge`](#method.merge). State-based replication allows
+/// out-of-order delivery but op-based replication does not.
+///
 /// Map's performance characteristics are similar to HashMap:
 ///
-///   * [`insert`](#method.insert) is approximately *O(1)*
-///   * [`remove`](#method.remove) is approximately *O(1)*
-///   * [`contains_key`](#method.contains_key) is *O(1)*
-///   * [`get`](#method.get) is approximately *O(1)*
-///   * [`execute_op`](#method.execute_op) is approximately *O(1)*
-///
-/// Internally, Map is based on an OR-Set. It can be used as a CmRDT or a CvRDT,
-/// providing eventual consistency via both op execution and state merges.
-/// This flexibility comes with tradeoffs:
-///
-///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
-///   * Unlike a pure CvRDT, it requires each site to replicate its ops
-///     in their order of generation.
+///   * [`insert`](#method.insert): *O(1)*
+///   * [`remove`](#method.remove): *O(1)*
+///   * [`contains_key`](#method.contains_key): *O(1)*
+///   * [`get`](#method.get): *O(1)*
+///   * [`execute_op`](#method.execute_op): *O(1)*
+///   * [`merge`](#method.merge): *O(N1 + N2 + S1 + S2)*, where *N1* and
+///     *N2* are the number of values in the maps being merged,
+///     and *S1* and *S2* are the number of sites that have edited maps
+///     being merged.
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
