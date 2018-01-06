@@ -134,7 +134,7 @@ fn test_execute_op_remove() {
 #[test]
 fn test_execute_op_remove_does_not_exist() {
     let mut map1: Map<i32, u64> = Map::new();
-    let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
+    let mut map2: Map<i32, u64> = Map::from_state(Map::new().state(), Some(2)).unwrap();
     let _  = map1.insert(123, 2222);
     let op = map1.remove(&123).unwrap().unwrap();
 
@@ -157,84 +157,77 @@ fn test_execute_op_remove_some_replicas_remain() {
     assert_eq!(map3.execute_op(op3), LocalOp::Insert{key: 123, value: 1111});
 }
 
-// #[test]
-// fn test_execute_op_remove_dupe() {
-//     let mut map1: Map<i32, u64> = Map::new();
-//     let mut map2: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(2)).unwrap();
-//     let op1 = map1.insert(123, 2222).unwrap();
-//     let op2 = map1.remove(&123).unwrap();
+#[test]
+fn test_execute_op_remove_dupe() {
+    let mut map1: Map<i32, u64> = Map::new();
+    let mut map2: Map<i32, u64> = Map::from_state(Map::new().state(), Some(2)).unwrap();
+    let op1 = map1.insert(123, 2222).unwrap();
+    let op2 = map1.remove(&123).unwrap().unwrap();
 
-//     let _ = map2.execute_op(&op1).unwrap();
-//     let _ = map2.execute_op(&op2).unwrap();
-//     assert!(map2.execute_op(&op2).is_none());
-// }
+    assert_eq!(map2.execute_op(op1), LocalOp::Insert{key: 123, value: 2222});
+    assert_eq!(map2.execute_op(op2.clone()), LocalOp::Remove{key: 123});
+    assert_eq!(map2.execute_op(op2), LocalOp::Remove{key: 123});
+}
 
-// #[test]
-// fn test_merge() {
-//     let mut map1: Map<u32, bool> = Map::new();
-//     let _ = map1.insert(1, true);
-//     let _ = map1.insert(2, true);
-//     let _ = map1.remove(&2);
-//     let _ = map1.insert(3, true);
+#[test]
+fn test_merge() {
+    let mut map1: Map<u32, bool> = Map::new();
+    let _ = map1.insert(1, true);
+    let _ = map1.insert(2, true);
+    let _ = map1.remove(&2);
+    let _ = map1.insert(3, true);
 
-//     let mut map2 = Map::from_state(map1.clone_state(), Some(2)).unwrap();
-//     let _ = map2.remove(&3);
-//     let _ = map2.insert(4, true);
-//     let _ = map2.remove(&4);
-//     let _ = map2.insert(5, true);
-//     let _ = map1.insert(4, true);
-//     let _ = map1.insert(5, true);
+    let mut map2 = Map::from_state(map1.state(), Some(2)).unwrap();
+    let _ = map2.remove(&3);
+    let _ = map2.insert(4, true);
+    let _ = map2.remove(&4);
+    let _ = map2.insert(5, true);
+    let _ = map1.insert(4, true);
+    let _ = map1.insert(5, true);
 
-//     let map1_state = map1.clone_state();
-//     map1.merge(map2.clone_state());
-//     map2.merge(map1_state);
+    let map1_state = map1.clone_state();
+    map1.merge(map2.clone_state()).unwrap();
+    map2.merge(map1_state).unwrap();
 
-//     assert!(map1.value == map2.value);
-//     assert!(map1.tombstones == map2.tombstones);
+    assert_eq!(map1.state(), map2.state());
+    assert_eq!(map1.get(&1), Some(&true));
+    assert_eq!(map1.get(&2), None);
+    assert_eq!(map1.get(&3), None);
+    assert_eq!(map1.get(&4), Some(&true));
+    assert_eq!(map1.get(&5), Some(&true));
+    assert!(map1.summary().contains_pair(1, 4));
+    assert!(map1.summary().contains_pair(2, 2));
+}
 
-//     assert!(map1.contains_key(&1));
-//     assert!(!map1.contains_key(&2));
-//     assert!(!map1.contains_key(&3));
-//     assert!(map1.contains_key(&4));
-//     assert!(map1.contains_key(&5));
+#[test]
+fn test_add_site_id() {
+    let mut map: Map<i32, u64> = Map::from_state(Map::new().state(), None).unwrap();
+    let _ = map.insert(10, 56);
+    let _ = map.insert(20, 57);
+    let _ = map.remove(&10);
+    let ops = map.add_site_id(5).unwrap();
 
-//     assert!(map1.value.0[&1][0].0 == Replica{site: 1, counter: 0});
-//     assert!(map1.value.0[&4][0].0 == Replica{site: 1, counter: 4});
-//     assert!(map1.value.0[&5][0].0 == Replica{site: 1, counter: 5});
-//     assert!(map1.value.0[&5][1].0 == Replica{site: 2, counter: 3});
+    assert_eq!(ops[0].key(), &10);
+    assert_eq!(ops[0].inserted_element().unwrap().value, 56);
+    assert_eq!(ops[0].inserted_element().unwrap().replica, Replica::new(5,1));
 
-//     assert!(map1.tombstones.contains_pair(1, 3));
-//     assert!(map1.tombstones.contains_pair(2, 1));
-// }
+    assert_eq!(ops[1].key(), &20);
+    assert_eq!(ops[1].inserted_element().unwrap().value, 57);
+    assert_eq!(ops[1].inserted_element().unwrap().replica, Replica::new(5,2));
 
-// #[test]
-// fn test_add_site() {
-//     let mut map: Map<i32, u64> = Map::from_state(Map::new().clone_state(), None).unwrap();
-//     let _ = map.insert(10, 56);
-//     let _ = map.insert(20, 57);
-//     let _ = map.remove(&10);
-//     let mut ops = map.add_site(5).unwrap().into_iter();
+    assert_eq!(ops[2].key(), &10);
+    assert_eq!(ops[2].inserted_element(), None);
+    assert_eq!(ops[2].removed_replicas(), [Replica::new(5,1)]);
+}
 
-//     let op1 = ops.next().unwrap();
-//     let op2 = ops.next().unwrap();
-//     let op3 = ops.next().unwrap();
-//     let (key1, elt1, removed1) = insert_fields(op1);
-//     let (key2, elt2, removed2) = insert_fields(op2);
-//     let (key3, removed3) = remove_fields(op3);
-
-//     assert!(key1 == 10 && elt1.0 == Replica::new(5,0) && elt1.1 == 56 && removed1.is_empty());
-//     assert!(key2 == 20 && elt2.0 == Replica::new(5,1) && elt2.1 == 57 && removed2.is_empty());
-//     assert!(key3 == 10 && removed3.len() == 1 && removed3[0] == Replica::new(5,0));
-// }
-
-// #[test]
-// fn test_add_site_already_has_site() {
-//     let mut map: Map<i32, u64> = Map::from_state(Map::new().clone_state(), Some(123)).unwrap();
-//     let _ = map.insert(10, 56).unwrap();
-//     let _ = map.insert(20, 57).unwrap();
-//     let _ = map.remove(&10).unwrap();
-//     assert!(map.add_site(3).unwrap_err() == Error::AlreadyHasSite);
-// }
+#[test]
+fn test_add_site_id_already_has_site_id() {
+    let mut map: Map<i32, u64> = Map::from_state(Map::new().state(), Some(123)).unwrap();
+    let _ = map.insert(10, 56).unwrap();
+    let _ = map.insert(20, 57).unwrap();
+    let _ = map.remove(&10).unwrap().unwrap();
+    assert_eq!(map.add_site_id(3), Err(Error::AlreadyHasSiteId));
+}
 
 #[test]
 fn test_serialize() {
