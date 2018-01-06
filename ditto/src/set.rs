@@ -113,7 +113,7 @@ impl<T: SetElement> Set<T> {
         SetState,
         Inner<T>,
         Op<T>,
-        LocalOp<T>,
+        Option<LocalOp<T>>,
         HashSet<T>,
     }
 }
@@ -198,7 +198,7 @@ impl<T: SetElement> Inner<T> {
 
     fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
         for replicas in self.0.values() {
-            for replica in &replicas {
+            for replica in replicas {
                 if replica.site == 0 {
                     return Err(Error::InvalidSiteId);
                 }
