@@ -1,351 +1,262 @@
 //! A CRDT that stores a replaceable value
 
-use {Error, Replica, Tombstones};
-use traits::*;
+use Error;
+use replica::{Replica, SiteId, Counter, Summary};
 use std::borrow::Cow;
+use std::collections::BTreeMap;
 use std::mem;
 
 /// A Register is a replaceable value that can be updated
 /// via the [`update`](#method.update) function.
 ///
-/// Internally, Register is both a CmRDT and a CvRDT - it
-/// can provide eventual consistency via both operations and
-/// state merges. This flexibility comes with a set of tradeoffs:
+/// Register allows op-based replication via [`execute_op`](#method.execute_op)
+/// and state-based replication via [`merge`](#method.merge).
+/// Both replication methods are idempotent and can handle
+/// out-of-order delivery.
 ///
-/// * It is larger than a pure CmRDT, which does not require tombstones,
-///   but it can perform stateful merges, which a pure CmRDT cannot do.
+/// `Register` has a spatial complexity of *O(N + S)*, where
+/// *N* is the number of values concurrently held in the `Register` and
+/// *S* is the number of sites that have updated the `Register`.
+/// It has the following performance characteristics:
 ///
-/// * Unlike a pure CvRDT, it requires each site to replicate its ops
-///   in their order of generation. In some cases replicating a
-///   Register via an op requires less data than replicating a CvRDT,
-///   but in practice this is only true if the Register is being used
-///   in a highly-concurrent, high-latency environment.
-///
-/// Register is offered here for the sake of library completeness. It
-/// is probably not as ideal as a pure CvRDT, but differences are minimal.
-/// If you need a pure CvRDT register, let the maintainers know and
-/// they will work on making improvements.
+///   * [`update`](#method.update): *O(1)*
+///   * [`execute_op`](#method.execute_op): *O(N)*, where *N* is
+///     the number of values concurrently held in the `Register`.
+///   * [`merge`](#method.merge): *O(N + M)*, where *N* and *M* are
+///     the number of values concurrently held in the `Register` being
+///     merged into and the `RegisterState` being merged, respectively.
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Register<T: Clone> {
-    value: RegisterValue<T>,
-    replica: Replica,
-    tombstones: Tombstones,
-    awaiting_site: Vec<RemoteOp<T>>,
+    elements:  BTreeMap<SiteId, SiteValue<T>>,
+    summary:   Summary,
+    site_id:   SiteId,
+    cached_op: Option<Op<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct RegisterState<'a, T: Clone + 'a> {
-    value: Cow<'a, RegisterValue<T>>,
-    tombstones: Cow<'a, Tombstones>,
+    elements: Cow<'a, BTreeMap<SiteId, SiteValue<T>>>,
+    summary:  Cow<'a, Summary>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RegisterValue<T: Clone>(Vec<Element<T>>);
+pub struct Op<T: Clone> {
+    site_id: SiteId,
+    counter: Counter,
+    value: T,
+    removed_replicas: Vec<Replica>,
+}
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RemoteOp<T: Clone> {
-    remove: Vec<Replica>,
-    insert: Element<T>,
-}
-
-#[derive(Debug, PartialEq, Serialize, Deserialize)]
-pub struct LocalOp<T> {
-    pub new_value: T,
-}
-
-#[derive(Debug, Clone, Serialize, Deserialize)]
-struct Element<T: Clone>(Replica, T);
-
-impl<T: Clone> PartialEq for Element<T> {
-    fn eq(&self, other: &Element<T>) -> bool {
-        self.0 == other.0
-    }
+struct SiteValue<T: Clone> {
+    value:   T,
+    counter: Counter,
 }
 
 impl<T: Clone> Register<T> {
 
-    /// Constructs and returns a new Register with site 1.
+    /// Constructs and returns a new `Register` with site id 1.
     pub fn new(value: T) -> Self {
-        let mut replica = Replica::new(1, 0);
-        let value = RegisterValue::new(value, &replica);
-        let tombstones = Tombstones::new();
-        replica.counter += 1;
-        Register{value, replica, tombstones, awaiting_site: vec![]}
+        let site_id = 1;
+        let counter = 1;
+        let mut elements = BTreeMap::new();
+        let mut summary = Summary::new();
+        let _ = elements.insert(site_id, SiteValue{value, counter});
+        summary.insert_pair(site_id, counter);
+        Register{elements, summary, site_id, cached_op: None}
     }
 
-    /// Returns a reference to the register's value.
+    /// Returns a reference to the `Register`'s value.
     pub fn get(&self) -> &T {
-        self.value.get()
+        &self.elements.values().next().as_ref().unwrap().value
     }
 
-    /// Updates the register's value and returns a remote op
-    /// that can be sent to remote sites for replication.
-    /// If the register does not have a site allocated, it
-    /// caches the op and returns an `AwaitingSite` error.
-    pub fn update(&mut self, new_value: T) -> Result<RemoteOp<T>, Error> {
-        let op = self.value.update(new_value, &self.replica);
-        self.after_op(op)
-    }
+    /// Updates the `Register`'s value and returns an op
+    /// that can be replciated to other sites.
+    /// If the register does not have a site id allocated, it
+    /// caches the op and returns an `AwaitingSiteId` error.
+    pub fn update(&mut self, value: T) -> Result<Op<T>, Error> {
+        let counter = self.summary.increment(self.site_id);
 
-    crdt_impl!(Register, RegisterState, RegisterState<T>, RegisterState<'static, T>, RegisterValue<T>);
-}
+        let mut new_elements = BTreeMap::new();
+        new_elements.insert(self.site_id, SiteValue{value: value.clone(), counter});
 
-impl<T: Clone> RegisterValue<T> {
-
-    /// Returns a new register value.
-    pub fn new(value: T, replica: &Replica) -> Self {
-        let element = Element(replica.clone(), value);
-        RegisterValue(vec![element])
-    }
-
-    /// Returns a reference to the register's value.
-    pub fn get(&self) -> &T {
-        &self.0[0].1
-    }
-
-    /// Updates the register's value and returns a remote op
-    /// that can be sent to remote sites for replication.
-    pub fn update(&mut self, new_value: T, replica: &Replica) -> RemoteOp<T> {
-        let insert = Element(replica.clone(), new_value);
-        let removed_elements = mem::replace(&mut self.0, vec![insert.clone()]);
-        let remove = removed_elements.into_iter().map(|e| e.0).collect();
-        RemoteOp{ remove, insert }
-    }
-
-    /// Executes a remote op and returns the equivalent local op.
-    /// If the op's insert does not become the register's locally-visible
-    /// value, returns None.
-    pub fn execute_remote(&mut self, op: &RemoteOp<T>) -> Option<LocalOp<T>> {
-        for replica in &op.remove {
-            if let Ok(index) = self.0.binary_search_by(|e| e.0.cmp(&replica)) {
-                let _ = self.0.remove(index);
-            }
-        }
-
-        if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)) {
-            self.0.insert(index, op.insert.clone());
-            if index == 0 {
-                let new_value = self.0[0].1.clone();
-                return Some(LocalOp{new_value})
-            }
-        }
-
-        None
-    }
-}
-
-impl<T: Clone> CrdtValue for RegisterValue<T> {
-    type LocalValue = T;
-    type RemoteOp = RemoteOp<T>;
-    type LocalOp = LocalOp<T>;
-
-    fn local_value(&self) -> T {
-        self.0[0].1.clone()
-    }
-
-    fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
-        let index = some!(self.0.binary_search_by(|e| e.0.cmp(&op.insert.0)).ok());
-        self.0[index].0.site = site;
-    }
-
-    fn add_site_to_all(&mut self, site: u32) {
-        for element in &mut self.0 {
-            element.0.site = site;
-        }
-    }
-
-    fn validate_site(&self, site: u32) -> Result<(), Error> {
-        for element in &self.0 {
-            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
-        }
-        Ok(())
-    }
-
-    fn merge(&mut self, other: RegisterValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.0 =
-            mem::replace(&mut self.0, vec![])
+        let removed_replicas = mem::replace(&mut self.elements, new_elements)
             .into_iter()
-            .filter(|e| other.0.contains(e) || !other_tombstones.contains(&e.0))
+            .filter_map(|(site_id, site_value)|
+                match site_id == self.site_id {
+                    true => None,
+                    false => Some(Replica::new(site_id, site_value.counter)),
+                })
             .collect();
 
-        for element in other.0 {
-            if let Err(index) = self.0.binary_search_by(|e| e.0.cmp(&element.0)) {
-                if !self_tombstones.contains(&element.0) {
-                    self.0.insert(index, element);
+        let op = Op{site_id: self.site_id, value, counter, removed_replicas};
+
+        if self.site_id == 0 {
+            self.cached_op = Some(op);
+            Err(Error::AwaitingSiteId)
+        } else {
+            Ok(op)
+        }
+    }
+
+    /// Executes an Op and returns a reference to the new value if
+    /// the value has changed. If the op has already been executed
+    /// or superceded, nothing is done.
+    pub fn execute_op(&mut self, op: Op<T>) -> &T {
+        for Replica{site, counter} in op.removed_replicas {
+            // remove any elements that were removed by the op.
+            if let Some(site_value) = self.elements.remove(&site) {
+                if site_value.counter > counter {
+                    self.elements.insert(site, site_value);
                 }
             }
         }
-    }
-}
 
-impl<T: Clone> CrdtRemoteOp for RemoteOp<T> {
-    fn deleted_replicas(&self) -> Vec<Replica> {
-        self.remove.clone()
+        // insert the element that is inserted by the op
+        self.summary.insert_pair(op.site_id, op.counter);
+        let sv_other = SiteValue{value: op.value, counter: op.counter};
+        if let Some(sv_self) = self.elements.insert(op.site_id, sv_other) {
+            if sv_self.counter > op.counter {
+                self.elements.insert(op.site_id, sv_self);
+            }
+        }
+
+        self.get()
     }
 
-    fn add_site(&mut self, site: u32) {
-        self.insert.0.site = site;
-        for replica in &mut self.remove {
-            if replica.site == 0 { replica.site = site };
+    /// Merges remote state into the Register
+    pub fn merge(&mut self, other: RegisterState<T>) {
+        let mut other_elements = other.elements.into_owned();
+        let self_elements = mem::replace(&mut self.elements, BTreeMap::new());
+
+        // retain any element that is either:
+        // - in both self and other
+        // - in self and not yet inserted into other
+        // - in other and not yet inserted into self
+        for (site_id, sv_self) in self_elements {
+            if let Some(sv_other) = other_elements.remove(&site_id) {
+                let sv = if sv_self.counter > sv_other.counter { sv_self } else { sv_other };
+                self.summary.insert_pair(site_id, sv.counter);
+                self.elements.insert(site_id, sv);
+            } else if !other.summary.contains_pair(site_id, sv_self.counter) {
+                self.summary.insert_pair(site_id, sv_self.counter);
+                self.elements.insert(site_id, sv_self);
+            }
+        }
+
+        // insert any element that has been inserted into other but not self
+        for (site_id, sv) in other_elements {
+            if !self.summary.contains_pair(site_id, sv.counter) {
+                self.summary.insert_pair(site_id, sv.counter);
+                self.elements.insert(site_id, sv);
+            }
         }
     }
 
-    fn validate_site(&self, site: u32) -> Result<(), Error> {
-        try_assert!(self.insert.0.site == site, Error::InvalidRemoteOp);
-        Ok(())
+    /// Assigns a site id and returns a cached op if it exists.
+    pub fn add_site_id(&mut self, site_id: SiteId) -> Result<Option<Op<T>>, Error> {
+        if self.site_id != 0 {
+            return Err(Error::AlreadyHasSiteId)
+        }
+
+        self.site_id = site_id;
+        self.summary.add_site_id(site_id);
+
+        if let Some(site_value) = self.elements.remove(&0) {
+            self.elements.insert(site_id, site_value);
+        }
+
+        if let Some(mut op) = self.cached_op.take() {
+            op.add_site_id(site_id);
+            Ok(Some(op))
+        } else {
+            Ok(None)
+        }
+    }
+
+    /// Returns the `Register`'s site id.
+    pub fn site_id(&self) -> SiteId {
+        self.site_id
+    }
+
+    /// Returns a reference to the `Register`'s summary.
+    pub fn summary(&self) -> &Summary {
+        &self.summary
+    }
+
+    /// Returns a borrowed RegisterState.
+    pub fn state(&self) -> RegisterState<T> {
+        RegisterState{
+            elements: Cow::Borrowed(&self.elements),
+            summary: Cow::Borrowed(&self.summary),
+        }
+    }
+
+    /// Returns an owned RegisterState of cloned values.
+    pub fn clone_state(&self) -> RegisterState<'static, T> {
+        RegisterState {
+            elements: Cow::Owned(self.elements.clone()),
+            summary: Cow::Owned(self.summary.clone()),
+        }
+    }
+
+    /// Consumes the Register and returns its RegisterState
+    pub fn into_state(self) -> RegisterState<'static, T> {
+        RegisterState {
+            elements: Cow::Owned(self.elements),
+            summary: Cow::Owned(self.summary),
+        }
+    }
+
+    /// Constructs a new Register from a RegisterState and an
+    /// optional site id. If the site id is given, it must be nonzero.
+    pub fn from_state(state: RegisterState<T>, site_id: Option<SiteId>) -> Result<Self, Error> {
+        let site_id = match site_id {
+            None => 0,
+            Some(0) => return Err(Error::InvalidSiteId),
+            Some(s) => s,
+        };
+
+        Ok(Register{
+            elements: state.elements.into_owned(),
+            summary: state.summary.into_owned(),
+            site_id: site_id,
+            cached_op: None,
+        })
+    }
+
+    /// Validates that an op comes from a specific site id,
+    /// then executes the op.
+    pub fn validate_and_execute_op(&mut self, op: Op<T>, site_id: SiteId) -> Result<&T, Error> {
+        op.validate(site_id)?;
+        Ok(self.execute_op(op))
     }
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use serde_json;
-    use rmp_serde;
+impl<T: Clone> Op<T> {
+    /// Returns the `Op`'s site_id
+    pub fn site_id(&self) -> SiteId { self.site_id }
 
-    #[test]
-    fn test_new() {
-        let register: Register<i64> = Register::new(8142);
-        assert!(register.get() == &8142);
-        assert!(register.replica.counter == 1);
-        assert!(register.value.0.len() == 1);
-        assert!(register.value.0[0].0 == Replica{site: 1, counter: 0});
-        assert!(register.value.0[0].1.clone() == 8142);
+    /// Returns the `Op`'s counter
+    pub fn counter(&self) -> Counter { self.counter }
+
+    /// Returns a reference to the `Op`'s value
+    pub fn value(&self) -> &T { &self.value }
+
+    /// Returns a reference to the `Op`'s removed replicas
+    pub fn removed_replicas(&self) -> &[Replica] {
+        &self.removed_replicas
     }
 
-    #[test]
-    fn test_update() {
-        let mut register: Register<i64> = Register::new(8142);
-        let op = register.update(42).unwrap();
-
-        assert!(register.get() == &42);
-        assert!(register.replica.counter == 2);
-        assert!(op.remove.len() == 1);
-        assert!(op.remove[0] == Replica{site: 1, counter: 0});
-        assert!(op.insert.0 == Replica{site: 1, counter: 1});
-        assert!(op.insert.1.clone() == 42);
+    /// Assigns a new site id to the `Op`
+    pub fn add_site_id(&mut self, site_id: SiteId) {
+        self.site_id = site_id;
     }
 
-    #[test]
-    fn test_execute_remote() {
-        let mut register1: Register<&'static str> = Register::new("a");
-        let mut register2: Register<&'static str> = Register::new("a");
-
-        let remote_op = register1.update("b").unwrap();
-        let local_op = register2.execute_remote(&remote_op).unwrap();
-
-        assert!(register2.get() == &"b");
-        assert!(register2.value.0.len() == 1);
-        assert!(local_op.new_value == "b");
-    }
-
-    #[test]
-    fn test_execute_remote_concurrent() {
-        let mut register1: Register<&'static str> = Register::new("a");
-        let mut register2: Register<&'static str> = Register::from_state(register1.clone_state(), Some(2)).unwrap();
-        let mut register3: Register<&'static str> = Register::from_state(register1.clone_state(), Some(3)).unwrap();
-
-        let remote_op1 = register1.update("b").unwrap();
-        let remote_op2 = register2.update("c").unwrap();
-        let local_op = register3.execute_remote(&remote_op1).unwrap();
-
-        assert!(register3.execute_remote(&remote_op2).is_none());
-        assert!(register3.get() == &"b");
-        assert!(register3.value.0.len() == 2);
-        assert!(local_op.new_value == "b");
-    }
-
-    #[test]
-    fn test_execute_remote_dupe() {
-        let mut register1: Register<&'static str> = Register::new("a");
-        let mut register2 = Register::from_state(register1.clone_state(), Some(2)).unwrap();
-
-        let remote_op = register1.update("b").unwrap();
-        let local_op = register2.execute_remote(&remote_op).unwrap();
-
-        assert!(register2.execute_remote(&remote_op).is_none());
-        assert!(register2.get() == &"b");
-        assert!(register2.value.0.len() == 1);
-        assert!(local_op.new_value == "b");
-    }
-
-    #[test]
-    fn test_merge() {
-        let mut register1 = Register::new(123);
-        let mut register2 = Register::from_state(register1.clone_state(), Some(2)).unwrap();
-        let _ = register1.update(456);
-        let _ = register2.update(789);
-        register1.merge(register2.clone_state());
-
-        assert!(register1.value.0.len() == 2);
-        assert!(register1.value.0[0].1 == 456);
-        assert!(register1.value.0[1].1 == 789);
-    }
-
-    #[test]
-    fn test_add_site() {
-        let mut register1 = Register::new(123);
-        let mut register2 = Register::from_state(register1.clone_state(), None).unwrap();
-        assert!(register2.update(456).unwrap_err() == Error::AwaitingSite);
-
-        let remote_ops = register2.add_site(2).unwrap();
-        let _ = register1.execute_remote(&remote_ops[0]);
-        assert!(register1.get() == &456);
-        assert!(register2.get() == &456);
-    }
-
-    #[test]
-    fn test_add_site_already_has_site() {
-        let mut register = Register::from_state(Register::new(123).clone_state(), Some(42)).unwrap();
-        assert!(register.add_site(44).unwrap_err() == Error::AlreadyHasSite);
-    }
-
-    #[test]
-    fn test_serialize() {
-        let register1 = Register::new("hello".to_owned());
-        let s_json = serde_json::to_string(&register1).unwrap();
-        let s_msgpack = rmp_serde::to_vec(&register1).unwrap();
-        let register2: Register<String> = serde_json::from_str(&s_json).unwrap();
-        let register3: Register<String> = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-        assert!(register1 == register2);
-        assert!(register1 == register3);
-    }
-
-    #[test]
-    fn test_serialize_value() {
-        let register1 = Register::new("hello".to_owned());
-        let s_json = serde_json::to_string(register1.value()).unwrap();
-        let s_msgpack = rmp_serde::to_vec(register1.value()).unwrap();
-        let value2: RegisterValue<String> = serde_json::from_str(&s_json).unwrap();
-        let value3: RegisterValue<String> = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-        assert!(*register1.value() == value2);
-        assert!(*register1.value() == value3);
-    }
-
-    #[test]
-    fn test_serialize_remote_op() {
-        let mut register = Register::new(123);
-        let remote_op1 = register.update(456).unwrap();
-        let s_json = serde_json::to_string(&remote_op1).unwrap();
-        let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
-        let remote_op2: RemoteOp<u32> = serde_json::from_str(&s_json).unwrap();
-        let remote_op3: RemoteOp<u32> = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-        assert!(remote_op1 == remote_op2);
-        assert!(remote_op1 == remote_op3);
-    }
-
-    #[test]
-    fn test_serialize_local_op() {
-        let local_op1 = LocalOp{new_value: 456};
-        let s_json = serde_json::to_string(&local_op1).unwrap();
-        let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
-        let local_op2: LocalOp<u32> = serde_json::from_str(&s_json).unwrap();
-        let local_op3: LocalOp<u32> = rmp_serde::from_slice(&s_msgpack).unwrap();
-
-        assert!(local_op1 == local_op2);
-        assert!(local_op1 == local_op3);
+    /// Validates that the Op's site id is equal to the given site id.
+    pub fn validate(&self, site_id: SiteId) -> Result<(), Error> {
+        if self.site_id == site_id { Ok(()) } else { Err(Error::InvalidOp) }
     }
 }
