@@ -210,6 +210,7 @@ pub mod counter;
 pub mod json;
 pub mod list;
 pub mod map;
+pub mod map2;
 pub mod register;
 pub mod set;
 pub mod text;

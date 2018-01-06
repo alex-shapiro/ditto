@@ -1,3 +1,6 @@
+use Error;
+use replica::{Summary, SiteId};
+
 macro_rules! crdt_impl2 {
     ($self_ident:ident,
      $state:ty,
@@ -73,17 +76,16 @@ macro_rules! crdt_impl2 {
         /// Executes an op and returns the equivalent local op.
         /// This function assumes that the op always inserts values
         /// from the correct site. For untrusted ops, used `validate_and_execute_op`.
-        pub fn execute_op(&mut self, op: $op) -> Option<$local_op> {
+        pub fn execute_op(&mut self, op: $op) -> $local_op {
             for replica in op.inserted_replicas() {
                 self.summary.insert(&replica);
             }
-
             self.inner.execute_op(op)
         }
 
         /// Validates that an op only inserts elements from a given site id,
         /// then executes the op and returns the equivalent local op.
-        pub fn validate_and_execute_op(&mut self, op: $op, site_id: SiteId) -> Result<Option<$local_op>, Error> {
+        pub fn validate_and_execute_op(&mut self, op: $op, site_id: SiteId) -> Result<$local_op, Error> {
             op.validate(site_id)?;
             Ok(self.execute_op(op))
         }
@@ -123,4 +125,20 @@ macro_rules! crdt_impl2 {
             }
         }
     }
+}
+
+pub(crate) trait NestedInner {
+    fn nested_add_site_id(&mut self, site_id: SiteId);
+
+    fn nested_validate_all(&self, site_id: SiteId) -> Result<(), Error>;
+
+    fn nested_validate_no_unassigned_sites(&self) -> Result<(), Error>;
+
+    fn nested_merge(&mut self, other: Self, summary: &Summary, other_summary: &Summary);
+}
+
+pub(crate) trait NestedOp {
+    fn nested_add_site_id(&mut self, site_id: SiteId);
+
+    fn nested_validate(&self, site_id: SiteId) -> Result<(), Error>;
 }
