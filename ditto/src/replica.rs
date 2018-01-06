@@ -74,4 +74,8 @@ impl Tombstones {
         let counter = some!(self.0.remove(&0));
         self.0.insert(site_id, counter);
     }
+
+    pub fn validate_no_unassigned_sites(&self) -> Result<(), ::Error> {
+        if self.0.contains_key(&0) { Err(::Error::InvalidSiteId) } else { Ok(()) }
+    }
 }

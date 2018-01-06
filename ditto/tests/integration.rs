@@ -102,33 +102,24 @@ fn test_set() {
     let mut set2: Set<i32> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
     let mut set3: Set<i32> = Set::from_state(set1.clone_state(), Some(3)).unwrap();
 
-    let remote_op1 = set1.insert(10).unwrap();
-    let remote_op2 = set2.insert(10).unwrap();
-    let remote_op3 = set3.insert(20).unwrap();
-    let remote_op4 = set1.remove(&10).unwrap();
+    let op1 = set1.insert(10).unwrap();
+    let op2 = set2.insert(10).unwrap();
+    let op3 = set3.insert(20).unwrap();
+    let op4 = set1.remove(&10).unwrap().unwrap();
 
-    let local_op11 = set1.execute_remote(&via_json(&remote_op2)).unwrap();
-    let local_op12 = set1.execute_remote(&via_msgpack(&remote_op3)).unwrap();
-    assert!(local_op11 == set::LocalOp::Insert(10));
-    assert!(local_op12 == set::LocalOp::Insert(20));
+    assert_eq!(set1.execute_op(via_msgpack(&op2)), Some(set::LocalOp::Insert(10)));
+    assert_eq!(set1.execute_op(via_msgpack(&op3)), Some(set::LocalOp::Insert(20)));
 
-    let local_op21 = set2.execute_remote(&via_json(&remote_op1));
-    let local_op22 = set2.execute_remote(&via_json(&remote_op3)).unwrap();
-    let local_op23 = set2.execute_remote(&via_json(&remote_op4));
-    assert!(local_op21.is_none());
-    assert!(local_op22 == set::LocalOp::Insert(20));
-    assert!(local_op23.is_none());
-    assert!(set1.value() == set2.value());
+    assert_eq!(set2.execute_op(via_json(&op1)), None);
+    assert_eq!(set2.execute_op(via_json(&op3)), Some(set::LocalOp::Insert(20)));
+    assert_eq!(set2.execute_op(via_json(&op4)), None);
 
-    let local_op31 = set3.execute_remote(&via_msgpack(&remote_op1)).unwrap();
-    let local_op32 = set3.execute_remote(&via_msgpack(&remote_op4)).unwrap();
-    let local_op33 = set3.execute_remote(&via_msgpack(&remote_op2)).unwrap();
-    assert!(local_op31 == set::LocalOp::Insert(10));
-    assert!(local_op32 == set::LocalOp::Remove(10));
-    assert!(local_op33 == set::LocalOp::Insert(10));
+    assert_eq!(set3.execute_op(via_msgpack(&op1)), Some(set::LocalOp::Insert(10)));
+    assert_eq!(set3.execute_op(via_msgpack(&op4)), Some(set::LocalOp::Remove(10)));
+    assert_eq!(set3.execute_op(via_msgpack(&op2)), Some(set::LocalOp::Insert(10)));
 
-    assert!(set1.value() == set3.value());
-    assert!(set2.value() == set3.value());
+    assert_eq!(set1.state(), set2.state());
+    assert_eq!(set1.state(), set3.state());
 }
 
 #[test]

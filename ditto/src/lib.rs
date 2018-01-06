@@ -204,6 +204,7 @@ extern crate rmp_serde;
 
 #[macro_use] mod macros;
 #[macro_use] mod traits;
+#[macro_use] mod traits2;
 
 pub mod counter;
 pub mod json;
