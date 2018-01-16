@@ -216,6 +216,7 @@ pub mod map2;
 pub mod register;
 pub mod set;
 pub mod text;
+pub mod text2;
 pub mod xml;
 
 mod error;

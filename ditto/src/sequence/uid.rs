@@ -17,6 +17,7 @@
 //! size increases more slowly with the number of elements.
 
 use base64;
+use dot::Dot;
 use Error;
 use num::bigint::{BigUint, ToBigUint};
 use num::cast::ToPrimitive;
@@ -49,6 +50,10 @@ lazy_static! {
 impl UID {
     fn new(position: BigUint, site_id: u32, counter: u32) -> Self {
         UID{position, site_id, counter}
+    }
+
+    pub fn dot(&self) -> Dot {
+        Dot{site_id: self.site_id, counter: self.counter}
     }
 
     pub fn min() -> Self {
