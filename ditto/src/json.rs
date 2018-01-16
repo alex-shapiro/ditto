@@ -444,10 +444,10 @@ impl NestedCrdtRemoteOp for RemoteOp {
         for uid in self.pointer.iter_mut() {
             match *uid {
                 RemoteUID::Object(_, ref mut replica) => {
-                    if replica.site == 0 { replica.site = site; }
+                    if replica.site_id == 0 { replica.site_id = site; }
                 }
                 RemoteUID::Array(ref mut uid) => {
-                    if uid.site == 0 { uid.site = site; }
+                    if uid.site_id == 0 { uid.site_id = site; }
                 }
             }
         }
@@ -562,7 +562,7 @@ mod tests {
     fn test_from_str() {
         let crdt = Json::from_str(r#"{"foo":123, "bar":true, "baz": [1.0,2.0,3.0]}"#).unwrap();
         assert_matches!(crdt.value, JsonValue::Object(_));
-        assert!(crdt.replica.site == 1);
+        assert!(crdt.replica.site_id == 1);
         assert!(crdt.replica.counter == 1);
         assert!(crdt.awaiting_site.is_empty());
     }
@@ -710,7 +710,7 @@ mod tests {
         let uid = list_remove_op_uid(remote_op);
         assert!(nested_value(&mut crdt, "/things/1/2").is_none());
         assert!(crdt.replica.counter == 2);
-        assert!(uid.site == 1 && uid.counter == 0);
+        assert!(uid.site_id == 1 && uid.counter == 0);
     }
 
     #[test]
@@ -734,7 +734,7 @@ mod tests {
         let remote_op = crdt2.awaiting_site.pop().unwrap();
         let uid = list_remove_op_uid(remote_op);
         assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Number(2.0));
-        assert!(uid.site == 1 && uid.counter == 0);
+        assert!(uid.site_id == 1 && uid.counter == 0);
     }
 
     #[test]
@@ -863,52 +863,52 @@ mod tests {
         let mut remote_ops = crdt2.add_site(11).unwrap().into_iter();
 
         assert!(crdt2.local_value() == json!({"bar":"ello everyone!", "baz":{"abc":[true, 61.0, 84.0]}}));
-        assert!(crdt2.site() == 11);
+        assert!(crdt2.site_id() == 11);
 
         // check that the CRDT's elements have the correct sites
 
         {
             let map = as_map(&crdt2.value);
             assert!(map.0.get("foo").is_none());
-            assert!(map.0.get("bar").unwrap()[0].0.site == 1);
-            assert!(map.0.get("baz").unwrap()[0].0.site == 11);
+            assert!(map.0.get("bar").unwrap()[0].0.site_id == 1);
+            assert!(map.0.get("baz").unwrap()[0].0.site_id == 11);
         }
         {
             let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());
             let mut text_elements = text.0.iter();
-            assert!(text_elements.next().unwrap().uid.site == 11);
-            assert!(text_elements.next().unwrap().uid.site == 11);
+            assert!(text_elements.next().unwrap().uid.site_id == 11);
+            assert!(text_elements.next().unwrap().uid.site_id == 11);
         }
         {
             let list = as_list(nested_value(&mut crdt2, "/baz/abc").unwrap());
-            assert!((list.0.get_elt(0).unwrap().0).0.site == 11);
-            assert!((list.0.get_elt(1).unwrap().0).0.site == 11);
-            assert!((list.0.get_elt(2).unwrap().0).0.site == 11);
+            assert!((list.0.get_elt(0).unwrap().0).0.site_id == 11);
+            assert!((list.0.get_elt(1).unwrap().0).0.site_id == 11);
+            assert!((list.0.get_elt(2).unwrap().0).0.site_id == 11);
         }
 
         // check that the remote ops' elements have the correct sites
         let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
-        assert!(element.0.site == 11);
+        assert!(element.0.site_id == 11);
         assert!(element.1.validate_site(11).is_ok());
         assert!(replicas.is_empty());
 
         let element = list_insert_op_element(remote_ops.next().unwrap());
-        assert!(element.0.site == 11);
+        assert!(element.0.site_id == 11);
         assert!(element.1.validate_site(11).is_ok());
 
         let element = text_remote_op(remote_ops.next().unwrap());
         assert!(element.removes.is_empty());
-        assert!(element.inserts[0].uid.site == 11);
+        assert!(element.inserts[0].uid.site_id == 11);
 
         let element = text_remote_op(remote_ops.next().unwrap());
-        assert!(element.removes[0].site == 1);
-        assert!(element.inserts[0].uid.site == 11);
+        assert!(element.removes[0].site_id == 1);
+        assert!(element.inserts[0].uid.site_id == 11);
 
         let uid = list_remove_op_uid(remote_ops.next().unwrap());
-        assert!(uid.site == 11);
+        assert!(uid.site_id == 11);
 
         let (_, replicas) = map_remove_op_fields(remote_ops.next().unwrap());
-        assert!(replicas[0].site == 1);
+        assert!(replicas[0].site_id == 1);
     }
 
     #[test]
@@ -921,13 +921,13 @@ mod tests {
         }));
 
         let mut remote_ops = crdt2.add_site(22).unwrap().into_iter();
-        assert!(crdt2.site() == 22);
+        assert!(crdt2.site_id() == 22);
 
         let object = nested_value(&mut crdt2, "/foo").unwrap();
         assert!(object.validate_site(22).is_ok());
 
         let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
-        assert!(element.0.site == 22);
+        assert!(element.0.site_id == 22);
         assert!(element.1.validate_site(22).is_ok());
         assert!(replicas.is_empty());
     }

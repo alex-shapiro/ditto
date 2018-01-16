@@ -8,9 +8,9 @@ macro_rules! crdt_impl {
     ($tipe:ident, $state_ident:ident, $state:ty, $state_static:ty, $value:ty) => {
 
         #[doc(hidden)]
-        /// Returns the CRDT's site
-        pub fn site(&self) -> u32 {
-            self.replica.site
+        /// Returns the CRDT's site id
+        pub fn site_id(&self) -> u32 {
+            self.replica.site_id
         }
 
         #[doc(hidden)]
@@ -64,15 +64,15 @@ macro_rules! crdt_impl {
 
         /// Constructs a new CRDT from a state and optional site.
         /// If the site is present, it must be nonzero.
-        pub fn from_state(state: $state, site: Option<u32>) -> Result<Self, Error> {
-            let site = match site {
+        pub fn from_state(state: $state, site_id: Option<u32>) -> Result<Self, Error> {
+            let site_id = match site_id {
                 None => 0,
-                Some(0) => return Err(Error::InvalidSite),
+                Some(0) => return Err(Error::InvalidSiteId),
                 Some(s) => s,
             };
 
             Ok($tipe{
-                replica: Replica{site, counter: 0},
+                replica: Replica{site_id, counter: 0},
                 value: state.value.into_owned(),
                 tombstones: state.tombstones.into_owned(),
                 awaiting_site: vec![],
@@ -106,16 +106,16 @@ macro_rules! crdt_impl {
         }
 
         /// Assigns a site and returns any cached ops.
-        pub fn add_site(&mut self, site: u32) -> Result<Vec<<$value as CrdtValue>::RemoteOp>, Error> {
+        pub fn add_site(&mut self, site_id: u32) -> Result<Vec<<$value as CrdtValue>::RemoteOp>, Error> {
             use std::mem;
 
-            if self.replica.site != 0 { return Err(Error::AlreadyHasSite) }
-            self.replica.site = site;
+            if self.replica.site_id != 0 { return Err(Error::AlreadyHasSite) }
+            self.replica.site_id = site_id;
             let mut ops = mem::replace(&mut self.awaiting_site, vec![]);
 
             for op in ops.iter_mut() {
-                self.value.add_site(op, site);
-                op.add_site(site);
+                self.value.add_site(op, site_id);
+                op.add_site(site_id);
             }
 
             Ok(ops)
@@ -124,7 +124,7 @@ macro_rules! crdt_impl {
         fn after_op(&mut self, op: <$value as CrdtValue>::RemoteOp) -> Result<<$value as CrdtValue>::RemoteOp, Error> {
             self.replica.counter += 1;
             for replica in op.deleted_replicas() { self.tombstones.insert(&replica) };
-            if self.replica.site != 0 { return Ok(op) }
+            if self.replica.site_id != 0 { return Ok(op) }
             self.awaiting_site.push(op);
             Err(Error::AwaitingSite)
         }

@@ -1,5 +1,5 @@
 use Error;
-use replica::{Summary, SiteId};
+use dot::{Summary, SiteId};
 
 macro_rules! crdt_impl2 {
     ($self_ident:ident,
@@ -77,8 +77,8 @@ macro_rules! crdt_impl2 {
         /// This function assumes that the op always inserts values
         /// from the correct site. For untrusted ops, used `validate_and_execute_op`.
         pub fn execute_op(&mut self, op: $op) -> $local_op {
-            for replica in op.inserted_replicas() {
-                self.summary.insert(&replica);
+            for dot in op.inserted_dots() {
+                self.summary.insert(&dot);
             }
             self.inner.execute_op(op)
         }

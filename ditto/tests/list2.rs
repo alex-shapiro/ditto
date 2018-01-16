@@ -221,12 +221,12 @@ fn test_add_site_id() {
     let uid2 = ops[2].removed_uid().unwrap();
 
     assert_eq!(elt0.value, 51);
-    assert_eq!(elt0.uid.site, 12);
+    assert_eq!(elt0.uid.site_id, 12);
 
     assert_eq!(elt1.value, 52);
-    assert_eq!(elt1.uid.site, 12);
+    assert_eq!(elt1.uid.site_id, 12);
 
-    assert_eq!(uid2.site, 12);
+    assert_eq!(uid2.site_id, 12);
     assert!(elt0.uid < elt1.uid);
     assert!(elt1.uid == *uid2);
 

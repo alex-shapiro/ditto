@@ -9,7 +9,7 @@ use ditto::text::*;
 fn test_new() {
     let text = Text::new();
     assert!(text.len() == 0);
-    assert!(text.site() == 1);
+    assert!(text.site_id() == 1);
     assert!(text.counter() == 0);
 }
 
@@ -20,7 +20,7 @@ fn test_insert() {
     assert!(text.len() == 8);
     assert!(text.local_value() == "🇺🇸😀Hello");
     assert!(text.counter() == 1);
-    assert!(remote_op.inserts[0].uid.site == 1);
+    assert!(remote_op.inserts[0].uid.site_id == 1);
     assert!(remote_op.inserts[0].uid.counter == 0);
     assert!(remote_op.inserts[0].len == 8);
     assert!(remote_op.inserts[0].text == "🇺🇸😀Hello");
@@ -128,10 +128,10 @@ fn test_add_site() {
     let remote_op2 = remote_ops.next().unwrap();
     let remote_op3 = remote_ops.next().unwrap();
 
-    assert!(remote_op1.inserts[0].uid.site == 7);
-    assert!(remote_op2.inserts[0].uid.site == 7);
-    assert!(remote_op3.removes[0].site == 7);
-    assert!(remote_op3.inserts[0].uid.site == 7);
+    assert!(remote_op1.inserts[0].uid.site_id == 7);
+    assert!(remote_op2.inserts[0].uid.site_id == 7);
+    assert!(remote_op3.removes[0].site_id == 7);
+    assert!(remote_op3.inserts[0].uid.site_id == 7);
 }
 
 #[test]

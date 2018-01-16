@@ -1,7 +1,7 @@
 //! A CRDT that stores a collection of distinct elements.
 
 use Error;
-use replica::{Replica, SiteId, Counter, Summary};
+use dot::{Dot, SiteId, Counter, Summary};
 use map_tuple_vec;
 
 use serde::ser::Serialize;
@@ -56,13 +56,13 @@ pub struct SetState<'a, T: SetElement + 'a>{
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Inner<T: SetElement>(#[serde(with = "map_tuple_vec")] pub HashMap<T, Vec<Replica>>);
+pub(crate) struct Inner<T: SetElement>(#[serde(with = "map_tuple_vec")] pub HashMap<T, Vec<Dot>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Op<T> {
     value: T,
-    inserted_replica: Option<Replica>,
-    removed_replicas: Vec<Replica>,
+    inserted_dot: Option<Dot>,
+    removed_dots: Vec<Dot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -129,33 +129,33 @@ impl<T: SetElement> Inner<T> {
     }
 
     fn insert(&mut self, value: T, site_id: SiteId, counter: Counter) -> Op<T> {
-        let inserted_replica = Replica{site: site_id, counter};
-        let removed_replicas = self.0.insert(value.clone(), vec![inserted_replica.clone()]).unwrap_or(vec![]);
-        Op{value, inserted_replica: Some(inserted_replica), removed_replicas}
+        let inserted_dot = Dot{site_id, counter};
+        let removed_dots = self.0.insert(value.clone(), vec![inserted_dot.clone()]).unwrap_or(vec![]);
+        Op{value, inserted_dot: Some(inserted_dot), removed_dots}
     }
 
     fn remove(&mut self, value: &T) -> Option<Op<T>> {
-        let removed_replicas = self.0.remove(value)?;
-        Some(Op{value: value.clone(), inserted_replica: None, removed_replicas})
+        let removed_dots = self.0.remove(value)?;
+        Some(Op{value: value.clone(), inserted_dot: None, removed_dots})
     }
 
     fn execute_op(&mut self, op: Op<T>) -> Option<LocalOp<T>> {
-        let mut replicas  = self.0.remove(&op.value).unwrap_or(vec![]);
-        let exists_before = !replicas.is_empty();
-        replicas.retain(|r| !op.removed_replicas.contains(r));
+        let mut dots  = self.0.remove(&op.value).unwrap_or(vec![]);
+        let exists_before = !dots.is_empty();
+        dots.retain(|r| !op.removed_dots.contains(r));
 
-        if let Some(new_replica) = op.inserted_replica {
-            if let Err(idx) = replicas.binary_search_by(|r| r.cmp(&new_replica)) {
-                replicas.insert(idx, new_replica);
+        if let Some(new_dot) = op.inserted_dot {
+            if let Err(idx) = dots.binary_search_by(|r| r.cmp(&new_dot)) {
+                dots.insert(idx, new_dot);
             }
         }
 
-        let exists_after = !replicas.is_empty();
+        let exists_after = !dots.is_empty();
         if exists_before && exists_after {
-            self.0.insert(op.value, replicas);
+            self.0.insert(op.value, dots);
             None
         } else if exists_after {
-            self.0.insert(op.value.clone(), replicas);
+            self.0.insert(op.value.clone(), dots);
             Some(LocalOp::Insert(op.value))
         } else if exists_before {
             Some(LocalOp::Remove(op.value))
@@ -170,36 +170,36 @@ impl<T: SetElement> Inner<T> {
         // retain an element in self iff:
         // - the element is in in both self and other, OR
         // - the element has not been inserted into other
-        self.0.retain(|value, replicas| {
-            let mut other_replicas = other_elements.remove(&value).unwrap_or(vec![]);
-            replicas.retain(|r| other_replicas.contains(r) || !other_summary.contains(r));
-            other_replicas.retain(|r| !replicas.contains(r) && !summary.contains(r));
-            replicas.append(&mut other_replicas);
-            replicas.sort();
-            !replicas.is_empty()
+        self.0.retain(|value, dots| {
+            let mut other_dots = other_elements.remove(&value).unwrap_or(vec![]);
+            dots.retain(|r| other_dots.contains(r) || !other_summary.contains(r));
+            other_dots.retain(|r| !dots.contains(r) && !summary.contains(r));
+            dots.append(&mut other_dots);
+            dots.sort();
+            !dots.is_empty()
         });
 
         // insert any element that is in other but not yet inserted into self
-        for (value, mut replicas) in other_elements.to_owned() {
-            replicas.retain(|r| !summary.contains(r));
-            if !replicas.is_empty() {
-                self.0.insert(value, replicas);
+        for (value, mut dots) in other_elements.to_owned() {
+            dots.retain(|r| !summary.contains(r));
+            if !dots.is_empty() {
+                self.0.insert(value, dots);
             }
         }
     }
 
     fn add_site_id(&mut self, site_id: SiteId) {
-        for (_, replicas) in &mut self.0 {
-            for replica in replicas {
-                if replica.site == 0 { replica.site = site_id };
+        for (_, dots) in &mut self.0 {
+            for dot in dots {
+                if dot.site_id == 0 { dot.site_id = site_id };
             }
         }
     }
 
     fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
-        for replicas in self.0.values() {
-            for replica in replicas {
-                if replica.site == 0 {
+        for dots in self.0.values() {
+            for dot in dots {
+                if dot.site_id == 0 {
                     return Err(Error::InvalidSiteId);
                 }
             }
@@ -217,32 +217,32 @@ impl<T: SetElement> Op<T> {
     /// Returns the `Op`'s value.
     pub fn value(&self) -> &T { &self.value }
 
-    /// Returns a reference to the `Op`'s inserted replica.
-    pub fn inserted_replica(&self) -> Option<&Replica> { self.inserted_replica.as_ref() }
+    /// Returns a reference to the `Op`'s inserted dot.
+    pub fn inserted_dot(&self) -> Option<&Dot> { self.inserted_dot.as_ref() }
 
-    /// Returns a reference to the `Op`'s removed replicas.
-    pub fn removed_replicas(&self) -> &[Replica] { &self.removed_replicas }
+    /// Returns a reference to the `Op`'s removed dots.
+    pub fn removed_dots(&self) -> &[Dot] { &self.removed_dots }
 
     /// Assigns a site id to any unassigned inserts and removes
     pub fn add_site_id(&mut self, site_id: SiteId) {
-        if let Some(ref mut r) = self.inserted_replica {
-            if r.site == 0 { r.site = site_id };
+        if let Some(ref mut r) = self.inserted_dot {
+            if r.site_id == 0 { r.site_id = site_id };
         }
-        for r in &mut self.removed_replicas {
-            if r.site == 0 { r.site = site_id };
+        for r in &mut self.removed_dots {
+            if r.site_id == 0 { r.site_id = site_id };
         }
     }
 
     /// Validates that the `Op`'s site id is equal to the given site id.
     pub fn validate(&self, site_id: SiteId) -> Result<(), Error> {
-        if let Some(ref r) = self.inserted_replica {
-            try_assert!(r.site == site_id, Error::InvalidOp);
+        if let Some(ref r) = self.inserted_dot {
+            try_assert!(r.site_id == site_id, Error::InvalidOp);
         }
         Ok(())
     }
 
-    pub(crate) fn inserted_replicas(&self) -> Vec<Replica> {
-        match self.inserted_replica {
+    pub(crate) fn inserted_dots(&self) -> Vec<Dot> {
+        match self.inserted_dot {
             Some(ref r) => vec![r.clone()],
             None => vec![],
         }

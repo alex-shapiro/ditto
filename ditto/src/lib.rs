@@ -206,6 +206,7 @@ extern crate rmp_serde;
 #[macro_use] mod traits;
 #[macro_use] mod traits2;
 
+pub mod dot;
 pub mod counter;
 pub mod json;
 pub mod list;
@@ -219,13 +220,12 @@ pub mod xml;
 
 mod error;
 mod map_tuple_vec;
-mod replica;
 mod sequence;
 mod vlq;
 
 pub use traits::CrdtRemoteOp;
 pub use error::Error;
-pub use replica::{Replica, Tombstones};
+pub use dot::{Replica, Tombstones};
 
 pub use counter::{Counter, CounterState};
 pub use json::{Json, JsonState};

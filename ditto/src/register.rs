@@ -1,7 +1,7 @@
 //! A CRDT that stores a replaceable value
 
 use Error;
-use replica::{Replica, SiteId, Counter, Summary};
+use dot::{Dot, SiteId, Counter, Summary};
 use std::borrow::Cow;
 use std::collections::BTreeMap;
 use std::mem;
@@ -45,7 +45,7 @@ pub struct Op<T: Clone> {
     site_id: SiteId,
     counter: Counter,
     value: T,
-    removed_replicas: Vec<Replica>,
+    removed_dots: Vec<Dot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -82,16 +82,16 @@ impl<T: Clone> Register<T> {
         let mut new_elements = BTreeMap::new();
         new_elements.insert(self.site_id, SiteValue{value: value.clone(), counter});
 
-        let removed_replicas = mem::replace(&mut self.elements, new_elements)
+        let removed_dots = mem::replace(&mut self.elements, new_elements)
             .into_iter()
             .filter_map(|(site_id, site_value)|
                 match site_id == self.site_id {
                     true => None,
-                    false => Some(Replica::new(site_id, site_value.counter)),
+                    false => Some(Dot::new(site_id, site_value.counter)),
                 })
             .collect();
 
-        let op = Op{site_id: self.site_id, value, counter, removed_replicas};
+        let op = Op{site_id: self.site_id, value, counter, removed_dots};
 
         if self.site_id == 0 {
             self.cached_op = Some(op);
@@ -105,11 +105,11 @@ impl<T: Clone> Register<T> {
     /// the value has changed. If the op has already been executed
     /// or superceded, nothing is done.
     pub fn execute_op(&mut self, op: Op<T>) -> &T {
-        for Replica{site, counter} in op.removed_replicas {
+        for Dot{site_id, counter} in op.removed_dots {
             // remove any elements that were removed by the op.
-            if let Some(site_value) = self.elements.remove(&site) {
+            if let Some(site_value) = self.elements.remove(&site_id) {
                 if site_value.counter > counter {
-                    self.elements.insert(site, site_value);
+                    self.elements.insert(site_id, site_value);
                 }
             }
         }
@@ -245,9 +245,9 @@ impl<T: Clone> Op<T> {
     /// Returns a reference to the `Op`'s value
     pub fn value(&self) -> &T { &self.value }
 
-    /// Returns a reference to the `Op`'s removed replicas
-    pub fn removed_replicas(&self) -> &[Replica] {
-        &self.removed_replicas
+    /// Returns a reference to the `Op`'s removed dots
+    pub fn removed_dots(&self) -> &[Dot] {
+        &self.removed_dots
     }
 
     /// Assigns a new site id to the `Op`
