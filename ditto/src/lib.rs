@@ -209,6 +209,7 @@ extern crate rmp_serde;
 pub mod counter;
 pub mod json;
 pub mod list;
+pub mod list2;
 pub mod map;
 pub mod map2;
 pub mod register;
