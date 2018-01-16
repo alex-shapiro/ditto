@@ -110,22 +110,22 @@ impl RemoteOp {
 impl CrdtRemoteOp for RemoteOp {
     fn deleted_replicas(&self) -> Vec<Replica> {
         self.removes.iter()
-            .map(|uid| Replica{site: uid.site, counter: uid.counter})
+            .map(|uid| Replica{site_id: uid.site_id, counter: uid.counter})
             .collect()
     }
 
     fn add_site(&mut self, site: u32) {
         for element in &mut self.inserts {
-            element.uid.site = site;
+            element.uid.site_id = site;
         }
         for uid in &mut self.removes {
-            if uid.site == 0 { uid.site = site; }
+            if uid.site_id == 0 { uid.site_id = site; }
         }
     }
 
     fn validate_site(&self, site: u32) -> Result<(), Error> {
         for element in &self.inserts {
-            try_assert!(element.uid.site == site, Error::InvalidRemoteOp);
+            try_assert!(element.uid.site_id == site, Error::InvalidRemoteOp);
         }
         Ok(())
     }

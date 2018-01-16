@@ -211,7 +211,7 @@ impl CrdtValue for TextValue {
     fn add_site(&mut self, op: &RemoteOp, site: u32) {
         for e in &op.inserts {
             if let Some(mut element) = self.0.remove(&e.uid) {
-                element.uid.site = site;
+                element.uid.site_id = site;
                 self.0.insert(element).unwrap();
             }
         }
@@ -220,26 +220,26 @@ impl CrdtValue for TextValue {
     fn add_site_to_all(&mut self, site: u32) {
         let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
         for mut element in old_tree {
-            element.uid.site = site;
+            element.uid.site_id = site;
             self.0.insert(element).unwrap();
         }
     }
 
     fn validate_site(&self, site: u32) -> Result<(), Error> {
         for element in self.0.iter() {
-            try_assert!(element.uid.site == site, Error::InvalidRemoteOp);
+            try_assert!(element.uid.site_id == site, Error::InvalidRemoteOp);
         }
         Ok(())
     }
 
     fn merge(&mut self, other: TextValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let removed_uids: Vec<UID> = self.0.iter()
-            .filter(|e| other.0.get_idx(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .filter(|e| other.0.get_idx(&e.uid).is_none() && other_tombstones.contains_pair(e.uid.site_id, e.uid.counter))
             .map(|e| e.uid.clone())
             .collect();
 
         let new_elements: Vec<Element> = other.0.into_iter()
-            .filter(|e| self.0.get_idx(&e.uid).is_none() && !self_tombstones.contains_pair(e.uid.site, e.uid.counter))
+            .filter(|e| self.0.get_idx(&e.uid).is_none() && !self_tombstones.contains_pair(e.uid.site_id, e.uid.counter))
             .map(|e| e.clone())
             .collect();
 
@@ -285,8 +285,8 @@ impl PartialEq for TextValue {
 mod tests {
     use super::*;
 
-    const REPLICA1: Replica = Replica{site: 5, counter: 1023};
-    const REPLICA2: Replica = Replica{site: 8, counter: 16};
+    const REPLICA1: Replica = Replica{site_id: 5, counter: 1023};
+    const REPLICA2: Replica = Replica{site_id: 8, counter: 16};
 
     #[test]
     fn test_new() {
@@ -574,11 +574,11 @@ mod tests {
         text.add_site(&op2, 8);
 
         let (e1, _) = text.get_element(0).unwrap();
-        assert!(e1.uid.site == 4);
+        assert!(e1.uid.site_id == 4);
         assert!(e1.uid.counter == 1);
 
         let (e2, _) = text.get_element(2).unwrap();
-        assert!(e2.uid.site == 8);
+        assert!(e2.uid.site_id == 8);
         assert!(e2.uid.counter == 2);
     }
 

@@ -451,7 +451,7 @@ impl NestedCrdtRemoteOp for RemoteOp {
     fn nested_add_site(&mut self, site: u32) {
         // updates sites in the pointer
         for uid in self.pointer.iter_mut() {
-            if uid.site == 0 { uid.site = site; }
+            if uid.site_id == 0 { uid.site_id = site; }
         };
 
         // update sites in the op

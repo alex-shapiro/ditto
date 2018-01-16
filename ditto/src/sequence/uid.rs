@@ -37,7 +37,7 @@ const BOUNDARY:   usize = 40;
 #[derive(Clone,PartialEq,Eq)]
 pub struct UID {
     pub position: BigUint,
-    pub site: u32,
+    pub site_id: u32,
     pub counter: u32,
 }
 
@@ -47,8 +47,8 @@ lazy_static! {
 }
 
 impl UID {
-    fn new(position: BigUint, site: u32, counter: u32) -> Self {
-        UID{position: position, site: site, counter: counter}
+    fn new(position: BigUint, site_id: u32, counter: u32) -> Self {
+        UID{position, site_id, counter}
     }
 
     pub fn min() -> Self {
@@ -74,7 +74,7 @@ impl UID {
             if pos1 + 1 < pos2 {
                 let pos = UID::generate_pos(pos1, pos2, level);
                 position = (position << level) + big(pos);
-                return UID::new(position, replica.site, replica.counter);
+                return UID::new(position, replica.site_id, replica.counter);
             } else {
                 position = (position << level) + big(pos1);
             }
@@ -140,7 +140,7 @@ impl UID {
 
     fn to_vlq(&self) -> Vec<u8> {
         let mut vlq = vlq::encode_biguint(&self.position);
-        vlq.append(&mut vlq::encode_u32(self.site));
+        vlq.append(&mut vlq::encode_u32(self.site_id));
         vlq.append(&mut vlq::encode_u32(self.counter));
         vlq
 
@@ -148,9 +148,9 @@ impl UID {
 
     fn from_vlq(vlq: &[u8]) -> Result<Self, Error> {
         let (position, vlq_rest1) = vlq::decode_biguint(vlq)?;
-        let (site, vlq_rest2) = vlq::decode_u32(&vlq_rest1)?;
+        let (site_id, vlq_rest2) = vlq::decode_u32(&vlq_rest1)?;
         let (counter, _) = vlq::decode_u32(&vlq_rest2)?;
-        Ok(UID{position, site, counter})
+        Ok(UID{position, site_id, counter})
     }
 }
 
@@ -188,9 +188,9 @@ impl Ord for UID {
             Ordering::Less
         } else if self_bits > other_bits {
             Ordering::Greater
-        } else if self.site < other.site {
+        } else if self.site_id < other.site_id {
             Ordering::Less
-        } else if self.site > other.site {
+        } else if self.site_id > other.site_id {
             Ordering::Greater
         } else if self.counter < other.counter {
             Ordering::Less
@@ -205,7 +205,7 @@ impl Ord for UID {
 impl Debug for UID {
     fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
         let uid = self.position.to_str_radix(2);
-        write!(f, "UID{{position: {}, site: {}, counter: {}}}", uid, self.site, self.counter)
+        write!(f, "UID{{position: {}, site_id: {}, counter: {}}}", uid, self.site_id, self.counter)
     }
 }
 
@@ -265,13 +265,13 @@ mod tests {
     use serde_json;
     use rmp_serde;
 
-    const REPLICA: Replica = Replica{site: 3, counter: 2};
+    const REPLICA: Replica = Replica{site_id: 3, counter: 2};
 
     #[test]
     fn test_min() {
         let uid = UID::min();
         assert!(uid.position == big(0b1_00000000000000000000));
-        assert!(uid.site == 0);
+        assert!(uid.site_id == 0);
         assert!(uid.counter == 0);
     }
 
@@ -279,18 +279,18 @@ mod tests {
     fn test_max() {
         let uid = UID::max();
         assert!(uid.position == big(0b1_11111111111111111111));
-        assert!(uid.site == 4294967295);
+        assert!(uid.site_id == 4294967295);
         assert!(uid.counter == 4294967295);
     }
 
     #[test]
     fn test_ord() {
         let uid0 = UID::min();
-        let uid1 = UID{position: big(0b1_00000000000000101001), site: 8, counter: 382};
-        let uid2 = UID{position: big(0b1_00000000000101010010), site: 1, counter: 5};
-        let uid3 = UID{position: big(0b1_00000000000101010010), site: 1, counter: 5};
-        let uid4 = UID{position: big(0b1_00000000001011110010), site: 4, counter: 4};
-        let uid5 = UID{position: big(0b1_00000000001011111101), site: 4, counter: 4};
+        let uid1 = UID{position: big(0b1_00000000000000101001), site_id: 8, counter: 382};
+        let uid2 = UID{position: big(0b1_00000000000101010010), site_id: 1, counter: 5};
+        let uid3 = UID{position: big(0b1_00000000000101010010), site_id: 1, counter: 5};
+        let uid4 = UID{position: big(0b1_00000000001011110010), site_id: 4, counter: 4};
+        let uid5 = UID{position: big(0b1_00000000001011111101), site_id: 4, counter: 4};
         let uid6 = UID::max();
 
         let mut uids: Vec<&UID> = vec![&uid4, &uid1, &uid5, &uid6, &uid0, &uid2, &uid3];
@@ -313,22 +313,22 @@ mod tests {
 
         assert!(big(0b1_00000000000000000000) < uid.position);
         assert!(big(0b1_11111111111111111111) > uid.position);
-        assert!(uid.site == 3);
+        assert!(uid.site_id == 3);
         assert!(uid.counter == 2);
     }
 
     #[test]
     fn test_between_basic() {
-        let uid1 = UID{position: big(0b1_01111111111111111110), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_10000000000000000000), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_01111111111111111110), site_id: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_10000000000000000000), site_id: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(uid.position == big(0b1_01111111111111111111));
     }
 
     #[test]
     fn test_between_multi_level() {
-        let uid1 = UID{position: big(0b1_11111000000000000000), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_11111000000000000001), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_11111000000000000000), site_id: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_11111000000000000001), site_id: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(uid.position > big(0b1_11111000000000000000_000000000000000000000));
         assert!(uid.position < big(0b1_11111000000000000000_000000000000000101001));
@@ -336,16 +336,16 @@ mod tests {
 
     #[test]
     fn test_between_squeeze() {
-        let uid1 = UID{position: big(0b1_11111000000000000000_001101010010101010101_1010101010101010101010), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_11111000000000000000_001101010010101010111_1010101010101010101010), site: 1, counter: 1};
+        let uid1 = UID{position: big(0b1_11111000000000000000_001101010010101010101_1010101010101010101010), site_id: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_11111000000000000000_001101010010101010111_1010101010101010101010), site_id: 1, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(uid.position == big(0b1_11111000000000000000_001101010010101010110));
     }
 
     #[test]
     fn test_between_equals() {
-        let uid1 = UID{position: big(0b1_00110011100000000010), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_00110011100000000010), site: 2, counter: 1};
+        let uid1 = UID{position: big(0b1_00110011100000000010), site_id: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_00110011100000000010), site_id: 2, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(uid.position > big(0b1_00110011100000000010_000000000000000000000));
         assert!(uid.position < big(0b1_00110011100000000010_000000000000000101001));
@@ -353,8 +353,8 @@ mod tests {
 
     #[test]
     fn test_between_first_is_shorter() {
-        let uid1 = UID{position: big(0b1_11111000000000000000), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_11111000000000000000_001101010010101010101), site: 2, counter: 1};
+        let uid1 = UID{position: big(0b1_11111000000000000000), site_id: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_11111000000000000000_001101010010101010101), site_id: 2, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(uid.position > big(0b1_11111000000000000000_000000000000000000000));
         assert!(uid.position < big(0b1_11111000000000000000_000000000000000101001));
@@ -362,8 +362,8 @@ mod tests {
 
     #[test]
     fn test_between_first_is_longer() {
-        let uid1 = UID{position: big(0b1_11111000000000000000_001101010010101010110), site: 1, counter: 1};
-        let uid2 = UID{position: big(0b1_11111000000000000000), site: 2, counter: 1};
+        let uid1 = UID{position: big(0b1_11111000000000000000_001101010010101010110), site_id: 1, counter: 1};
+        let uid2 = UID{position: big(0b1_11111000000000000000), site_id: 2, counter: 1};
         let uid  = UID::between(&uid1, &uid2, &REPLICA);
         assert!(uid.position > big(0b1_11111000000000000000_001101010010101010110));
         assert!(uid.position < big(0b1_11111000000000000000_001101010010101111111));
@@ -371,7 +371,7 @@ mod tests {
 
     #[test]
     fn test_to_from_string() {
-        let uid = UID{position: big(0b1_010_1010), site: 4, counter: 83};
+        let uid = UID{position: big(0b1_010_1010), site_id: 4, counter: 83};
         let serialized = uid.to_string();
         let deserialized = UID::from_str(&serialized).unwrap();
         assert!(serialized == "gSoEUw");
@@ -380,7 +380,7 @@ mod tests {
 
     #[test]
     fn test_serialize() {
-        let uid1 = UID{position: big(0b1_010_1010_01101_100110_1011011_10111011_011001101), site: 491, counter: 82035};
+        let uid1 = UID{position: big(0b1_010_1010_01101_100110_1011011_10111011_011001101), site_id: 491, counter: 82035};
         let s_json = serde_json::to_string(&uid1).unwrap();
         let s_msgpack = rmp_serde::to_vec(&uid1).unwrap();
         let uid2: UID = serde_json::from_str(&s_json).unwrap();

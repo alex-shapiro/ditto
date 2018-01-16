@@ -255,7 +255,7 @@ impl<K: Key, V: Value> Inner<K, V> {
     pub fn add_site_id(&mut self, site_id: SiteId) {
         for (_, elements) in &mut self.0 {
             for element in elements {
-                if element.dot.site == 0 { element.dot.site = site_id };
+                if element.dot.site_id == 0 { element.dot.site_id = site_id };
             }
         }
     }
@@ -263,7 +263,7 @@ impl<K: Key, V: Value> Inner<K, V> {
     pub fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements {
-                if element.dot.site == 0 {
+                if element.dot.site_id == 0 {
                     return Err(Error::InvalidSiteId);
                 }
             }
@@ -285,8 +285,8 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
         for (_, elements) in &mut self.0 {
             for element in elements {
                 element.value.nested_add_site_id(site_id);
-                if element.dot.site == 0 {
-                    element.dot.site = site_id;
+                if element.dot.site_id == 0 {
+                    element.dot.site_id = site_id;
                 }
             }
         }
@@ -295,7 +295,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
     fn nested_validate_no_unassigned_sites(&self) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements {
-                if element.dot.site == 0 {
+                if element.dot.site_id == 0 {
                     return Err(Error::InvalidSiteId);
                 }
                 element.value.nested_validate_no_unassigned_sites()?;
@@ -307,7 +307,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
     fn nested_validate_all(&self, site_id: SiteId) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements {
-                if element.dot.site != site_id {
+                if element.dot.site_id != site_id {
                     return Err(Error::InvalidSiteId);
                 }
                 element.value.nested_validate_all(site_id)?;
@@ -365,17 +365,17 @@ impl<K: Key, V: Value> Op<K, V> {
     /// Assigns a site id to any unassigned inserts and removes
     pub fn add_site_id(&mut self, site_id: SiteId) {
         if let Some(ref mut e) = self.inserted_element {
-            if e.dot.site == 0 { e.dot.site = site_id };
+            if e.dot.site_id == 0 { e.dot.site_id = site_id };
         }
         for r in &mut self.removed_dots {
-            if r.site == 0 { r.site = site_id };
+            if r.site_id == 0 { r.site_id = site_id };
         }
     }
 
     /// Validates that the `Op`'s site id is equal to the given site id.
     pub fn validate(&self, site_id: SiteId) -> Result<(), Error> {
         if let Some(ref e) = self.inserted_element {
-            if e.dot.site != site_id { return Err(Error::InvalidOp) };
+            if e.dot.site_id != site_id { return Err(Error::InvalidOp) };
         }
         Ok(())
     }
@@ -392,16 +392,16 @@ impl<K: Key, V: Value + NestedInner> NestedOp for Op<K, V> {
     fn nested_add_site_id(&mut self, site_id: SiteId) {
         if let Some(ref mut e) = self.inserted_element {
             e.value.nested_add_site_id(site_id);
-            if e.dot.site == 0 { e.dot.site = site_id };
+            if e.dot.site_id == 0 { e.dot.site_id = site_id };
         }
         for r in &mut self.removed_dots {
-            if r.site == 0 { r.site = site_id };
+            if r.site_id == 0 { r.site_id = site_id };
         }
     }
 
     fn nested_validate(&self, site_id: SiteId) -> Result<(), Error> {
         if let Some(ref e) = self.inserted_element {
-            if e.dot.site != site_id { return Err(Error::InvalidOp) };
+            if e.dot.site_id != site_id { return Err(Error::InvalidOp) };
             e.value.nested_validate_all(site_id)?;
         }
         Ok(())

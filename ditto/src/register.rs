@@ -105,11 +105,11 @@ impl<T: Clone> Register<T> {
     /// the value has changed. If the op has already been executed
     /// or superceded, nothing is done.
     pub fn execute_op(&mut self, op: Op<T>) -> &T {
-        for Dot{site, counter} in op.removed_dots {
+        for Dot{site_id, counter} in op.removed_dots {
             // remove any elements that were removed by the op.
-            if let Some(site_value) = self.elements.remove(&site) {
+            if let Some(site_value) = self.elements.remove(&site_id) {
                 if site_value.counter > counter {
-                    self.elements.insert(site, site_value);
+                    self.elements.insert(site_id, site_value);
                 }
             }
         }

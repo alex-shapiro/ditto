@@ -268,14 +268,14 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
         if let RemoteOp::Insert{ref key, ref element, ..} = *op {
             let elements = some!(self.0.get_mut(key));
             let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
-            elements[index].0.site = site;
+            elements[index].0.site_id = site;
         }
     }
 
     fn add_site_to_all(&mut self, site: u32) {
         for elements in self.0.values_mut() {
             for element in elements.iter_mut() {
-                element.0.site = site;
+                element.0.site_id = site;
             }
         }
     }
@@ -283,7 +283,7 @@ impl<K: Key, V: Value> CrdtValue for MapValue<K, V> {
     fn validate_site(&self, site: u32) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements.iter() {
-                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try_assert!(element.0.site_id == site, Error::InvalidRemoteOp);
             }
         }
         Ok(())
@@ -330,7 +330,7 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
             let elements = some!(self.0.get_mut(key));
             let index = some!(elements.binary_search_by(|e| e.0.cmp(&element.0)).ok());
             let ref mut element = elements[index];
-            element.0.site = site;
+            element.0.site_id = site;
             element.1.add_site_to_all(site);
         }
     }
@@ -338,7 +338,7 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
     fn nested_add_site_to_all(&mut self, site: u32) {
         for elements in self.0.values_mut() {
             for element in elements.iter_mut() {
-                element.0.site = site;
+                element.0.site_id = site;
                 element.1.add_site_to_all(site);
             }
         }
@@ -347,7 +347,7 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
     fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements.iter() {
-                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try_assert!(element.0.site_id == site, Error::InvalidRemoteOp);
                 try!(element.1.nested_validate_site(site));
             }
         }
@@ -374,13 +374,13 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtValue for MapValue<K,V> {
                     }
                     Ordering::Less => {
                         let element = mem::replace(&mut s_element, self_iter.next()).unwrap();
-                        if !other_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        if !other_tombstones.contains_pair(element.0.site_id, element.0.counter) {
                             new_elements.push(element);
                         }
                     }
                     Ordering::Greater => {
                         let element = mem::replace(&mut o_element, other_iter.next()).unwrap();
-                        if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
+                        if !self_tombstones.contains_pair(element.0.site_id, element.0.counter) {
                             new_elements.push(element);
                         }
                     }
@@ -416,14 +416,14 @@ impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
     fn add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
-                element.0.site = site;
+                element.0.site_id = site;
                 for replica in removed {
-                    if replica.site == 0 { replica.site = site; }
+                    if replica.site_id == 0 { replica.site_id = site; }
                 }
             }
             RemoteOp::Remove{ref mut removed, ..} => {
                 for replica in removed {
-                    if replica.site == 0 { replica.site = site; }
+                    if replica.site_id == 0 { replica.site_id = site; }
                 }
             }
         }
@@ -433,7 +433,7 @@ impl<K: Key, V: Value> CrdtRemoteOp for RemoteOp<K, V> {
         match *self {
             RemoteOp::Remove{..} => Ok(()),
             RemoteOp::Insert{ref element, ..} => {
-                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try_assert!(element.0.site_id == site, Error::InvalidRemoteOp);
                 Ok(())
             }
         }
@@ -444,15 +444,15 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtRemoteOp for RemoteOp<K, V> {
     fn nested_add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert{ref mut element, ref mut removed, ..} => {
-                element.0.site = site;
+                element.0.site_id = site;
                 element.1.nested_add_site_to_all(site);
                 for replica in removed {
-                    if replica.site == 0 { replica.site = site; }
+                    if replica.site_id == 0 { replica.site_id = site; }
                 }
             }
             RemoteOp::Remove{ref mut removed, ..} => {
                 for replica in removed {
-                    if replica.site == 0 { replica.site = site; }
+                    if replica.site_id == 0 { replica.site_id = site; }
                 }
             }
         }
@@ -462,7 +462,7 @@ impl<K: Key, V: Value + NestedCrdtValue> NestedCrdtRemoteOp for RemoteOp<K, V> {
         match *self {
             RemoteOp::Remove{..} => Ok(()),
             RemoteOp::Insert{ref element, ..} => {
-                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try_assert!(element.0.site_id == site, Error::InvalidRemoteOp);
                 element.1.nested_validate_site(site)
             }
         }
@@ -493,7 +493,7 @@ mod tests {
     #[test]
     fn test_new() {
         let map: Map<bool, i64> = Map::new();
-        assert!(map.site() == 1);
+        assert!(map.site_id() == 1);
     }
 
     #[test]
@@ -685,10 +685,10 @@ mod tests {
         assert!(map1.contains_key(&4));
         assert!(map1.contains_key(&5));
 
-        assert!(map1.value.0[&1][0].0 == Replica{site: 1, counter: 0});
-        assert!(map1.value.0[&4][0].0 == Replica{site: 1, counter: 4});
-        assert!(map1.value.0[&5][0].0 == Replica{site: 1, counter: 5});
-        assert!(map1.value.0[&5][1].0 == Replica{site: 2, counter: 3});
+        assert!(map1.value.0[&1][0].0 == Replica{site_id: 1, counter: 0});
+        assert!(map1.value.0[&4][0].0 == Replica{site_id: 1, counter: 4});
+        assert!(map1.value.0[&5][0].0 == Replica{site_id: 1, counter: 5});
+        assert!(map1.value.0[&5][1].0 == Replica{site_id: 2, counter: 3});
 
         assert!(map1.tombstones.contains_pair(1, 3));
         assert!(map1.tombstones.contains_pair(2, 1));

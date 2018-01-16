@@ -129,7 +129,7 @@ impl<T: SetElement> Inner<T> {
     }
 
     fn insert(&mut self, value: T, site_id: SiteId, counter: Counter) -> Op<T> {
-        let inserted_dot = Dot{site: site_id, counter};
+        let inserted_dot = Dot{site_id, counter};
         let removed_dots = self.0.insert(value.clone(), vec![inserted_dot.clone()]).unwrap_or(vec![]);
         Op{value, inserted_dot: Some(inserted_dot), removed_dots}
     }
@@ -191,7 +191,7 @@ impl<T: SetElement> Inner<T> {
     fn add_site_id(&mut self, site_id: SiteId) {
         for (_, dots) in &mut self.0 {
             for dot in dots {
-                if dot.site == 0 { dot.site = site_id };
+                if dot.site_id == 0 { dot.site_id = site_id };
             }
         }
     }
@@ -199,7 +199,7 @@ impl<T: SetElement> Inner<T> {
     fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
         for dots in self.0.values() {
             for dot in dots {
-                if dot.site == 0 {
+                if dot.site_id == 0 {
                     return Err(Error::InvalidSiteId);
                 }
             }
@@ -226,17 +226,17 @@ impl<T: SetElement> Op<T> {
     /// Assigns a site id to any unassigned inserts and removes
     pub fn add_site_id(&mut self, site_id: SiteId) {
         if let Some(ref mut r) = self.inserted_dot {
-            if r.site == 0 { r.site = site_id };
+            if r.site_id == 0 { r.site_id = site_id };
         }
         for r in &mut self.removed_dots {
-            if r.site == 0 { r.site = site_id };
+            if r.site_id == 0 { r.site_id = site_id };
         }
     }
 
     /// Validates that the `Op`'s site id is equal to the given site id.
     pub fn validate(&self, site_id: SiteId) -> Result<(), Error> {
         if let Some(ref r) = self.inserted_dot {
-            try_assert!(r.site == site_id, Error::InvalidOp);
+            try_assert!(r.site_id == site_id, Error::InvalidOp);
         }
         Ok(())
     }

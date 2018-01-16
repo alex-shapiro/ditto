@@ -183,7 +183,7 @@ impl<T: Clone> CrdtValue for ListValue<T> {
     fn add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert(Element(ref uid, _)) = *op {
             let mut element = some!(self.0.remove(uid));
-            element.0.site = site;
+            element.0.site_id = site;
             let _ = self.0.insert(element);
         }
     }
@@ -191,26 +191,26 @@ impl<T: Clone> CrdtValue for ListValue<T> {
     fn add_site_to_all(&mut self, site: u32) {
         let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
         for mut element in old_tree {
-            element.0.site = site;
+            element.0.site_id = site;
             let _ = self.0.insert(element);
         }
     }
 
     fn validate_site(&self, site: u32) -> Result<(), Error> {
         for element in &self.0 {
-            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            try_assert!(element.0.site_id == site, Error::InvalidRemoteOp);
         }
         Ok(())
     }
 
     fn merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
         let removed_uids: Vec<UID> = self.0.iter()
-            .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site, e.0.counter))
+            .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site_id, e.0.counter))
             .map(|e| e.0.clone())
             .collect();
 
         let new_elements: Vec<Element<T>> = other.0.iter()
-            .filter(|e| self.0.get_idx(&e.0).is_none() && !self_tombstones.contains_pair(e.0.site, e.0.counter))
+            .filter(|e| self.0.get_idx(&e.0).is_none() && !self_tombstones.contains_pair(e.0.site_id, e.0.counter))
             .map(|e| e.clone())
             .collect();
 
@@ -228,7 +228,7 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
     fn nested_add_site(&mut self, op: &RemoteOp<T>, site: u32) {
         if let RemoteOp::Insert(Element(ref uid, _)) = *op {
             let mut element = some!(self.0.remove(uid));
-            element.0.site = site;
+            element.0.site_id = site;
             element.1.add_site_to_all(site);
             self.0.insert(element).unwrap();
         }
@@ -237,7 +237,7 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
     fn nested_add_site_to_all(&mut self, site: u32) {
         let old_tree = ::std::mem::replace(&mut self.0, Tree::new());
         for mut element in old_tree {
-            element.0.site = site;
+            element.0.site_id = site;
             element.1.add_site_to_all(site);
             let _ = self.0.insert(element);
         }
@@ -245,7 +245,7 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
 
     fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
         for element in &self.0 {
-            try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+            try_assert!(element.0.site_id == site, Error::InvalidRemoteOp);
             try!(element.1.nested_validate_site(site));
         }
         Ok(())
@@ -254,7 +254,7 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
     fn nested_merge(&mut self, other: ListValue<T>, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
         {
             let removed_uids: Vec<UID> = self.0.iter()
-                .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site, e.0.counter))
+                .filter(|e| other.0.get_idx(&e.0).is_none() && other_tombstones.contains_pair(e.0.site_id, e.0.counter))
                 .map(|e| e.0.clone())
                 .collect();
 
@@ -267,7 +267,7 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
             if self.0.lookup(&element.0).is_some() {
                 let self_element = self.0.lookup_mut(&element.0).unwrap();
                 self_element.1.nested_merge(element.1, self_tombstones, other_tombstones)?;
-            } else if !self_tombstones.contains_pair(element.0.site, element.0.counter) {
+            } else if !self_tombstones.contains_pair(element.0.site_id, element.0.counter) {
                 let _ = self.0.insert(element);
             }
         }
@@ -279,16 +279,16 @@ impl<T: Clone + NestedCrdtValue> NestedCrdtValue for ListValue<T> {
 impl<T> CrdtRemoteOp for RemoteOp<T> {
     fn deleted_replicas(&self) -> Vec<Replica> {
         match *self {
-            RemoteOp::Remove(ref uid) => vec![Replica{site: uid.site, counter: uid.counter}],
+            RemoteOp::Remove(ref uid) => vec![Replica{site_id: uid.site_id, counter: uid.counter}],
             _ => vec![],
         }
     }
 
     fn add_site(&mut self, site: u32) {
         match *self {
-            RemoteOp::Insert(Element(ref mut uid, _)) => uid.site = site,
+            RemoteOp::Insert(Element(ref mut uid, _)) => uid.site_id = site,
             RemoteOp::Remove(ref mut uid) => {
-                if uid.site == 0 { uid.site = site };
+                if uid.site_id == 0 { uid.site_id = site };
             }
         }
     }
@@ -297,7 +297,7 @@ impl<T> CrdtRemoteOp for RemoteOp<T> {
         match *self {
             RemoteOp::Remove(_) => Ok(()),
             RemoteOp::Insert(Element(ref uid, _)) => {
-                try_assert!(uid.site == site, Error::InvalidRemoteOp);
+                try_assert!(uid.site_id == site, Error::InvalidRemoteOp);
                 Ok(())
             }
         }
@@ -308,11 +308,11 @@ impl<T: NestedCrdtValue> NestedCrdtRemoteOp for RemoteOp<T> {
     fn nested_add_site(&mut self, site: u32) {
         match *self {
             RemoteOp::Insert(ref mut element) => {
-                element.0.site = site;
+                element.0.site_id = site;
                 element.1.add_site_to_all(site);
             }
             RemoteOp::Remove(ref mut uid) => {
-                if uid.site == 0 { uid.site = site };
+                if uid.site_id == 0 { uid.site_id = site };
             }
         }
     }
@@ -321,7 +321,7 @@ impl<T: NestedCrdtValue> NestedCrdtRemoteOp for RemoteOp<T> {
         match *self {
             RemoteOp::Remove(_) => Ok(()),
             RemoteOp::Insert(ref element) => {
-                try_assert!(element.0.site == site, Error::InvalidRemoteOp);
+                try_assert!(element.0.site_id == site, Error::InvalidRemoteOp);
                 element.1.nested_validate_site(site)
             }
         }
@@ -545,7 +545,7 @@ mod tests {
         assert_eq!(list1.value, list2.value);
         assert_eq!(list1.tombstones, list2.tombstones);
         assert_eq!(list1.local_value(), [12, 12, 15]);
-        assert_eq!(element_at(&list1, 2).0.site,    2);
+        assert_eq!(element_at(&list1, 2).0.site_id, 2);
         assert_eq!(element_at(&list1, 2).0.counter, 2);
         assert!(list1.tombstones.contains_pair(1,2));
     }
@@ -562,10 +562,10 @@ mod tests {
         let element2 = get_insert_elt(remote_ops.next().unwrap());
         let uid3     = get_remove_uid(remote_ops.next().unwrap());
 
-        assert!(element_at(&list, 0).0.site == 12);
-        assert!(element1.0.site == 12);
-        assert!(element2.0.site == 12);
-        assert!(uid3.site == 12);
+        assert!(element_at(&list, 0).0.site_id == 12);
+        assert!(element1.0.site_id == 12);
+        assert!(element2.0.site_id == 12);
+        assert!(uid3.site_id == 12);
     }
 
     #[test]

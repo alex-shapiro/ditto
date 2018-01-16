@@ -10,7 +10,7 @@ pub type Summary = Tombstones;
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Dot {
-    pub site: SiteId,
+    pub site_id: SiteId,
     pub counter: Counter,
 }
 
@@ -19,7 +19,7 @@ pub struct Tombstones(#[serde(with = "map_tuple_vec")] HashMap<u32,u32>);
 
 impl Dot {
     pub fn new(site_id: SiteId, counter: Counter) -> Self {
-        Dot{site: site_id, counter}
+        Dot{site_id, counter}
     }
 }
 
@@ -34,7 +34,7 @@ impl Tombstones {
 
     pub fn get_dot(&mut self, site_id: SiteId) -> Dot {
         let counter = self.increment(site_id);
-        Dot{site: site_id, counter}
+        Dot{site_id, counter}
     }
 
     pub fn increment(&mut self, site_id: SiteId) -> Counter {
@@ -44,7 +44,7 @@ impl Tombstones {
     }
 
     pub fn contains(&self, dot: &Dot) -> bool {
-        match self.0.get(&dot.site) {
+        match self.0.get(&dot.site_id) {
             Some(counter) => *counter >= dot.counter,
             None => false,
         }
@@ -58,7 +58,7 @@ impl Tombstones {
     }
 
     pub fn insert(&mut self, dot: &Dot) {
-        let entry = self.0.entry(dot.site).or_insert(dot.counter);
+        let entry = self.0.entry(dot.site_id).or_insert(dot.counter);
         *entry = max(*entry, dot.counter);
     }
 
