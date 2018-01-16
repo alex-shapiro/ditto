@@ -104,7 +104,7 @@ impl<V> Ord for Element<V> {
 impl<K: Key, V: Value> Map<K, V> {
 
     /// Constructs and returns a new map.
-    /// The map has site 1 and counter 0.
+    /// The map has site id 1.
     pub fn new() -> Self {
         let inner   = Inner::new();
         let summary = Summary::new();
@@ -307,7 +307,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
     fn nested_validate_all(&self, site_id: SiteId) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements {
-                if element.replica.site == 0 {
+                if element.replica.site != site_id {
                     return Err(Error::InvalidSiteId);
                 }
                 element.value.nested_validate_all(site_id)?;
