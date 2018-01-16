@@ -9,30 +9,26 @@ use std::mem;
 use std::cmp::Ordering;
 
 /// A List is a `Vec`-like ordered sequence of elements.
-/// To allow for CRDT replication, List elements must implement
-/// the `Clone`, `Serialize`, and `Deserialize` traits.
+/// List elements must implement the `Clone`, `Serialize`,
+/// and `Deserialize` traits.
 ///
 /// Internally, List is based on LSEQ. It allows op-based replication
 /// via [`execute_op`](#method.execute_op) and state-based replication
 /// via [`merge`](#method.merge). State-based replication allows
 /// out-of-order delivery but op-based replication does not.
 ///
-/// An *N*-element List's performance characteristics are:
+/// List's performance characteristics are similar to Vec:
 ///
-///   * [`insert`](#method.insert): *O(log N)*
-///   * [`remove`](#method.remove): *O(log N)*
+///   * [`push`](#method.push): *O(1)*
+///   * [`pop`](#method.pop): *O(1)*
+///   * [`insert`](#method.insert): *O(N)*
+///   * [`remove`](#method.remove): *O(N)*
 ///   * [`get`](#method.get): *O(1)*
-///   * [`len`](#method.insert): *O(1)*
-///   * [`execute_op`](#method.execute_op): *O(log N)*
+///   * [`execute_op`](#method.execute_op): *O(N)*
 ///   * [`merge`](#method.merge): *O(N1 + N2 + S1 + S2)*, where *N1* and
 ///     *N2* are the number of values in each list being merged,
 ///     and *S1* and *S2* are the number of sites that have edited
 ///     each list being merged.
-///
-///
-///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
-///   * Unlike a pure CvRDT, it requires each site to replicate its ops
-///     in their order of generation.
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct List<T: 'static> {
