@@ -26,8 +26,8 @@ fn test_insert() {
     let mut set: Set<u32> = Set::new();
     let op = set.insert(123).unwrap();
     assert_eq!(op.value(), &123);
-    assert_eq!(op.inserted_replica(), Some(&Replica::new(1, 1)));
-    assert_eq!(op.removed_replicas(), []);
+    assert_eq!(op.inserted_dot(), Some(&Replica::new(1, 1)));
+    assert_eq!(op.removed_dots(), []);
 }
 
 #[test]
@@ -35,7 +35,7 @@ fn test_insert_already_exists() {
     let mut set: Set<u32> = Set::new();
     let op1 = set.insert(123).unwrap();
     let op2 = set.insert(123).unwrap();
-    assert_eq!(op2.removed_replicas().first(), op1.inserted_replica());
+    assert_eq!(op2.removed_dots().first(), op1.inserted_dot());
 }
 
 #[test]
@@ -53,12 +53,12 @@ fn test_remove() {
     let op2 = set.remove(&123).unwrap().unwrap();
 
     assert_eq!(op1.value(), &123);
-    assert_eq!(op1.inserted_replica(), Some(&Replica::new(1,1)));
-    assert_eq!(op1.removed_replicas(), []);
+    assert_eq!(op1.inserted_dot(), Some(&Replica::new(1,1)));
+    assert_eq!(op1.removed_dots(), []);
 
     assert_eq!(op2.value(), &123);
-    assert_eq!(op2.inserted_replica(), None);
-    assert_eq!(op2.removed_replicas(), [Replica::new(1,1)]);
+    assert_eq!(op2.inserted_dot(), None);
+    assert_eq!(op2.removed_dots(), [Replica::new(1,1)]);
 }
 
 #[test]
@@ -139,7 +139,7 @@ fn execute_remote_remove_does_not_exist() {
 }
 
 #[test]
-fn execute_remote_remove_some_replicas_remain() {
+fn execute_remote_remove_some_dots_remain() {
     let mut set1: Set<u64> = Set::new();
     let mut set2: Set<u64> = Set::from_state(set1.clone_state(), Some(2)).unwrap();
     let _ = set1.insert(10).unwrap();
@@ -186,13 +186,13 @@ fn test_merge() {
     assert!(set1.contains(&4));
 
     let op1 = set1.remove(&1).unwrap().unwrap();
-    assert_eq!(op1.removed_replicas(), [Replica::new(1, 1)]);
+    assert_eq!(op1.removed_dots(), [Replica::new(1, 1)]);
 
     let op2 = set1.remove(&3).unwrap().unwrap();
-    assert_eq!(op2.removed_replicas(), [Replica::new(1, 3)]);
+    assert_eq!(op2.removed_dots(), [Replica::new(1, 3)]);
 
     let op3 = set1.remove(&4).unwrap().unwrap();
-    assert_eq!(op3.removed_replicas(), [Replica::new(2, 2)]);
+    assert_eq!(op3.removed_dots(), [Replica::new(2, 2)]);
 
     assert!(set1.summary().contains_pair(1, 3));
     assert!(set1.summary().contains_pair(2, 2));
@@ -208,16 +208,16 @@ fn test_add_site_id() {
 
     assert_eq!(ops.len(), 3);
     assert_eq!(ops[0].value(), &10);
-    assert_eq!(ops[0].inserted_replica(), Some(&Replica::new(5,1)));
-    assert_eq!(ops[0].removed_replicas(), []);
+    assert_eq!(ops[0].inserted_dot(), Some(&Replica::new(5,1)));
+    assert_eq!(ops[0].removed_dots(), []);
 
     assert_eq!(ops[1].value(), &20);
-    assert_eq!(ops[1].inserted_replica(), Some(&Replica::new(5,2)));
-    assert_eq!(ops[1].removed_replicas(), []);
+    assert_eq!(ops[1].inserted_dot(), Some(&Replica::new(5,2)));
+    assert_eq!(ops[1].removed_dots(), []);
 
     assert_eq!(ops[2].value(), &10);
-    assert_eq!(ops[2].inserted_replica(), None);
-    assert_eq!(ops[2].removed_replicas(), [Replica::new(5,1)]);
+    assert_eq!(ops[2].inserted_dot(), None);
+    assert_eq!(ops[2].removed_dots(), [Replica::new(5,1)]);
 }
 
 #[test]

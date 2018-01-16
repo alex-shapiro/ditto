@@ -1,7 +1,7 @@
 //! A CRDT that stores a collection of key-value pairs.
 
 use Error;
-use replica::{Replica, Summary, SiteId};
+use dot::{Dot, Summary, SiteId};
 use map_tuple_vec;
 use traits2::*;
 
@@ -65,7 +65,7 @@ pub(crate) struct Inner<K: Key, V: Value>(#[serde(with = "map_tuple_vec")] pub H
 pub struct Op<K, V> {
     key: K,
     inserted_element: Option<Element<V>>,
-    removed_replicas: Vec<Replica>,
+    removed_dots: Vec<Dot>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -78,12 +78,12 @@ pub enum LocalOp<K, V> {
 #[doc(hidden)]
 pub struct Element<V> {
     pub value: V,
-    pub replica: Replica,
+    pub dot: Dot,
 }
 
 impl<V> PartialEq for Element<V> {
     fn eq(&self, other: &Element<V>) -> bool {
-        self.replica == other.replica
+        self.dot == other.dot
     }
 }
 
@@ -97,7 +97,7 @@ impl<V> PartialOrd for Element<V> {
 
 impl<V> Ord for Element<V> {
     fn cmp(&self, other: &Element<V>) -> Ordering {
-        self.replica.cmp(&other.replica)
+        self.dot.cmp(&other.dot)
     }
 }
 
@@ -128,8 +128,8 @@ impl<K: Key, V: Value> Map<K, V> {
     /// map does not have a site allocated, it caches the op and
     /// returns an `AwaitingSite` error.
     pub fn insert(&mut self, key: K, value: V) -> Result<Op<K, V>, Error> {
-        let counter = self.summary.increment(self.site_id);
-        let op = self.inner.insert(key, value, Replica::new(self.site_id, counter));
+        let dot = self.summary.get_dot(self.site_id);
+        let op = self.inner.insert(key, value, dot);
         self.after_op(op)
     }
 
@@ -184,20 +184,20 @@ impl<K: Key, V: Value> Inner<K, V> {
     //     Some(&mut elements[0])
     // }
 
-    // pub fn get_mut_element<Q: ?Sized>(&mut self, key: &Q, replica: &Replica) -> Option<&mut Element<V>>
+    // pub fn get_mut_element<Q: ?Sized>(&mut self, key: &Q, dot: Dot) -> Option<&mut Element<V>>
     //     where Q: Hash + Eq,
     //           K: Borrow<Q>,
     // {
     //     let elements = self.0.get_mut(key)?;
-    //     let idx = elements.binary_search_by(|e| e.replica.cmp(replica)).ok()?;
+    //     let idx = elements.binary_search_by(|e| e.dot.cmp(&dot)).ok()?;
     //     Some(&mut elements[idx])
     // }
 
-    pub fn insert(&mut self, key: K, value: V, replica: Replica) -> Op<K, V> {
-        let inserted_element = Element{value, replica};
+    pub fn insert(&mut self, key: K, value: V, dot: Dot) -> Op<K, V> {
+        let inserted_element = Element{value, dot};
         let removed_elements = self.0.insert(key.clone(), vec![inserted_element.clone()]).unwrap_or(vec![]);
-        let removed_replicas = removed_elements.into_iter().map(|e| e.replica).collect();
-        Op{key, inserted_element: Some(inserted_element), removed_replicas}
+        let removed_dots = removed_elements.into_iter().map(|e| e.dot).collect();
+        Op{key, inserted_element: Some(inserted_element), removed_dots}
     }
 
     pub fn remove<Q: ?Sized>(&mut self, key: &Q) -> Option<Op<K, V>>
@@ -205,13 +205,13 @@ impl<K: Key, V: Value> Inner<K, V> {
               K: Borrow<Q>,
     {
         let removed_elements = self.0.remove(key)?;
-        let removed_replicas = removed_elements.into_iter().map(|e| e.replica).collect();
-        Some(Op{key: key.to_owned(), inserted_element: None, removed_replicas})
+        let removed_dots = removed_elements.into_iter().map(|e| e.dot).collect();
+        Some(Op{key: key.to_owned(), inserted_element: None, removed_dots})
     }
 
     pub fn execute_op(&mut self, op: Op<K, V>) -> LocalOp<K, V> {
         let mut elements = self.0.remove(&op.key).unwrap_or(vec![]);
-        elements.retain(|e| !op.removed_replicas.contains(&e.replica));
+        elements.retain(|e| !op.removed_dots.contains(&e.dot));
 
         if let Some(new_element) = op.inserted_element {
             if let Err(idx) = elements.binary_search_by(|e| e.cmp(&new_element)) {
@@ -236,8 +236,8 @@ impl<K: Key, V: Value> Inner<K, V> {
         // - the element has not been inserted into other
         self.0.retain(|key, elements| {
             let mut other_elements = other_values.remove(&key).unwrap_or(vec![]);
-            elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.replica));
-            other_elements.retain(|e| !elements.contains(e) && !summary.contains(&e.replica));
+            elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.dot));
+            other_elements.retain(|e| !elements.contains(e) && !summary.contains(&e.dot));
             elements.append(&mut other_elements);
             elements.sort();
             !elements.is_empty()
@@ -245,7 +245,7 @@ impl<K: Key, V: Value> Inner<K, V> {
 
         // insert any element that is in other but not yet inserted into self
         for (key, mut elements) in other_values {
-            elements.retain(|e| !summary.contains(&e.replica));
+            elements.retain(|e| !summary.contains(&e.dot));
             if !elements.is_empty() {
                 self.0.insert(key, elements);
             }
@@ -255,7 +255,7 @@ impl<K: Key, V: Value> Inner<K, V> {
     pub fn add_site_id(&mut self, site_id: SiteId) {
         for (_, elements) in &mut self.0 {
             for element in elements {
-                if element.replica.site == 0 { element.replica.site = site_id };
+                if element.dot.site == 0 { element.dot.site = site_id };
             }
         }
     }
@@ -263,7 +263,7 @@ impl<K: Key, V: Value> Inner<K, V> {
     pub fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements {
-                if element.replica.site == 0 {
+                if element.dot.site == 0 {
                     return Err(Error::InvalidSiteId);
                 }
             }
@@ -285,8 +285,8 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
         for (_, elements) in &mut self.0 {
             for element in elements {
                 element.value.nested_add_site_id(site_id);
-                if element.replica.site == 0 {
-                    element.replica.site = site_id;
+                if element.dot.site == 0 {
+                    element.dot.site = site_id;
                 }
             }
         }
@@ -295,7 +295,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
     fn nested_validate_no_unassigned_sites(&self) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements {
-                if element.replica.site == 0 {
+                if element.dot.site == 0 {
                     return Err(Error::InvalidSiteId);
                 }
                 element.value.nested_validate_no_unassigned_sites()?;
@@ -307,7 +307,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
     fn nested_validate_all(&self, site_id: SiteId) -> Result<(), Error> {
         for elements in self.0.values() {
             for element in elements {
-                if element.replica.site != site_id {
+                if element.dot.site != site_id {
                     return Err(Error::InvalidSiteId);
                 }
                 element.value.nested_validate_all(site_id)?;
@@ -324,8 +324,8 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
             let mut other_elements = other_values.remove(&key).unwrap_or(vec![]);
 
             // remove elements that have been removed from other
-            elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.replica));
-            other_elements.retain(|e| elements.contains(e) || !summary.contains(&e.replica));
+            elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.dot));
+            other_elements.retain(|e| elements.contains(e) || !summary.contains(&e.dot));
 
             let (other_merge, mut other_insert) = other_elements.into_iter()
                 .partition(|e| elements.contains(e));
@@ -344,7 +344,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
 
         // insert any element that is in other but not yet inserted into self
         for (key, mut elements) in other_values {
-            elements.retain(|e| !summary.contains(&e.replica));
+            elements.retain(|e| !summary.contains(&e.dot));
             if !elements.is_empty() {
                 self.0.insert(key, elements);
             }
@@ -359,15 +359,15 @@ impl<K: Key, V: Value> Op<K, V> {
     /// Returns a reference to the `Op`'s inserted element.
     pub fn inserted_element(&self) -> Option<&Element<V>> { self.inserted_element.as_ref() }
 
-    /// Returns a reference to the `Op`'s removed replicas.
-    pub fn removed_replicas(&self) -> &[Replica] { &self.removed_replicas }
+    /// Returns a reference to the `Op`'s removed dots.
+    pub fn removed_dots(&self) -> &[Dot] { &self.removed_dots }
 
     /// Assigns a site id to any unassigned inserts and removes
     pub fn add_site_id(&mut self, site_id: SiteId) {
         if let Some(ref mut e) = self.inserted_element {
-            if e.replica.site == 0 { e.replica.site = site_id };
+            if e.dot.site == 0 { e.dot.site = site_id };
         }
-        for r in &mut self.removed_replicas {
+        for r in &mut self.removed_dots {
             if r.site == 0 { r.site = site_id };
         }
     }
@@ -375,14 +375,14 @@ impl<K: Key, V: Value> Op<K, V> {
     /// Validates that the `Op`'s site id is equal to the given site id.
     pub fn validate(&self, site_id: SiteId) -> Result<(), Error> {
         if let Some(ref e) = self.inserted_element {
-            if e.replica.site != site_id { return Err(Error::InvalidOp) };
+            if e.dot.site != site_id { return Err(Error::InvalidOp) };
         }
         Ok(())
     }
 
-    pub(crate) fn inserted_replicas(&self) -> Vec<Replica> {
+    pub(crate) fn inserted_dots(&self) -> Vec<Dot> {
         match self.inserted_element {
-            Some(ref e) => vec![e.replica.clone()],
+            Some(ref e) => vec![e.dot.clone()],
             None => vec![],
         }
     }
@@ -392,16 +392,16 @@ impl<K: Key, V: Value + NestedInner> NestedOp for Op<K, V> {
     fn nested_add_site_id(&mut self, site_id: SiteId) {
         if let Some(ref mut e) = self.inserted_element {
             e.value.nested_add_site_id(site_id);
-            if e.replica.site == 0 { e.replica.site = site_id };
+            if e.dot.site == 0 { e.dot.site = site_id };
         }
-        for r in &mut self.removed_replicas {
+        for r in &mut self.removed_dots {
             if r.site == 0 { r.site = site_id };
         }
     }
 
     fn nested_validate(&self, site_id: SiteId) -> Result<(), Error> {
         if let Some(ref e) = self.inserted_element {
-            if e.replica.site != site_id { return Err(Error::InvalidOp) };
+            if e.dot.site != site_id { return Err(Error::InvalidOp) };
             e.value.nested_validate_all(site_id)?;
         }
         Ok(())

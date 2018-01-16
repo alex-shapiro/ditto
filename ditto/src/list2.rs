@@ -1,7 +1,7 @@
 //! A CRDT that stores an ordered sequence of elements
 
 use Error;
-use replica::{Replica, Summary, SiteId};
+use dot::{Dot, Summary, SiteId};
 use sequence::uid::{self, UID};
 use traits2::*;
 use std::borrow::Cow;
@@ -114,8 +114,8 @@ impl<T: Clone> List<T> {
     /// not have a site id, it caches the resulting op and returns an
     /// `AwaitingSiteId` error.
     pub fn push(&mut self, value: T) -> Result<Op<T>, Error> {
-        let counter = self.summary.increment(self.site_id);
-        let op = self.inner.push(value, Replica::new(self.site_id, counter));
+        let dot = self.summary.get_dot(self.site_id);
+        let op = self.inner.push(value, dot);
         self.after_op(op)
     }
 
@@ -134,8 +134,8 @@ impl<T: Clone> List<T> {
     /// site id, it caches the resulting op and returns an
     /// `AwaitingSiteId` error.
     pub fn insert(&mut self, idx: usize, value: T) -> Result<Op<T>, Error> {
-        let counter = self.summary.increment(self.site_id);
-        let op = self.inner.insert(idx, value, Replica::new(self.site_id, counter));
+        let dot = self.summary.get_dot(self.site_id);
+        let op = self.inner.insert(idx, value, dot);
         self.after_op(op)
     }
 
@@ -180,12 +180,12 @@ impl<T: Clone> Inner<T> {
         Inner(Vec::with_capacity(capacity))
     }
 
-    pub fn push(&mut self, value: T, replica: Replica) -> Op<T> {
+    pub fn push(&mut self, value: T, dot: Dot) -> Op<T> {
         let uid = {
             let len = self.0.len();
             let uid1 = if len == 0 { &*uid::MIN } else { &self.0[len-1].uid };
             let uid2 = &*uid::MAX;
-            UID::between(uid1, uid2, &replica)
+            UID::between(uid1, uid2, &dot)
         };
 
         let element = Element{uid, value};
@@ -193,12 +193,12 @@ impl<T: Clone> Inner<T> {
         Op::Insert(element)
     }
 
-    pub fn insert(&mut self, idx: usize, value: T, replica: Replica) -> Op<T> {
+    pub fn insert(&mut self, idx: usize, value: T, dot: Dot) -> Op<T> {
         let uid = {
             let len = self.0.len();
             let uid1 = if idx == 0 { &*uid::MIN } else { &self.0[idx-1].uid };
             let uid2 = if idx == len { &*uid::MAX } else { &self.0[idx].uid };
-            UID::between(uid1, uid2, &replica)
+            UID::between(uid1, uid2, &dot)
         };
 
         let element = Element{uid, value};
@@ -375,9 +375,9 @@ impl<T> Op<T> {
         Ok(())
     }
 
-    pub(crate) fn inserted_replicas(&self) -> Vec<Replica> {
+    pub(crate) fn inserted_dots(&self) -> Vec<Dot> {
         if let Op::Insert(ref elt) = *self {
-            vec![Replica::new(elt.uid.site, elt.uid.counter)]
+            vec![Dot::new(elt.uid.site, elt.uid.counter)]
         } else {
             vec![]
         }

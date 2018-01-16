@@ -22,7 +22,7 @@ fn test_update() {
     assert_eq!(op.site_id(), 1);
     assert_eq!(op.counter(), 2);
     assert_eq!(op.value(), &42);
-    assert_eq!(op.removed_replicas(), []);
+    assert_eq!(op.removed_dots(), []);
 }
 
 #[test]

@@ -2,7 +2,7 @@ extern crate ditto;
 
 mod common;
 use ditto::Error;
-use ditto::Replica;
+use ditto::dot::Dot;
 use ditto::map2::*;
 
 #[test]
@@ -27,8 +27,8 @@ fn test_insert() {
     let op = map.insert(123, "abc".into()).unwrap();
     assert_eq!(op.key(), &123);
     assert_eq!(op.inserted_element().as_ref().unwrap().value, "abc");
-    assert_eq!(op.inserted_element().as_ref().unwrap().replica, Replica::new(1,1));
-    assert_eq!(op.removed_replicas(), []);
+    assert_eq!(op.inserted_element().as_ref().unwrap().dot, Dot::new(1,1));
+    assert_eq!(op.removed_dots(), []);
 }
 
 #[test]
@@ -38,8 +38,8 @@ fn test_insert_already_exists() {
     let op2 = map.insert("a".into(), "y".into()).unwrap();
 
     assert_eq!(op2.inserted_element().as_ref().unwrap().value, "y");
-    assert_eq!(op2.inserted_element().as_ref().unwrap().replica, Replica::new(1,2));
-    assert_eq!(op2.removed_replicas(), [Replica::new(1,1)]);
+    assert_eq!(op2.inserted_element().as_ref().unwrap().dot, Dot::new(1,2));
+    assert_eq!(op2.removed_dots(), [Dot::new(1,1)]);
 }
 
 #[test]
@@ -57,7 +57,7 @@ fn test_remove() {
     let op = map.remove(&3).unwrap().unwrap();
     assert_eq!(op.key(), &3);
     assert_eq!(op.inserted_element(), None);
-    assert_eq!(op.removed_replicas(), [Replica::new(1,1)]);
+    assert_eq!(op.removed_dots(), [Dot::new(1,1)]);
 }
 
 #[test]
@@ -144,7 +144,7 @@ fn test_execute_op_remove_does_not_exist() {
 }
 
 #[test]
-fn test_execute_op_remove_some_replicas_remain() {
+fn test_execute_op_remove_some_dots_remain() {
     let mut map1: Map<i32, u64> = Map::new();
     let mut map2: Map<i32, u64> = Map::from_state(Map::new().state(), Some(2)).unwrap();
     let mut map3: Map<i32, u64> = Map::from_state(Map::new().state(), Some(3)).unwrap();
@@ -209,15 +209,15 @@ fn test_add_site_id() {
 
     assert_eq!(ops[0].key(), &10);
     assert_eq!(ops[0].inserted_element().unwrap().value, 56);
-    assert_eq!(ops[0].inserted_element().unwrap().replica, Replica::new(5,1));
+    assert_eq!(ops[0].inserted_element().unwrap().dot, Dot::new(5,1));
 
     assert_eq!(ops[1].key(), &20);
     assert_eq!(ops[1].inserted_element().unwrap().value, 57);
-    assert_eq!(ops[1].inserted_element().unwrap().replica, Replica::new(5,2));
+    assert_eq!(ops[1].inserted_element().unwrap().dot, Dot::new(5,2));
 
     assert_eq!(ops[2].key(), &10);
     assert_eq!(ops[2].inserted_element(), None);
-    assert_eq!(ops[2].removed_replicas(), [Replica::new(5,1)]);
+    assert_eq!(ops[2].removed_dots(), [Dot::new(5,1)]);
 }
 
 #[test]

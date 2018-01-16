@@ -2,16 +2,16 @@ use map_tuple_vec;
 use std::cmp::max;
 use std::collections::HashMap;
 
-pub type Dot = Replica;
+pub type Replica = Dot;
 pub type SiteId = u32;
 pub type Counter = u32;
 pub type Summary = Tombstones;
 
 
 #[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
-pub struct Replica {
-    pub site: u32,
-    pub counter: u32,
+pub struct Dot {
+    pub site: SiteId,
+    pub counter: Counter,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

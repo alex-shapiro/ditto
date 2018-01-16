@@ -1,7 +1,7 @@
 //! A CRDT that stores an `i64` value that increments
 
 use Error;
-use replica::{SiteId, Counter as RCounter};
+use dot::{SiteId, Counter as RCounter};
 use std::borrow::Cow;
 use std::collections::HashMap;
 
