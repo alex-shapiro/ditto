@@ -30,7 +30,7 @@ impl Element {
     }
 
     pub fn between(elt1: &Element, elt2: &Element, text: String, replica: &Replica) -> Self {
-        Self::text(text, UID::between(&elt1.uid, &elt2.uid, replica))
+        Self::text(text, UID::between(&elt1.uid, &elt2.uid, *replica))
     }
 }
 

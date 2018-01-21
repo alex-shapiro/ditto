@@ -8,7 +8,7 @@ pub type Counter = u32;
 pub type Summary = Tombstones;
 
 
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Dot {
     pub site_id: SiteId,
     pub counter: Counter,
