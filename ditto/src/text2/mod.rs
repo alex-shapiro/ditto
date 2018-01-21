@@ -1,5 +1,8 @@
 //! A CRDT that stores mutable text
 
+mod text_edit;
+
+use self::text_edit::TextEdit;
 use dot::{Dot, Summary, SiteId};
 use Error;
 use order_statistic_tree::{self, Tree};
@@ -7,11 +10,10 @@ use sequence::uid::UID;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::mem;
-use text::text_edit::TextEdit;
 
 lazy_static! {
-    pub static ref START: Element = Element{uid: UID::min(), text: String::new()};
-    pub static ref END: Element = Element{uid: UID::max(), text: String::new()};
+    pub static ref START_ELEMENT: Element = Element{uid: UID::min(), text: String::new()};
+    pub static ref END_ELEMENT: Element = Element{uid: UID::max(), text: String::new()};
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -24,22 +26,28 @@ pub struct Text {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextState<'a> {
+    #[serde(rename = "i")]
     inner: Cow<'a, Inner>,
+    #[serde(rename = "s")]
     summary: Cow<'a, Summary>,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Inner(pub Tree<Element>, #[serde(skip_serializing, default)] pub Option<TextEdit>);
+#[derive(Debug, Clone, PartialEq)]
+pub struct Inner(pub Tree<Element>, pub Option<TextEdit>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Element {
+    #[serde(rename = "u")]
     pub uid: UID,
+    #[serde(rename = "t")]
     pub text: String,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Op {
+    #[serde(rename = "i")]
     inserted_elements: Vec<Element>,
+    #[serde(rename = "r")]
     removed_uids: Vec<UID>,
 }
 
@@ -62,7 +70,7 @@ impl Text {
     /// Constructs and returns a new Text CRDT from a string.
     /// The Text has site id 1.
     pub fn from_str(string: &str) -> Self {
-        let text = Text::new();
+        let mut text = Text::new();
         let _ = text.replace(0, 0, string).unwrap();
         text
     }
@@ -72,10 +80,11 @@ impl Text {
         self.inner.0.len()
     }
 
-    /// Replaces the text in the range [index..<index+len] with new text.
-    /// Returns an error if the start or stop index is out-of-bounds.
-    /// If the Text does not have a site id, it caches
-    /// the op and returns an `AwaitingSiteId` error.
+    /// Replaces the text in the range [idx..<idx+len] with new text.
+    /// Panics if the start or stop idx is larger than the `Text`'s
+    /// length, or if it does not lie on a `char` boundary. If the
+    /// Text does not have a site id, it caches the op and returns an
+    /// `AwaitingSiteId` error.
     pub fn replace(&mut self, idx: usize, len: usize, text: &str) -> Option<Result<Op, Error>> {
         let dot = self.summary.get_dot(self.site_id);
         let op = self.inner.replace(idx, len, text, dot)?;
@@ -109,24 +118,29 @@ impl Inner {
         self.0.len()
     }
 
-    pub fn replace(&mut self, idx: usize, len: usize, text: &str, dot: Dot) -> Option<Op, Error> {
-        if idx + len > self.len() { panic!("index is out of bounds") }
-        if len == 0 && text.is_empty() { return None }
+
+    pub fn replace(&mut self, idx: usize, len: usize, text: &str, dot: Dot) -> Option<Op> {
+        if idx + len > self.len() {
+            panic!("index is out of bounds");
+        }
+        if len == 0 && text.is_empty() {
+            return None;
+        }
 
         let merged_edit = self.gen_merged_edit(idx, len, text);
-        let offset = self.get_element(idx)?.1;
+        let offset = self.get_element_offset(idx);
 
         if offset == 0 && merged_edit.len == 0 {
-            Some(Ok(self.do_insert(merged_edit.idx, merged_edit.text, dot)))
+            Some(self.do_insert(merged_edit.idx, merged_edit.text, dot))
         } else {
-            Some(Ok(self.do_replace(merged_edit.idx, merged_edit.len, merged_edit.text, dot)))
+            Some(self.do_replace(merged_edit.idx, merged_edit.len, merged_edit.text, dot))
         }
     }
 
     pub fn do_insert(&mut self, idx: usize, text: String, dot: Dot) -> Op {
         let element = {
-            let prev = self.get_prev_element(idx).unwrap();
-            let next = self.get_element(idx).unwrap().0;
+            let prev = self.get_prev_element(idx);
+            let next = self.get_element(idx);
             Element::between(prev, next, text, dot)
         };
 
@@ -135,25 +149,25 @@ impl Inner {
     }
 
     pub fn do_replace(&mut self, idx: usize, len: usize, text: String, dot: Dot) -> Op {
-        let (element, offset) = self.remove_at(idx).unwrap();
+        let (element, offset) = self.remove_at(idx);
         let border_idx = idx - offset;
-        let mut removed_len = element.len - offset;
+        let mut removed_len = element.text.len() - offset;
         let mut removes = vec![element];
         let mut inserts = vec![];
 
         while removed_len < len {
-            let (element, _) = self.remove_at(border_idx)?;
-            removed_len += element.len;
+            let (element, _) = self.remove_at(border_idx);
+            removed_len += element.text.len();
             removes.push(element);
         }
 
         if offset > 0 || !text.is_empty() || removed_len > len {
-            let prev = self.get_prev_element(border_idx).unwrap();
-            let (next, _) = self.get_element(border_idx).unwrap();
+            let prev = self.get_prev_element(border_idx);
+            let next = self.get_element(border_idx);
 
             if offset > 0 {
-                let (text, _) = removes[0].text.char_split(offset);
-                inserts.push(Element::between(prev, next, text.into(), dot));
+                let text = removes[0].text[..offset].to_owned();
+                inserts.push(Element::between(prev, next, text, dot));
             }
 
             if !text.is_empty() {
@@ -163,9 +177,9 @@ impl Inner {
 
             if removed_len > len {
                 let old_elt = &removes.last().unwrap();
-                let offset = old_elt.len + len - removed_len;
-                let (_, text) = old_elt.text.char_split(offset);
-                let element = Element::between(inserts.last().unwrap_or(prev), next, text.into(), dot);
+                let offset  = old_elt.text.len() + len - removed_len;
+                let text    = old_elt.text[offset..].to_owned();
+                let element = Element::between(inserts.last().unwrap_or(prev), next, text, dot);
                 inserts.push(element);
             }
         }
@@ -175,7 +189,7 @@ impl Inner {
         }
 
         let removed_uids = removes.into_iter().map(|e| e.uid).collect();
-        Ok(Op{inserted_elements: inserts, removed_uids})
+        Op{inserted_elements: inserts, removed_uids}
     }
 
     pub fn execute_op(&mut self, op: Op) -> Vec<LocalOp> {
@@ -184,7 +198,7 @@ impl Inner {
         for uid in &op.removed_uids {
             if let Some(char_index) = self.0.get_idx(&uid) {
                 let element = self.0.remove(&uid).expect("Element must exist H!");
-                local_ops.push(LocalOp{idx: char_index, len: element.len, text: "".into()});
+                local_ops.push(LocalOp{idx: char_index, len: element.text.len(), text: "".into()});
             }
         }
 
@@ -202,13 +216,13 @@ impl Inner {
     pub fn merge(&mut self, other: Inner, summary: &Summary, other_summary: &Summary) {
         // ids that are in other_summary and not in other
         let removed_uids: Vec<UID> = self.0.iter()
-            .filter(|e| other.0.get_idx(&e.uid).is_none() && other_summary.contains(e.uid.dot()))
+            .filter(|e| other.0.get_idx(&e.uid).is_none() && other_summary.contains(&e.uid.dot()))
             .map(|e| e.uid.clone())
             .collect();
 
         // ids that are not in self and not in summary
         let new_elements: Vec<Element> = other.0.into_iter()
-            .filter(|e| self.0.get_idx(&e.uid).is_none() && !summary.contains(e.uid.dot()))
+            .filter(|e| self.0.get_idx(&e.uid).is_none() && !summary.contains(&e.uid.dot()))
             .map(|e| e.clone())
             .collect();
 
@@ -224,9 +238,9 @@ impl Inner {
     }
 
     pub fn add_site_id(&mut self, site_id: SiteId) {
-        let uids: Vec<UID> = self.0.iter().filter(|e| e.uid.site_id == 0).map(|e| e.uid).collect();
+        let uids: Vec<UID> = self.0.iter().filter(|e| e.uid.site_id == 0).map(|e| e.uid.clone()).collect();
         for uid in uids {
-            let (element, _) = self.0.remove(&uid).unwrap();
+            let mut element = self.0.remove(&uid).unwrap();
             element.uid.site_id = site_id;
             let _ = self.0.insert(element).unwrap();
         }
@@ -248,13 +262,48 @@ impl Inner {
         string
     }
 
-    fn remove_at(&mut self, index: usize) -> (Element, usize) {
+    fn remove_at(&mut self, idx: usize) -> (Element, usize) {
         let (uid, offset) = {
-            let (element, offset) = self.0.get_elt(index).expect("Element must exist for UID!");
+            let (element, offset) = self.0.get_elt(idx).expect("Element must exist for UID!");
             (element.uid.clone(), offset)
         };
         let element = self.0.remove(&uid).expect("Element must exist for UID!");
-        Ok((element, offset))
+        (element, offset)
+    }
+
+    fn get_element(&self, idx: usize) -> &Element {
+        if idx == self.len() { return &*END_ELEMENT }
+        self.0.get_elt(idx).unwrap().0
+    }
+
+    fn get_prev_element(&self, idx: usize) -> &Element {
+        if idx == 0 { return &*START_ELEMENT }
+        self.0.get_elt(idx-1).unwrap().0
+    }
+
+    fn get_element_offset(&self, idx: usize) -> usize {
+        if idx == self.len() { return 0 }
+        self.0.get_elt(idx).unwrap().1
+    }
+
+    fn gen_merged_edit(&mut self, idx: usize, len: usize, text: &str) -> TextEdit {
+        if let Some(ref mut edit) = self.1 {
+            edit.merge_or_replace(idx, len, text)
+        } else {
+            let edit = TextEdit{idx, len, text: text.into()};
+            self.1 = Some(edit.clone());
+            edit
+        }
+    }
+
+    fn shift_merged_edit(&mut self, local_ops: &[LocalOp]) {
+        for op in local_ops {
+            if let Some(edit) = self.1.take() {
+                self.1 = edit.shift_or_destroy(op.idx, op.len, &op.text);
+            } else {
+                return
+            }
+        }
     }
 }
 
@@ -277,7 +326,13 @@ impl Op {
     }
 
     pub fn inserted_dots(&self) -> Vec<Dot> {
-        self.inserted_elements.iter().map(UID::dot).collect()
+        self.inserted_elements.iter().map(|elt| elt.uid.dot()).collect()
+    }
+}
+
+impl Element {
+    fn between(elt1: &Element, elt2: &Element, text: String, dot: Dot) -> Self {
+        Element{text, uid: UID::between(&elt1.uid, &elt2.uid, dot)}
     }
 }
 
@@ -310,5 +365,20 @@ impl order_statistic_tree::Element for Element {
 
     fn element_len(&self) -> usize {
         self.text.len()
+    }
+}
+
+use serde::{Serialize, Deserialize, Serializer, Deserializer};
+
+impl Serialize for Inner {
+    fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {
+        self.0.serialize(serializer)
+    }
+}
+
+impl<'de> Deserialize<'de> for Inner {
+    fn deserialize<D>(deserializer: D) -> Result<Self, D::Error> where D: Deserializer<'de> {
+        let tree: Tree<Element> = Tree::deserialize(deserializer)?;
+        Ok(Inner(tree, None))
     }
 }
