@@ -11,6 +11,8 @@ use std::borrow::Cow;
 use std::cmp::Ordering;
 use std::mem;
 
+pub type LocalOp = TextEdit;
+
 lazy_static! {
     pub static ref START_ELEMENT: Element = Element{uid: UID::min(), text: String::new()};
     pub static ref END_ELEMENT: Element = Element{uid: UID::max(), text: String::new()};
@@ -32,7 +34,7 @@ pub struct TextState<'a> {
     summary: Cow<'a, Summary>,
 }
 
-#[derive(Debug, Clone, PartialEq)]
+#[derive(Debug, Clone)]
 pub struct Inner(pub Tree<Element>, pub Option<TextEdit>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -49,13 +51,6 @@ pub struct Op {
     inserted_elements: Vec<Element>,
     #[serde(rename = "r")]
     removed_uids: Vec<UID>,
-}
-
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct LocalOp {
-    pub idx:  usize,
-    pub len:  usize,
-    pub text: String,
 }
 
 impl Text {
@@ -128,7 +123,7 @@ impl Inner {
         }
 
         let merged_edit = self.gen_merged_edit(idx, len, text);
-        let offset = self.get_element_offset(idx);
+        let offset = self.get_element_offset(merged_edit.idx);
 
         if offset == 0 && merged_edit.len == 0 {
             Some(self.do_insert(merged_edit.idx, merged_edit.text, dot))
@@ -287,13 +282,15 @@ impl Inner {
     }
 
     fn gen_merged_edit(&mut self, idx: usize, len: usize, text: &str) -> TextEdit {
-        if let Some(ref mut edit) = self.1 {
-            edit.merge_or_replace(idx, len, text)
-        } else {
-            let edit = TextEdit{idx, len, text: text.into()};
-            self.1 = Some(edit.clone());
-            edit
+        if let Some(ref mut old_edit) = self.1 {
+            if old_edit.try_merge(idx, len, text) {
+                return old_edit.clone()
+            }
         }
+
+        let edit = TextEdit{idx, len, text: text.into()};
+        self.1 = Some(edit.clone());
+        edit
     }
 
     fn shift_merged_edit(&mut self, local_ops: &[LocalOp]) {
@@ -327,6 +324,16 @@ impl Op {
 
     pub fn inserted_dots(&self) -> Vec<Dot> {
         self.inserted_elements.iter().map(|elt| elt.uid.dot()).collect()
+    }
+
+    #[doc(hidden)]
+    pub fn inserted_elements(&self) -> &[Element] {
+        &self.inserted_elements
+    }
+
+    #[doc(hidden)]
+    pub fn removed_uids(&self) -> &[UID] {
+        &self.removed_uids
     }
 }
 
@@ -369,6 +376,12 @@ impl order_statistic_tree::Element for Element {
 }
 
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
+
+impl PartialEq for Inner {
+    fn eq(&self, other: &Self) -> bool {
+        self.0.eq(&other.0)
+    }
+}
 
 impl Serialize for Inner {
     fn serialize<S>(&self, serializer: S) -> Result<S::Ok, S::Error> where S: Serializer {

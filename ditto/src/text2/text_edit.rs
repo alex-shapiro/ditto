@@ -8,11 +8,10 @@ pub struct TextEdit {
 }
 
 impl TextEdit {
-    /// Merges a contiguous new edit into the TextEdit or, if
-    /// the new edit and TextEdit are not contiguous, replaces
-    /// the TextEdit's values with the new edit's values. Then
-    /// it returns a NewEdit with the TextEdit's updated values.
-    pub fn merge_or_replace(&mut self, idx: usize, len: usize, text: &str) -> Self {
+
+    /// Tries to merge a new text edit into Self, returning a bool
+    /// indicating whether the merge succeeded.
+    pub fn try_merge(&mut self, idx: usize, len: usize, text: &str) -> bool {
         if self.should_merge(idx, len) {
             let deletes_before = self.idx.saturating_sub(idx);
             let insert_idx     = idx.saturating_sub(self.idx);
@@ -25,13 +24,10 @@ impl TextEdit {
             self.idx = min(self.idx, idx);
             self.len = deletes_before + text_len + deletes_after;
             splice(&mut self.text, insert_idx, insert_idx + text_delete_len, text);
+            true
         } else {
-            self.idx = idx;
-            self.len = len;
-            self.text = text.into();
+            false
         }
-
-        self.clone()
     }
 
     /// Shifts the TextEdit's index if the new edit is
@@ -46,6 +42,25 @@ impl TextEdit {
         } else {
             None
         }
+    }
+
+    /// Returns a compacted sequence of text edits that have the same
+    /// effect as the original sequence. Takes O(N) time, where N is the
+    /// number of text edits in the sequence.
+    pub fn compact(text_edits: &mut Vec<TextEdit>) {
+        if text_edits.len() < 2 { return };
+
+        let mut compact_idx = 0;
+
+        for idx in 1..text_edits.len() {
+            let edit = text_edits[idx].clone();
+            if !text_edits[compact_idx].try_merge(edit.idx, edit.len, &edit.text) {
+                compact_idx += 1;
+                text_edits.swap(compact_idx, idx);
+            }
+        }
+
+        text_edits.truncate(compact_idx+1);
     }
 
     // Checks whether the new edit should be merged into
