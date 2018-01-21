@@ -204,6 +204,7 @@ impl Inner {
             }
         }
 
+        TextEdit::compact(&mut local_ops);
         self.shift_merged_edit(&local_ops);
         local_ops
     }
