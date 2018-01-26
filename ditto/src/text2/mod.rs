@@ -188,23 +188,22 @@ impl Inner {
     }
 
     pub fn execute_op(&mut self, op: Op) -> Vec<LocalOp> {
-        let mut local_ops = Vec::with_capacity(op.inserted_elements.len() + op.removed_uids.len());
+        let mut local_ops = vec![];
 
         for uid in &op.removed_uids {
-            if let Some(char_index) = self.0.get_idx(&uid) {
+            if let Some(idx) = self.0.get_idx(&uid) {
                 let element = self.0.remove(&uid).expect("Element must exist H!");
-                local_ops.push(LocalOp{idx: char_index, len: element.text.len(), text: "".into()});
+                TextEdit::push(&mut local_ops, idx, element.text.len(), "");
             }
         }
 
         for element in &op.inserted_elements {
             if let Ok(_) = self.0.insert(element.clone()) {
-                let char_index = self.0.get_idx(&element.uid).expect("Element must exist I!");
-                local_ops.push(LocalOp{idx: char_index, len: 0, text: element.text.clone()});
+                let idx = self.0.get_idx(&element.uid).expect("Element must exist I!");
+                TextEdit::push(&mut local_ops, idx, 0, &element.text);
             }
         }
 
-        TextEdit::compact(&mut local_ops);
         self.shift_merged_edit(&local_ops);
         local_ops
     }
@@ -284,7 +283,7 @@ impl Inner {
 
     fn gen_merged_edit(&mut self, idx: usize, len: usize, text: &str) -> TextEdit {
         if let Some(ref mut old_edit) = self.1 {
-            if old_edit.try_merge(idx, len, text) {
+            if old_edit.try_overwrite(idx, len, text) {
                 return old_edit.clone()
             }
         }

@@ -1,6 +1,8 @@
 use std::cmp::min;
 
-#[derive(Debug, Clone, PartialEq)]
+const MAX_EDIT_LEN: usize = 64;
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct TextEdit {
     pub idx:  usize,
     pub len:  usize,
@@ -9,10 +11,12 @@ pub struct TextEdit {
 
 impl TextEdit {
 
-    /// Tries to merge a new text edit into Self, returning a bool
-    /// indicating whether the merge succeeded.
-    pub fn try_merge(&mut self, idx: usize, len: usize, text: &str) -> bool {
-        if self.should_merge(idx, len) {
+    /// Tries to overwrite a TextEdit. The effect on Self is to
+    /// remove the previous edit and insert a new edit that incorporates
+    /// the effects of the old edit. Returns a bool indicating
+    /// whether the overwrite succeeded.
+    pub fn try_overwrite(&mut self, idx: usize, len: usize, text: &str) -> bool {
+        if self.should_overwrite(idx, len) {
             let deletes_before = self.idx.saturating_sub(idx);
             let insert_idx     = idx.saturating_sub(self.idx);
 
@@ -23,6 +27,28 @@ impl TextEdit {
 
             self.idx = min(self.idx, idx);
             self.len = deletes_before + text_len + deletes_after;
+            splice(&mut self.text, insert_idx, insert_idx + text_delete_len, text);
+            true
+        } else {
+            false
+        }
+    }
+
+    /// Tries to merge a new text edit into Self. Unlike `try_overwrite`,
+    /// this is a straightforward merge of the effects of the new edit
+    /// into the effects of the existing edit.
+    pub fn try_merge(&mut self, idx: usize, len: usize, text: &str) -> bool {
+        if self.can_merge(idx, len) {
+            let deletes_before = self.idx.saturating_sub(idx);
+            let insert_idx     = idx.saturating_sub(self.idx);
+
+            let mut deletes_after = len - deletes_before;
+            let text_len          = self.text.len();
+            let text_delete_len   = min(deletes_after, text_len - insert_idx);
+            deletes_after         = deletes_after.saturating_sub(text_delete_len);
+
+            self.idx = min(self.idx, idx);
+            self.len += deletes_before + deletes_after;
             splice(&mut self.text, insert_idx, insert_idx + text_delete_len, text);
             true
         } else {
@@ -41,6 +67,15 @@ impl TextEdit {
             Some(self)
         } else {
             None
+        }
+    }
+
+    /// Tries to merge a new text edit into the last element of
+    /// a sequence. If the new edit can't be merged, it is pushed
+    /// to the end of the sequence.
+    pub fn push(text_edits: &mut Vec<TextEdit>, idx: usize, len: usize, text: &str) {
+        if text_edits.is_empty() || !text_edits.last_mut().unwrap().try_merge(idx, len, text) {
+            text_edits.push(TextEdit{idx, len, text: text.into()});
         }
     }
 
@@ -63,15 +98,16 @@ impl TextEdit {
         text_edits.truncate(compact_idx+1);
     }
 
-    // Checks whether the new edit should be merged into
-    // the TextEdit. Returns true if the edits are overlapping
-    // and the current edit has not yet hit a new line.
-    fn should_merge(&self, idx: usize, len: usize) -> bool {
-        self.overlaps_with(idx, len) && !self.text.ends_with("\n")
+    // Checks whether the TextEdit should be overwritten.
+    fn should_overwrite(&mut self, idx: usize, len: usize) -> bool {
+        self.can_merge(idx, len)
+        && self.text.len() < MAX_EDIT_LEN
+        && !self.text.ends_with("\n")
     }
 
-    // Checks whether the TextEdit and new edit overlap.
-    fn overlaps_with(&self, idx: usize, len: usize) -> bool {
+    // Checks whether the TextEdit and new edit can merge.
+    // Edits can be merged if they overlap.
+    fn can_merge(&self, idx: usize, len: usize) -> bool {
         (idx + len >= self.idx) && (idx <= self.idx + self.text.len())
     }
 }
@@ -88,176 +124,302 @@ mod tests {
     use super::*;
 
     #[test]
-    fn merge_no_overlap() {
+    fn overwrite_no_overlap() {
         let mut edit = new(3, 0, "hello");
-        let merged_edit1 = edit.merge_or_replace(0, 0, "goodbye");
-        let merged_edit2 = edit.merge_or_replace(20, 0, "goodbye");
-        assert_eq!(merged_edit1, new(0, 0, "goodbye"));
-        assert_eq!(merged_edit2, new(20, 0, "goodbye"));
-        assert_eq!(edit, new(20, 0, "goodbye"));
+        assert!(!edit.try_overwrite(0, 0, "goodbye"));
+        assert!(!edit.try_overwrite(20, 0, "goodbye"));
     }
 
     #[test]
-    fn merge_newline() {
+    fn overwrite_newline() {
         let mut edit = new(0, 0, "hello\n");
-        let merged_edit = edit.merge_or_replace(0, 5, "goodbye");
-        assert_eq!(merged_edit, new(0, 5, "goodbye"));
-        assert_eq!(edit, new(0, 5, "goodbye"));
+        assert!(!edit.try_overwrite(0, 5, "goodbye"));
+    }
+
+    #[test]
+    fn overwrite_toolong() {
+        let mut edit = new(0, 0, &"a".repeat(MAX_EDIT_LEN));
+        assert!(!edit.try_overwrite(0, 5, "goodbye"));
+    }
+
+    #[test]
+    fn overwrite_prefix_insert() {
+        let mut edit = new(0, 0, "hello");
+        assert!(edit.try_overwrite(0, 0, "goodbye"));
+        assert_eq!(edit, new(0, 5, "goodbyehello"));
+    }
+
+    #[test]
+    fn overwrite_inside_insert() {
+        let mut edit = new(0, 0, "hello");
+        assert!(edit.try_overwrite(1, 0, "goodbye"));
+        assert_eq!(edit, new(0, 5, "hgoodbyeello"));
+    }
+
+    #[test]
+    fn overwrite_postfix_insert() {
+        let mut edit = new(0, 0, "hello");
+        assert!(edit.try_overwrite(5, 0, "goodbye"));
+        assert_eq!(edit, new(0, 5, "hellogoodbye"));
+    }
+
+    #[test]
+    fn overwrite_prefix_delete() {
+        let mut edit = new(3, 2, "hello");
+        assert!(edit.try_overwrite(0, 3, ""));
+        assert_eq!(edit, new(0, 8, "hello"));
+    }
+
+    #[test]
+    fn overwrite_preoverlapping_delete() {
+        let mut edit = new(3, 2, "hello");
+        assert!(edit.try_overwrite(1, 5, ""));
+        assert_eq!(edit, new(1,7, "lo"));
+    }
+
+    #[test]
+    fn overwrite_internal_delete() {
+        let mut edit = new(3, 2, "helloworld!");
+        assert!(edit.try_overwrite(4, 6, ""));
+        assert_eq!(edit, new(3, 11, "hrld!"));
+    }
+
+    #[test]
+    fn overwrite_postoverlapping_delete() {
+        let mut edit = new(3, 2, "helloworld!");
+        assert!(edit.try_overwrite(7, 10, ""));
+        assert_eq!(edit, new(3, 14, "hell"));
+    }
+
+    #[test]
+    fn overwrite_postfix_delete() {
+        let mut edit = new(3, 2, "helloworld!");
+        assert!(edit.try_overwrite(14, 2, ""));
+        assert_eq!(edit, new(3, 13, "helloworld!"));
+    }
+
+    #[test]
+    fn overwrite_wrapping_delete() {
+        let mut edit = new(3, 2, "helloworld!");
+        assert!(edit.try_overwrite(1, 20, ""));
+        assert_eq!(edit, new(1, 20, ""));
+    }
+
+    #[test]
+    fn overwrite_prefix_replacement() {
+        let mut edit = new(3, 2, "hello");
+        assert!(edit.try_overwrite(0, 3, "x∆∅"));
+        assert_eq!(edit, new(0, 8, "x∆∅hello"));
+    }
+
+    #[test]
+    fn overwrite_preoverlapping_replacement() {
+        let mut edit = new(3, 2, "hello");
+        assert!(edit.try_overwrite(1, 5, "x∆∅"));
+        assert_eq!(edit, new(1, 7, "x∆∅lo"));
+    }
+
+    #[test]
+    fn overwrite_internal_replacement() {
+        let mut edit = new(3, 2, "helloworld!");
+        assert!(edit.try_overwrite(4, 6, "x∆∅"));
+        assert_eq!(edit, new(3, 11, "hx∆∅rld!"));
+    }
+
+    #[test]
+    fn overwrite_postoverlapping_replacement() {
+        let mut edit = new(3, 2, "hẽlloworld!");
+        assert!(edit.try_overwrite(7, 10, "x∆∅"));
+        assert_eq!(edit, new(3, 14, "hẽx∆∅"));
+    }
+
+    #[test]
+    fn overwrite_postfix_replacement() {
+        let mut edit = new(3, 2, "helloworld!");
+        assert!(edit.try_overwrite(14, 2, "x∆∅"));
+        assert_eq!(edit, new(3, 13, "helloworld!x∆∅"));
+    }
+
+    #[test]
+    fn overwrite_wrapping_replacement() {
+        let mut edit = new(3, 2, "helloworld!");
+        assert!(edit.try_overwrite(1, 20, "x∆∅"));
+        assert_eq!(edit, new(1, 20, "x∆∅"));
+    }
+
+    #[test]
+    fn overwrite_prefix_insert2() {
+        let mut edit = new(0, 13, "");
+        assert!(edit.try_merge(0, 0, "hello"));
+        assert_eq!(edit, new(0, 13, "hello"));
+    }
+
+    #[test]
+    #[should_panic]
+    fn overwrite_invalid_replacement() {
+        let mut edit = new(3, 2, "hẽlloworld!");
+        edit.try_overwrite(6, 10, "x∆∅");
+    }
+
+    #[test]
+    fn merge_no_overlap() {
+        let mut edit = new(3, 0, "hello");
+        assert!(!edit.try_merge(0, 0, "goodbye"));
+        assert!(!edit.try_merge(20, 0, "goodbye"));
     }
 
     #[test]
     fn merge_prefix_insert() {
         let mut edit = new(0, 0, "hello");
-        let merged_edit = edit.merge_or_replace(0, 0, "goodbye");
-        assert_eq!(merged_edit, new(0, 5, "goodbyehello"));
-        assert_eq!(edit, new(0, 5, "goodbyehello"));
+        assert!(edit.try_merge(0, 0, "goodbye"));
+        assert_eq!(edit, new(0, 0, "goodbyehello"));
     }
 
     #[test]
     fn merge_inside_insert() {
         let mut edit = new(0, 0, "hello");
-        let merged_edit = edit.merge_or_replace(1, 0, "goodbye");
-        assert_eq!(merged_edit, new(0, 5, "hgoodbyeello"));
+        assert!(edit.try_merge(1, 0, "goodbye"));
+        assert_eq!(edit, new(0, 0, "hgoodbyeello"));
     }
 
     #[test]
     fn merge_postfix_insert() {
         let mut edit = new(0, 0, "hello");
-        let merged_edit = edit.merge_or_replace(5, 0, "goodbye");
-        assert_eq!(merged_edit, new(0, 5, "hellogoodbye"));
+        assert!(edit.try_merge(5, 0, "goodbye"));
+        assert_eq!(edit, new(0, 0, "hellogoodbye"));
     }
 
     #[test]
     fn merge_prefix_delete() {
         let mut edit = new(3, 2, "hello");
-        let merged_edit = edit.merge_or_replace(0, 3, "");
-        assert_eq!(merged_edit, new(0, 8, "hello"));
+        assert!(edit.try_merge(0, 3, ""));
+        assert_eq!(edit, new(0, 5, "hello"));
     }
 
     #[test]
     fn merge_preoverlapping_delete() {
         let mut edit = new(3, 2, "hello");
-        let merged_edit = edit.merge_or_replace(1, 5, "");
-        assert_eq!(merged_edit, new(1,7, "lo"));
+        assert!(edit.try_merge(1, 5, ""));
+        assert_eq!(edit, new(1,4, "lo"));
     }
 
     #[test]
     fn merge_internal_delete() {
         let mut edit = new(3, 2, "helloworld!");
-        let merged_edit = edit.merge_or_replace(4, 6, "");
-        assert_eq!(merged_edit, new(3, 11, "hrld!"));
+        assert!(edit.try_merge(4, 6, ""));
+        assert_eq!(edit, new(3, 2, "hrld!"));
     }
 
     #[test]
     fn merge_postoverlapping_delete() {
         let mut edit = new(3, 2, "helloworld!");
-        let merged_edit = edit.merge_or_replace(7, 10, "");
-        assert_eq!(merged_edit, new(3, 14, "hell"));
+        assert!(edit.try_merge(7, 10, ""));
+        assert_eq!(edit, new(3, 5, "hell"));
     }
 
     #[test]
     fn merge_postfix_delete() {
         let mut edit = new(3, 2, "helloworld!");
-        let merged_edit = edit.merge_or_replace(14, 2, "");
-        assert_eq!(merged_edit, new(3, 13, "helloworld!"));
+        assert!(edit.try_merge(14, 2, ""));
+        assert_eq!(edit, new(3, 4, "helloworld!"));
     }
 
     #[test]
     fn merge_wrapping_delete() {
         let mut edit = new(3, 2, "helloworld!");
-        let merged_edit = edit.merge_or_replace(1, 20, "");
-        assert_eq!(merged_edit, new(1, 20, ""));
+        assert!(edit.try_merge(1, 20, ""));
+        assert_eq!(edit, new(1, 11, ""));
     }
 
     #[test]
     fn merge_prefix_replacement() {
         let mut edit = new(3, 2, "hello");
-        let merged_edit = edit.merge_or_replace(0, 3, "x∆∅");
-        assert_eq!(merged_edit, new(0, 8, "x∆∅hello"));
+        assert!(edit.try_merge(0, 3, "x∆∅"));
+        assert_eq!(edit, new(0, 5, "x∆∅hello"));
     }
 
     #[test]
     fn merge_preoverlapping_replacement() {
         let mut edit = new(3, 2, "hello");
-        let merged_edit = edit.merge_or_replace(1, 5, "x∆∅");
-        assert_eq!(merged_edit, new(1, 7, "x∆∅lo"));
+        assert!(edit.try_merge(1, 5, "x∆∅"));
+        assert_eq!(edit, new(1, 4, "x∆∅lo"));
     }
 
     #[test]
     fn merge_internal_replacement() {
         let mut edit = new(3, 2, "helloworld!");
-        let merged_edit = edit.merge_or_replace(4, 6, "x∆∅");
-        assert_eq!(merged_edit, new(3, 11, "hx∆∅rld!"));
+        assert!(edit.try_merge(4, 6, "x∆∅"));
+        assert_eq!(edit, new(3, 2, "hx∆∅rld!"));
     }
 
     #[test]
     fn merge_postoverlapping_replacement() {
         let mut edit = new(3, 2, "hẽlloworld!");
-        let merged_edit = edit.merge_or_replace(7, 10, "x∆∅");
-        assert_eq!(merged_edit, new(3, 14, "hẽx∆∅"));
+        assert!(edit.try_merge(7, 10, "x∆∅"));
+        assert_eq!(edit, new(3, 3, "hẽx∆∅"));
     }
 
     #[test]
     fn merge_postfix_replacement() {
         let mut edit = new(3, 2, "helloworld!");
-        let merged_edit = edit.merge_or_replace(14, 2, "x∆∅");
-        assert_eq!(merged_edit, new(3, 13, "helloworld!x∆∅"));
+        assert!(edit.try_merge(14, 2, "x∆∅"));
+        assert_eq!(edit, new(3, 4, "helloworld!x∆∅"));
     }
 
     #[test]
     fn merge_wrapping_replacement() {
         let mut edit = new(3, 2, "helloworld!");
-        let merged_edit = edit.merge_or_replace(1, 20, "x∆∅");
-        assert_eq!(merged_edit, new(1, 20, "x∆∅"));
+        assert!(edit.try_merge(1, 20, "x∆∅"));
+        assert_eq!(edit, new(1, 11, "x∆∅"));
     }
 
     #[test]
     #[should_panic]
     fn merge_invalid_replacement() {
         let mut edit = new(3, 2, "hẽlloworld!");
-        edit.merge_or_replace(6, 10, "x∆∅");
+        edit.try_merge(6, 10, "x∆∅");
     }
 
     #[test]
     fn shift_insert_before() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(3, 0, "abcdefg").unwrap();
-        assert_eq!(edit.idx, 17);
+        assert_eq!(edit, new(17, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_delete_before() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(3, 4, "").unwrap();
-        assert_eq!(edit.idx, 6);
+        assert_eq!(edit, new(6, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_replace_before() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(3, 4, "xyz").unwrap();
-        assert_eq!(edit.idx, 9);
+        assert_eq!(edit, new(9, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_insert_prefix() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(10, 0, "abcdefg").unwrap();
-        assert_eq!(edit.idx, 17);
+        assert_eq!(edit, new(17, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_delete_prefix() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(6, 4, "").unwrap();
-        assert_eq!(edit.idx, 6);
+        assert_eq!(edit, new(6, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_replace_prefix() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(8, 2, "Δƍ🤡").unwrap();
-        assert_eq!(edit.idx, 16);
+        assert_eq!(edit, new(16, 0, "helloworld!"));
     }
 
     #[test]
@@ -306,21 +468,21 @@ mod tests {
     fn shift_insert_postfix() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(21, 0, "abc").unwrap();
-        assert_eq!(edit.idx, 10);
+        assert_eq!(edit, new(10, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_delete_postfix() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(21, 412, "").unwrap();
-        assert_eq!(edit.idx, 10);
+        assert_eq!(edit, new(10, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_replace_postfix() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(21, 999, "abc").unwrap();
-        assert_eq!(edit.idx, 10);
+        assert_eq!(edit, new(10, 0, "helloworld!"));
     }
 
     #[test]
@@ -339,21 +501,21 @@ mod tests {
     fn shift_insert_after() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(22, 0, "wazza?").unwrap();
-        assert_eq!(edit.idx, 10);
+        assert_eq!(edit, new(10, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_delete_after() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(22, 501, "").unwrap();
-        assert_eq!(edit.idx, 10);
+        assert_eq!(edit, new(10, 0, "helloworld!"));
     }
 
     #[test]
     fn shift_replace_after() {
         let edit = new(10, 0, "helloworld!");
         let edit = edit.shift_or_destroy(22, 501, "wazza?").unwrap();
-        assert_eq!(edit.idx, 10);
+        assert_eq!(edit, new(10, 0, "helloworld!"));
     }
 
     fn new(idx: usize, len: usize, text: &str) -> TextEdit {

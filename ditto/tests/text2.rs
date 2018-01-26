@@ -52,13 +52,26 @@ fn test_execute_op() {
     let op2 = text1.replace(7, 3, "").unwrap().unwrap();
     let op3 = text1.replace(9, 1, "stwhile").unwrap().unwrap();
 
-    let local_op1 = text2.execute_op(op1).pop().unwrap();
-    let local_op2 = text2.execute_op(op2).pop().unwrap();
-    let local_op3 = text2.execute_op(op3).pop().unwrap();
+    let mut local_ops1 = text2.execute_op(op1);
+    let mut local_ops2 = text2.execute_op(op2);
+    let mut local_ops3 = text2.execute_op(op3);
 
-    assert_eq!(local_op1, LocalOp{idx: 0, len: 0, text: "Hěllo Ťhere".into()});
-    assert_eq!(local_op2, LocalOp{idx: 0, len: 0, text: "Hello ere".into()});
-    assert_eq!(local_op2, LocalOp{idx: 9, len: 1, text: "stwhile".into()});
+    assert_eq!(text1.state(), text2.state());
+    assert_eq!(local_ops1.len(), 1);
+    assert_eq!(local_ops2.len(), 1);
+    assert_eq!(local_ops3.len(), 1);
+
+    let mut local_op1 = local_ops1.pop().unwrap();
+    let local_op2 = local_ops2.pop().unwrap();
+    let local_op3 = local_ops3.pop().unwrap();
+
+    assert_eq!(local_op1, LocalOp{idx: 0, len: 0,  text: "Hěllo Ťhere".into()});
+    assert_eq!(local_op2, LocalOp{idx: 0, len: 13, text: "Hěllo ere".into()});
+    assert_eq!(local_op3, LocalOp{idx: 0, len: 10,  text: "Hěllo erstwhile".into()});
+
+    local_op1.try_merge(local_op2.idx, local_op2.len, &local_op2.text);
+    local_op1.try_merge(local_op3.idx, local_op3.len, &local_op3.text);
+    assert_eq!(local_op1, LocalOp{idx: 0, len: 0, text: "Hěllo erstwhile".into()})
 }
 
 #[test]
