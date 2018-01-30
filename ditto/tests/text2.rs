@@ -75,6 +75,70 @@ fn test_execute_op() {
 }
 
 #[test]
+fn test_execute_op_dupe() {
+    let mut text1 = Text::new();
+    let mut text2 = Text::from_state(text1.state(), None).unwrap();
+    let op = text1.replace(0, 0, "Hiya").unwrap().unwrap();
+
+    let local_ops1 = text2.execute_op(op.clone());
+    let local_ops2 = text2.execute_op(op);
+
+    assert_eq!(text1.state(), text2.state());
+    assert_eq!(local_ops1.len(), 1);
+    assert_eq!(local_ops2.len(), 0);
+}
+
+#[test]
+fn test_merge() {
+    let mut text1 = Text::new();
+    let mut text2 = Text::from_state(text1.state(), Some(2)).unwrap();
+    let mut text3 = Text::from_state(text1.state(), Some(3)).unwrap();
+
+    let _ = text1.replace(0, 0, "Yes");
+    let _ = text2.replace(0, 0, "Nø");
+    let _ = text3.replace(0, 0, "🇺🇸😀🙁");
+
+    let state1 = text1.clone_state();
+    let state2 = text2.clone_state();
+    let state3 = text3.clone_state();
+
+    text1.merge(state2.clone()).unwrap();
+    text1.merge(state3.clone()).unwrap();
+    text2.merge(state3).unwrap();
+    text2.merge(state1.clone()).unwrap();
+    text3.merge(state2).unwrap();
+    text3.merge(state1).unwrap();
+
+    assert_eq!(text1.state(), text2.state());
+    assert_eq!(text1.state(), text3.state());
+    assert!(text1.summary().contains_pair(1, 1));
+    assert!(text1.summary().contains_pair(2, 1));
+    assert!(text1.summary().contains_pair(3, 1));
+}
+
+#[test]
+fn test_add_site_id() {
+    let mut text1 = Text::new();
+    let _ = text1.replace(0, 0, "abc");
+
+    let mut text2 = Text::from_state(text1.state(), None).unwrap();
+    let _ = text2.replace(3, 0, "def");
+    let ops = text2.add_site_id(99).unwrap();
+    let elt = &ops[0].inserted_elements()[0];
+
+    assert_eq!(text2.site_id(), 99);
+    assert_eq!(elt.text, "def");
+    assert_eq!(elt.uid.site_id, 99);
+}
+
+#[test]
+fn test_add_site_id_already_has_site_id() {
+    let mut text = Text::from_state(Text::new().state(), Some(33)).unwrap();
+    let _ = text.replace(0, 0, "abc");
+    assert_eq!(text.add_site_id(34), Err(Error::AlreadyHasSiteId));
+}
+
+#[test]
 fn test_serialize() {
     let mut text = Text::new();
     let _ = text.replace(0, 0, "Hěllo").unwrap().unwrap();

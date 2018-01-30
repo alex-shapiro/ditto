@@ -34,7 +34,7 @@ pub struct TextState<'a> {
     summary: Cow<'a, Summary>,
 }
 
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct Inner(pub Tree<Element>, pub Option<TextEdit>);
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -376,6 +376,12 @@ impl order_statistic_tree::Element for Element {
 }
 
 use serde::{Serialize, Deserialize, Serializer, Deserializer};
+
+impl Clone for Inner {
+    fn clone(&self) -> Self {
+        Inner(self.0.clone(), None)
+    }
+}
 
 impl PartialEq for Inner {
     fn eq(&self, other: &Self) -> bool {
