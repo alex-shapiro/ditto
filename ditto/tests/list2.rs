@@ -204,7 +204,7 @@ fn test_merge() {
     list2.merge(list1_state).unwrap();
 
     assert_eq!(list1.state(), list2.state());
-    assert_eq!(list1.local_value(), [12, 12, 15]);
+    assert!(list1.local_value() == [12,12,15] || list1.local_value() == [12,15,12]);
     assert!(list1.summary().contains_pair(1,3));
 }
 
@@ -251,7 +251,7 @@ fn test_serialize() {
 }
 
 #[test]
-fn test_serialize_crdt_and_state() {
+fn test_serialize_state() {
     let mut list: List<String> = List::new();
     let _ = list.push("Bob".into());
     let _ = list.push("Sue".into());

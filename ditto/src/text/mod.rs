@@ -1,8 +1,8 @@
 //! A CRDT that stores mutable text.
 
 mod value;
-mod element;
-mod text_edit;
+pub mod element;
+pub mod text_edit;
 
 use {Error, Replica, Tombstones};
 pub use self::value::TextValue;

@@ -5,17 +5,16 @@ use std::collections::HashMap;
 pub type Replica = Dot;
 pub type SiteId = u32;
 pub type Counter = u32;
-pub type Summary = Tombstones;
+pub type Tombstones = Summary;
 
-
-#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Dot {
     pub site_id: SiteId,
     pub counter: Counter,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct Tombstones(#[serde(with = "map_tuple_vec")] HashMap<u32,u32>);
+pub struct Summary(#[serde(with = "map_tuple_vec")] HashMap<u32,u32>);
 
 impl Dot {
     pub fn new(site_id: SiteId, counter: Counter) -> Self {
@@ -23,9 +22,9 @@ impl Dot {
     }
 }
 
-impl Tombstones {
+impl Summary {
     pub fn new() -> Self {
-        Tombstones(HashMap::new())
+        Summary(HashMap::new())
     }
 
     pub fn get(&self, site_id: SiteId) -> Counter {
@@ -67,7 +66,7 @@ impl Tombstones {
         *entry = max(*entry, counter);
     }
 
-    pub fn merge(&mut self, other: &Tombstones) {
+    pub fn merge(&mut self, other: &Summary) {
         for (site_id, counter) in &other.0 {
             let site_id = *site_id;
             let counter = *counter;

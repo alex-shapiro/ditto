@@ -181,7 +181,7 @@ impl<T: Clone> Inner<T> {
             let len = self.0.len();
             let uid1 = if len == 0 { &*uid::MIN } else { &self.0[len-1].uid };
             let uid2 = &*uid::MAX;
-            UID::between(uid1, uid2, &dot)
+            UID::between(uid1, uid2, dot)
         };
 
         let element = Element{uid, value};
@@ -194,7 +194,7 @@ impl<T: Clone> Inner<T> {
             let len = self.0.len();
             let uid1 = if idx == 0 { &*uid::MIN } else { &self.0[idx-1].uid };
             let uid2 = if idx == len { &*uid::MAX } else { &self.0[idx].uid };
-            UID::between(uid1, uid2, &dot)
+            UID::between(uid1, uid2, dot)
         };
 
         let element = Element{uid, value};

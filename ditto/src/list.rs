@@ -138,7 +138,7 @@ impl<T: Clone> ListValue<T> {
         let uid = {
             let uid1 = if index == 0 { &*uid::MIN } else { &(self.0.get_elt(index-1)?.0).0 };
             let uid2 = if index == max_index { &*uid::MAX } else { &(self.0.get_elt(index)?.0).0 };
-            UID::between(uid1, uid2, replica)
+            UID::between(uid1, uid2, *replica)
         };
 
         let element = Element(uid, value);
