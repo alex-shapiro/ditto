@@ -110,7 +110,7 @@ macro_rules! crdt_impl2 {
             self.site_id = site_id;
             self.inner.add_site_id(site_id);
             self.summary.add_site_id(site_id);
-            Ok(mem::replace(&mut self.cached_ops, vec![])
+            Ok(::std::mem::replace(&mut self.cached_ops, vec![])
                 .into_iter()
                 .map(|mut op| { op.add_site_id(site_id); op})
                 .collect())
@@ -127,14 +127,25 @@ macro_rules! crdt_impl2 {
     }
 }
 
-pub(crate) trait NestedInner {
+pub(crate) trait NestedInner: Sized {
     fn nested_add_site_id(&mut self, site_id: SiteId);
 
     fn nested_validate_all(&self, site_id: SiteId) -> Result<(), Error>;
 
     fn nested_validate_no_unassigned_sites(&self) -> Result<(), Error>;
 
-    fn nested_merge(&mut self, other: Self, summary: &Summary, other_summary: &Summary);
+    fn nested_can_merge(&self, other: &Self) -> bool;
+
+    fn nested_merge(&mut self, other: Self, summary: &Summary, other_summary: &Summary) -> Result<(), Error> {
+        if self.nested_can_merge(&other) {
+            self.nested_force_merge(other, summary, other_summary);
+            Ok(())
+        } else {
+            Err(Error::CannotMerge)
+        }
+    }
+
+    fn nested_force_merge(&mut self, other: Self, summary: &Summary, other_summary: &Summary);
 }
 
 pub(crate) trait NestedOp {

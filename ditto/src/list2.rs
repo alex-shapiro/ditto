@@ -176,6 +176,10 @@ impl<T: Clone> Inner<T> {
         Inner(Vec::with_capacity(capacity))
     }
 
+    pub fn iter(&self) -> ::std::slice::Iter<Element<T>> {
+        self.0.iter()
+    }
+
     pub fn push(&mut self, value: T, dot: Dot) -> Op<T> {
         let uid = {
             let len = self.0.len();
@@ -281,6 +285,14 @@ impl<T: Clone> Inner<T> {
     pub fn local_value(&self) -> Vec<T> {
         self.0.iter().map(|e| e.value.clone()).collect()
     }
+
+    pub(crate) fn get_idx(&mut self, uid: &UID) -> Option<usize> {
+        self.0.binary_search_by(|e| e.uid.cmp(uid)).ok()
+    }
+
+    pub(crate) fn get_mut(&mut self, idx: usize) -> Option<&mut Element<T>> {
+        self.0.get_mut(idx)
+    }
 }
 
 impl<T: Clone + NestedInner> NestedInner for Inner<T> {
@@ -307,13 +319,40 @@ impl<T: Clone + NestedInner> NestedInner for Inner<T> {
         Ok(())
     }
 
-    fn nested_merge(&mut self, other: Inner<T>, summary: &Summary, other_summary: &Summary) {
+    fn nested_can_merge(&self, other: &Inner<T>) -> bool {
+        let mut iter1 = self.0.iter().peekable();
+        let mut iter2 = other.0.iter().peekable();
+
+        while iter1.peek().is_some() || iter2.peek().is_some() {
+            let uid1 = iter1.peek().and_then(|e| Some(&e.uid)).unwrap_or(&uid::MAX);
+            let uid2 = iter2.peek().and_then(|e| Some(&e.uid)).unwrap_or(&uid::MAX);
+            match uid1.cmp(uid2) {
+                Ordering::Less => {
+                    iter1.next();
+                }
+                Ordering::Equal => {
+                    let ref v1 = iter1.next().unwrap().value;
+                    let ref v2 = iter2.next().unwrap().value;
+                    if !v1.nested_can_merge(v2) {
+                        return false
+                    }
+                }
+                Ordering::Greater => {
+                    iter2.next();
+                }
+            }
+        }
+
+        true
+    }
+
+    fn nested_force_merge(&mut self, other: Inner<T>, summary: &Summary, other_summary: &Summary) {
         let capacity = self.0.capacity();
         let elements = mem::replace(&mut self.0, Vec::with_capacity(capacity));
         let mut iter = elements.into_iter().peekable();
         let mut other_iter = other.0.into_iter().peekable();
 
-        while !(iter.peek().is_some() && other_iter.peek().is_some()) {
+        while iter.peek().is_some() || other_iter.peek().is_some() {
             let ordering = {
                 let uid1 = iter.peek().and_then(|e| Some(&e.uid)).unwrap_or(&uid::MAX);
                 let uid2 = other_iter.peek().and_then(|e| Some(&e.uid)).unwrap_or(&uid::MAX);

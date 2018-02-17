@@ -1,11 +1,12 @@
 //! A CRDT that stores a JSON value.
 
-use {Error, Replica, Tombstones};
-use list::{self, ListValue};
-use map::{self, MapValue};
-use text::{self, TextValue};
+use Error;
+use dot::{Dot, Summary, SiteId};
+use list2::{self as list, Inner as ListInner};
+use map2::{self as map, Inner as MapInner};
+use text2::{self as text, Inner as TextInner};
 use sequence;
-use traits::*;
+use traits2::*;
 
 use serde_json::{self, Value as SJValue};
 use std::borrow::Cow;
@@ -35,65 +36,65 @@ use std::str::FromStr;
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Json {
-    value: JsonValue,
-    replica: Replica,
-    tombstones: Tombstones,
-    awaiting_site: Vec<RemoteOp>,
+    inner:      Inner,
+    summary:    Summary,
+    site_id:    SiteId,
+    cached_ops: Vec<Op>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct JsonState<'a> {
-    value: Cow<'a, JsonValue>,
-    tombstones: Cow<'a, Tombstones>,
+    inner: Cow<'a, Inner>,
+    summary: Cow<'a, Summary>,
 }
 
 #[doc(hidden)]
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum JsonValue {
-    Object(MapValue<String, JsonValue>),
-    Array(ListValue<JsonValue>),
-    String(TextValue),
+pub enum Inner {
+    Object(MapInner<String, Inner>),
+    Array(ListInner<Inner>),
+    String(TextInner),
     Number(f64),
     Bool(bool),
     Null,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub struct RemoteOp {
-    pointer: Vec<RemoteUID>,
-    op: RemoteOpInner,
+pub struct Op {
+    pointer: Vec<Uid>,
+    op: OpInner,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum RemoteOpInner {
-    Object(map::RemoteOp<String, JsonValue>),
-    Array(list::RemoteOp<JsonValue>),
-    String(text::RemoteOp),
+pub enum OpInner {
+    Object(map::Op<String, Inner>),
+    Array(list::Op<Inner>),
+    String(text::Op),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub enum RemoteUID {
-    Object(String, Replica),
+pub enum Uid {
+    Object(String, Dot),
     Array(sequence::uid::UID),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(tag = "op", rename_all="snake_case")]
 pub enum LocalOp {
-    Insert{pointer: Vec<LocalUID>, value: SJValue},
-    Remove{pointer: Vec<LocalUID>},
-    ReplaceText{pointer: Vec<LocalUID>, changes: Vec<text::LocalChange>},
+    Insert{pointer: Vec<LocalUid>, value: SJValue},
+    Remove{pointer: Vec<LocalUid>},
+    ReplaceText{pointer: Vec<LocalUid>, changes: Vec<text::LocalOp>},
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(untagged)]
-pub enum LocalUID {
+pub enum LocalUid {
     Object(String),
     Array(usize),
 }
 
 pub trait IntoJson {
-    fn into_json(self, replica: &Replica) -> Result<JsonValue, Error>;
+    fn into_json(self, dot: Dot) -> Result<Inner, Error>;
 }
 
 impl Json {
@@ -101,11 +102,11 @@ impl Json {
     /// Constructs and returns a new `Json` CRDT with site 1 from any
     /// value that satisfies the [`IntoJson`](IntoJson.t.html) trait.
     pub fn new<T: IntoJson>(local_value: T) -> Result<Self, Error> {
-        let mut replica = Replica::new(1, 0);
-        let value = local_value.into_json(&replica)?;
-        let tombstones = Tombstones::new();
-        replica.counter += 1;
-        Ok(Json{value, replica, tombstones, awaiting_site: vec![]})
+        let site_id = 1;
+        let mut summary = Summary::new();
+        let dot = summary.get_dot(site_id);
+        let inner = local_value.into_json(dot)?;
+        Ok(Json{inner, summary, site_id, cached_ops: vec![]})
     }
 
     /// Constructs and returns a new `Json` CRDT with site 1 from an
@@ -122,9 +123,10 @@ impl Json {
     ///
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T) -> Result<RemoteOp, Error> {
-        let value = value.into_json(&self.replica)?;
-        let op = self.value.insert(pointer, value, &self.replica)?;
+    pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T) -> Result<Op, Error> {
+        let dot   = self.summary.get_dot(self.site_id);
+        let value = value.into_json(dot)?;
+        let op    = self.inner.insert(pointer, value, dot)?;
         self.after_op(op)
     }
 
@@ -134,7 +136,7 @@ impl Json {
     ///
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn insert_str(&mut self, pointer: &str, value: &str) -> Result<RemoteOp, Error> {
+    pub fn insert_str(&mut self, pointer: &str, value: &str) -> Result<Op, Error> {
         let json: SJValue = serde_json::from_str(&value)?;
         self.insert(pointer, json)
     }
@@ -146,109 +148,151 @@ impl Json {
     ///
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn remove(&mut self, pointer: &str) -> Result<RemoteOp, Error> {
-        let op = self.value.remove(pointer)?;
+    pub fn remove(&mut self, pointer: &str) -> Result<Op, Error> {
+        let op = self.inner.remove(pointer)?;
         self.after_op(op)
     }
 
     /// Replaces a text range in a text value in the Json CRDT.
     /// If the CRDT does not have a site allocated, it caches
     /// the op and returns an `AwaitingSite` error.
-    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str) -> Result<RemoteOp, Error> {
-        let op = self.value.replace_text(pointer, index, len, text, &self.replica)?;
+    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str) -> Result<Op, Error> {
+        let dot = self.summary.get_dot(self.site_id);
+        let op = self.inner.replace_text(pointer, index, len, text, dot)?;
         self.after_op(op)
     }
 
-    crdt_impl!(Json, JsonState, JsonState, JsonState<'static>, JsonValue);
+    crdt_impl2! {
+        Json,
+        JsonState,
+        JsonState<'static>,
+        JsonState,
+        Inner,
+        Op,
+        Option<LocalOp>,
+        SJValue,
+    }
 }
 
-impl JsonValue {
-    pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T, replica: &Replica) -> Result<RemoteOp, Error> {
+impl Inner {
+    pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T, dot: Dot) -> Result<Op, Error> {
         let mut pointer = Self::split_pointer(pointer)?;
         let key = pointer.pop().ok_or(Error::DoesNotExist)?;
         let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
-        let value = value.into_json(&replica)?;
+        let value = value.into_json(dot)?;
 
         match *json_value {
-            JsonValue::Object(ref mut map_value) => {
-                let remote_op = map_value.insert(key.into(), value, &replica)?;
-                let remote_op = RemoteOpInner::Object(remote_op);
-                Ok(RemoteOp{pointer: remote_pointer, op: remote_op})
+            Inner::Object(ref mut map) => {
+                let op = map.insert(key.into(), value, dot);
+                let op = OpInner::Object(op);
+                Ok(Op{pointer: remote_pointer, op})
             }
-            JsonValue::Array(ref mut list_value) => {
+            Inner::Array(ref mut list) => {
                 let idx = usize::from_str(key)?;
-                let remote_op = list_value.insert(idx, value, &replica)?;
-                let remote_op = RemoteOpInner::Array(remote_op);
-                Ok(RemoteOp{pointer: remote_pointer, op: remote_op})
+                let op = list.insert(idx, value, dot);
+                let op = OpInner::Array(op);
+                Ok(Op{pointer: remote_pointer, op})
             }
             _ => Err(Error::DoesNotExist),
         }
     }
 
-    pub fn remove(&mut self, pointer: &str) -> Result<RemoteOp, Error> {
+    pub fn remove(&mut self, pointer: &str) -> Result<Op, Error> {
         let mut pointer = Self::split_pointer(pointer)?;
         let key = pointer.pop().ok_or(Error::DoesNotExist)?;
         let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
 
         match *json_value {
-            JsonValue::Object(ref mut map_value) => {
-                let remote_op = map_value.remove(key)?;
-                Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Object(remote_op)})
+            Inner::Object(ref mut map) => {
+                let op = map.remove(key).ok_or(Error::Noop)?;
+                Ok(Op{pointer: remote_pointer, op: OpInner::Object(op)})
             }
-            JsonValue::Array(ref mut list_value) => {
+            Inner::Array(ref mut list) => {
                 let idx = usize::from_str(key)?;
-                let remote_op = list_value.remove(idx)?;
-                Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::Array(remote_op)})
+                let (_, op) = list.remove(idx);
+                Ok(Op{pointer: remote_pointer, op: OpInner::Array(op)})
             }
             _ => Err(Error::DoesNotExist),
         }
     }
 
-    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str, replica: &Replica) -> Result<RemoteOp, Error> {
+    pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str, dot: Dot) -> Result<Op, Error> {
         let pointer = Self::split_pointer(pointer)?;
-        let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
-        let text_value = json_value.as_text()?;
-        let remote_op = text_value.replace(index, len, text, &replica)?;
-        Ok(RemoteOp{pointer: remote_pointer, op: RemoteOpInner::String(remote_op)})
+        let (inner, remote_pointer) = self.get_nested_local(&pointer)?;
+        let text_inner = inner.as_text()?;
+        let op = text_inner.replace(index, len, text, dot).ok_or(Error::Noop)?;
+        Ok(Op{pointer: remote_pointer, op: OpInner::String(op)})
     }
 
-    pub fn execute_remote(&mut self, remote_op: &RemoteOp) -> Option<LocalOp> {
-        let (json_value, mut pointer) = try_opt!(self.get_nested_remote(&remote_op.pointer));
-        match (json_value, &remote_op.op) {
-            (&mut JsonValue::Object(ref mut map), &RemoteOpInner::Object(ref op)) => {
-                match try_opt!(map.execute_remote(op)) {
+    pub fn execute_op(&mut self, op: Op) -> Option<LocalOp> {
+        let (inner, mut pointer) = self.get_nested_remote(&op.pointer)?;
+        match op {
+            OpInner::Object(op) => {
+                match self.as_map()?.execute_op(op)? {
                     map::LocalOp::Insert{key, value} => {
-                        pointer.push(LocalUID::Object(key));
+                        pointer.push(LocalUid::Object(key));
                         Some(LocalOp::Insert{pointer, value: value.local_value()})
                     }
                     map::LocalOp::Remove{key} => {
-                        pointer.push(LocalUID::Object(key));
+                        pointer.push(LocalUid::Object(key));
                         Some(LocalOp::Remove{pointer})
                     }
                 }
             }
-            (&mut JsonValue::Array(ref mut list), &RemoteOpInner::Array(ref op)) => {
-                match try_opt!(list.execute_remote(op)) {
-                    list::LocalOp::Insert{index, value} => {
-                        pointer.push(LocalUID::Array(index));
+            OpInner::Array(op) => {
+                match self.as_list()?.execute_op(op)? {
+                    list::LocalOp::Insert{idx, value} => {
+                        pointer.push(LocalUid::Array(idx));
                         Some(LocalOp::Insert{pointer, value: value.local_value()})
                     }
-                    list::LocalOp::Remove{index} => {
-                        pointer.push(LocalUID::Array(index));
+                    list::LocalOp::Remove{idx} => {
+                        pointer.push(LocalUid::Array(idx));
                         Some(LocalOp::Remove{pointer})
                     }
                 }
             }
-            (&mut JsonValue::String(ref mut text), &RemoteOpInner::String(ref op)) => {
-                let text_op = try_opt!(text.execute_remote(op));
-                Some(LocalOp::ReplaceText{pointer, changes: text_op.0})
+            OpInner::String(op) => {
+                let changes = self.as_text()?.execute_op(op);
+                if changes.is_empty() { return None };
+                Some(LocalOp::ReplaceText{pointer, changes})
             }
-            _ => None,
         }
     }
 
-    pub fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
+    pub fn merge(&mut self, other: Inner, summary: &Summary, other_summary: &Summary) {
+        self.nested_merge(other, summary, other_summary).unwrap()
+    }
+
+    pub fn add_site_id(&mut self, site_id: SiteId) {
+        self.nested_add_site_id(site_id)
+    }
+
+    pub fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
+        self.nested_validate_no_unassigned_sites()
+    }
+
+    pub fn local_value(&self) -> SJValue {
+        match *self {
+            Inner::Object(ref map_inner) => {
+                let mut map = serde_json::Map::with_capacity(map_inner.len());
+                for (k, v) in map_inner.iter() {
+                    let _ = map.insert(k.clone(), v[0].value.local_value());
+                }
+                SJValue::Object(map)
+            }
+            Inner::Array(ref list_inner) =>
+                SJValue::Array(list_inner.iter().map(|v| v.value.local_value()).collect()),
+            Inner::String(ref text_value) =>
+                SJValue::String(text_value.local_value()),
+            Inner::Number(float) => {
+                let number = serde_json::Number::from_f64(float).unwrap();
+                SJValue::Number(number)
+            }
+            Inner::Bool(bool_value) =>
+                SJValue::Bool(bool_value),
+            Inner::Null =>
+                SJValue::Null,
+        }
     }
 
     fn split_pointer(pointer_str: &str) -> Result<Vec<&str>, Error> {
@@ -258,24 +302,24 @@ impl JsonValue {
         Ok(pointer_str.split("/").skip(1).collect())
     }
 
-    fn get_nested_local(&mut self, pointer: &[&str]) -> Result<(&mut JsonValue, Vec<RemoteUID>), Error> {
+    fn get_nested_local(&mut self, pointer: &[&str]) -> Result<(&mut Inner, Vec<Uid>), Error> {
         let mut value = Some(self);
         let mut remote_pointer = vec![];
 
         for key in pointer {
-            match value.unwrap() {
-                &mut JsonValue::Object(ref mut map_value) => {
+            value = match value.unwrap() {
+                &mut Inner::Object(ref mut map_value) => {
                     let element = map_value.get_mut(*key).ok_or(Error::DoesNotExist)?;
-                    let uid = RemoteUID::Object((*key).to_owned(), element.0.clone());
+                    let uid = Uid::Object(key.to_string(), element.dot);
                     remote_pointer.push(uid);
-                    value = Some(&mut element.1)
+                    Some(&mut element.value)
                 }
-                &mut JsonValue::Array(ref mut list_value) => {
-                    let index = usize::from_str(key)?;
-                    let element = list_value.0.get_mut_elt(index)?.0;
-                    let uid = RemoteUID::Array(element.0.clone());
+                &mut Inner::Array(ref mut list_inner) => {
+                    let idx = usize::from_str(key)?;
+                    let element = list_inner.0.get_mut(idx).ok_or(Error::DoesNotExist)?;
+                    let uid = Uid::Array(element.uid.clone());
                     remote_pointer.push(uid);
-                    value = Some(&mut element.1)
+                    Some(&mut element.value)
                 }
                 _ => return Err(Error::DoesNotExist),
             }
@@ -284,22 +328,22 @@ impl JsonValue {
         Ok((value.unwrap(), remote_pointer))
     }
 
-    fn get_nested_remote(&mut self, pointer: &[RemoteUID]) -> Option<(&mut JsonValue, Vec<LocalUID>)> {
+    fn get_nested_remote(&mut self, pointer: &[Uid]) -> Option<(&mut Inner, Vec<LocalUid>)> {
         let mut value = Some(self);
         let mut local_pointer = vec![];
 
         for uid in pointer {
             value = match (value.unwrap(), uid) {
-                (&mut JsonValue::Object(ref mut map_value), &RemoteUID::Object(ref key, ref replica)) => {
-                    let element = try_opt!(map_value.get_mut_element(key, replica));
-                    local_pointer.push(LocalUID::Object(key.clone()));
-                    Some(&mut element.1)
+                (&mut Inner::Object(ref mut map), &Uid::Object(ref key, dot)) => {
+                    let element = map.get_mut_element(key, dot)?;
+                    local_pointer.push(LocalUid::Object(key.clone()));
+                    Some(&mut element.value)
                 }
-                (&mut JsonValue::Array(ref mut list_value), &RemoteUID::Array(ref uid)) => {
-                    let index = try_opt!(list_value.0.get_idx(uid));
-                    let element = try_opt!(list_value.0.lookup_mut(uid));
-                    local_pointer.push(LocalUID::Array(index));
-                    Some(&mut element.1)
+                (&mut Inner::Array(ref mut list), &Uid::Array(ref uid)) => {
+                    let idx = list.get_idx(uid)?;
+                    let element = list.get_mut(idx).unwrap();
+                    local_pointer.push(LocalUid::Array(idx));
+                    Some(&mut element.value)
                 }
                 _ => return None
             }
@@ -308,248 +352,211 @@ impl JsonValue {
         Some((value.unwrap(), local_pointer))
     }
 
-    fn as_map(&mut self) -> Result<&mut MapValue<String, JsonValue>, Error> {
+    fn as_map(&mut self) -> Result<&mut MapInner<String, Inner>, Error> {
         match *self {
-            JsonValue::Object(ref mut map_value) => Ok(map_value),
+            Inner::Object(ref mut map_value) => Ok(map_value),
             _ => Err(Error::WrongJsonType)
         }
     }
 
-    fn as_list(&mut self) -> Result<&mut ListValue<JsonValue>, Error> {
+    fn as_list(&mut self) -> Result<&mut ListInner<Inner>, Error> {
         match *self {
-            JsonValue::Array(ref mut list_value) => Ok(list_value),
+            Inner::Array(ref mut list_inner) => Ok(list_inner),
             _ => Err(Error::WrongJsonType)
         }
     }
 
-    fn as_text(&mut self) -> Result<&mut TextValue, Error> {
+    fn as_text(&mut self) -> Result<&mut TextInner, Error> {
         match *self {
-            JsonValue::String(ref mut text_value) => Ok(text_value),
+            Inner::String(ref mut text_value) => Ok(text_value),
             _ => Err(Error::WrongJsonType)
         }
     }
 }
 
-impl CrdtValue for JsonValue {
-    type RemoteOp = RemoteOp;
-    type LocalOp = LocalOp;
-    type LocalValue = SJValue;
-
-    fn local_value(&self) -> Self::LocalValue {
+impl NestedInner for Inner {
+    fn nested_add_site_id(&mut self, site_id: SiteId) {
         match *self {
-            JsonValue::Object(ref map_value) => {
-                let mut map = serde_json::Map::with_capacity(map_value.len());
-                for (k, v) in map_value.iter() {
-                    let _ = map.insert(k.clone(), v[0].1.local_value());
-                }
-                SJValue::Object(map)
-            }
-            JsonValue::Array(ref list_value) =>
-                SJValue::Array(list_value.iter().map(|v| v.1.local_value()).collect()),
-            JsonValue::String(ref text_value) =>
-                SJValue::String(text_value.local_value()),
-            JsonValue::Number(float) => {
-                let number = serde_json::Number::from_f64(float).unwrap();
-                SJValue::Number(number)
-            }
-            JsonValue::Bool(bool_value) =>
-                SJValue::Bool(bool_value),
-            JsonValue::Null =>
-                SJValue::Null,
+            Inner::Object(ref mut map) => map.nested_add_site_id(site_id),
+            Inner::Array(ref mut list) => list.nested_add_site_id(site_id),
+            Inner::String(ref mut text) => text.add_site_id(site_id),
+            _ => (),
         }
     }
 
-    fn add_site(&mut self, op: &RemoteOp, site: u32) {
-        self.nested_add_site(op, site)
-    }
-
-    fn add_site_to_all(&mut self, site: u32) {
-        self.nested_add_site_to_all(site)
-    }
-
-    fn validate_site(&self, site: u32) -> Result<(), Error> {
-        self.nested_validate_site(site)
-    }
-
-    fn merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) {
-        self.nested_merge(other, self_tombstones, other_tombstones).unwrap()
-    }
-}
-
-impl NestedCrdtValue for JsonValue {
-    fn nested_add_site(&mut self, op: &RemoteOp, site: u32) {
-        let (value, _) = some!(self.get_nested_remote(&op.pointer));
-        match (value, &op.op) {
-            (&mut JsonValue::Object(ref mut m), &RemoteOpInner::Object(ref op)) => m.nested_add_site(op, site),
-            (&mut JsonValue::Array(ref mut l), &RemoteOpInner::Array(ref op)) => l.nested_add_site(op, site),
-            (&mut JsonValue::String(ref mut t), &RemoteOpInner::String(ref op)) => t.add_site(op, site),
-            _ => return,
-        }
-    }
-
-    fn nested_add_site_to_all(&mut self, site: u32) {
+    fn nested_validate_no_unassigned_sites(&self) -> Result<(), Error> {
         match *self {
-            JsonValue::Object(ref mut m) => m.nested_add_site_to_all(site),
-            JsonValue::Array(ref mut l) => l.nested_add_site_to_all(site),
-            JsonValue::String(ref mut t) => t.add_site_to_all(site),
-            _ => return,
-        }
-    }
-
-    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
-        match *self {
-            JsonValue::Object(ref m) => m.nested_validate_site(site),
-            JsonValue::Array(ref l) => l.nested_validate_site(site),
-            JsonValue::String(ref t) => t.validate_site(site),
+            Inner::Object(ref map) => map.nested_validate_no_unassigned_sites(),
+            Inner::Array(ref list) => list.nested_validate_no_unassigned_sites(),
+            Inner::String(ref text) => text.validate_no_unassigned_sites(),
             _ => Ok(())
         }
     }
 
-    fn nested_merge(&mut self, other: JsonValue, self_tombstones: &Tombstones, other_tombstones: &Tombstones) -> Result<(), Error> {
+    fn nested_validate_all(&self, site_id: SiteId) -> Result<(), Error> {
+        match *self {
+            Inner::Object(ref map) => map.nested_validate_all(site_id),
+            Inner::Array(ref list) => list.nested_validate_all(site_id),
+            Inner::String(ref text) => text.validate_all(site_id)
+        }
+    }
+
+    fn nested_can_merge(&self, other: &Inner) -> bool {
+        match (*self, *other) {
+            (Inner::Object(ref v1), Inner::Object(ref v2)) => v1.nested_can_merge(v2),
+            (Inner::Array(ref v1), Inner::Array(ref v2)) => v1.nested_can_merge(v2),
+            (Inner::String(ref v1), Inner::String(ref v2)) => true,
+            _ => false,
+        }
+    }
+
+    fn nested_force_merge(&mut self, other: Inner, summary: &Summary, other_summary: &Summary) {
         match other {
-            JsonValue::Object(other_map) =>
-                self.as_map()?.nested_merge(other_map, self_tombstones, other_tombstones),
-            JsonValue::Array(other_list) =>
-                self.as_list()?.nested_merge(other_list, self_tombstones, other_tombstones),
-            JsonValue::String(other_text) => {
-                self.as_text()?.merge(other_text, self_tombstones, other_tombstones);
-                Ok(())
+            Inner::Object(other_map) => {
+                self.as_map().unwrap().nested_merge(other_map, summary, other_summary);
             }
-            _ => Ok(()),
+            Inner::Array(other_list) => {
+                self.as_list().unwrap().nested_merge(other_list, summary, other_summary);
+            }
+            Inner::String(other_text) =>
+                self.as_text().unwrap().merge(other_text, summary, other_summary),
+            _ => (),
         }
     }
 }
 
-impl CrdtRemoteOp for RemoteOp {
-    fn deleted_replicas(&self) -> Vec<Replica> {
+
+impl Op {
+    fn add_site_id(&mut self, site_id: SiteId) {
+        self.nested_add_site_id(site_id)
+    }
+
+    fn validate(&self, site_id: SiteId) -> Result<(), Error> {
+        self.nested_validate(site_id)
+    }
+
+    fn inserted_dots(&self) -> Vec<Dot> {
         match self.op {
-            RemoteOpInner::Object(ref op) => op.deleted_replicas(),
-            RemoteOpInner::Array(ref op) => op.deleted_replicas(),
-            RemoteOpInner::String(ref op) => op.deleted_replicas(),
+            OpInner::Object(ref op) => op.inserted_dots(),
+            OpInner::Array(ref op) => op.inserted_dots(),
+            OpInner::String(ref op) => op.inserted_dots(),
         }
-    }
-
-    fn add_site(&mut self, site: u32) {
-        self.nested_add_site(site)
-    }
-
-    fn validate_site(&self, site: u32) -> Result<(), Error> {
-        self.nested_validate_site(site)
     }
 }
 
-impl NestedCrdtRemoteOp for RemoteOp {
-    fn nested_add_site(&mut self, site: u32) {
-        // update sites in the pointer
+impl NestedOp for Op {
+    fn nested_add_site_id(&mut self, site_id: SiteId) {
+        // update site ids in the pointer
         for uid in self.pointer.iter_mut() {
             match *uid {
-                RemoteUID::Object(_, ref mut replica) => {
-                    if replica.site_id == 0 { replica.site_id = site; }
+                Uid::Object(_, ref mut dot) => {
+                    if dot.site_id == 0 { dot.site_id = site_id; }
                 }
-                RemoteUID::Array(ref mut uid) => {
-                    if uid.site_id == 0 { uid.site_id = site; }
+                Uid::Array(ref mut uid) => {
+                    if uid.site_id == 0 { uid.site_id = site_id; }
                 }
             }
         }
 
         // update sites in the op
         match self.op {
-            RemoteOpInner::Object(ref mut op) => op.nested_add_site(site),
-            RemoteOpInner::Array(ref mut op) => op.nested_add_site(site),
-            RemoteOpInner::String(ref mut op) => op.add_site(site),
+            OpInner::Object(ref mut op) => op.nested_add_site_id(site_id),
+            OpInner::Array(ref mut op) => op.nested_add_site_id(site_id),
+            OpInner::String(ref mut op) => op.add_site_id(site_id),
         }
     }
 
-    fn nested_validate_site(&self, site: u32) -> Result<(), Error> {
+    fn nested_validate(&self, site_id: SiteId) -> Result<(), Error> {
         match self.op {
-            RemoteOpInner::Object(ref op) => op.nested_validate_site(site),
-            RemoteOpInner::Array(ref op) => op.nested_validate_site(site),
-            RemoteOpInner::String(ref op) => op.validate_site(site),
+            OpInner::Object(ref op) => op.nested_validate(site_id),
+            OpInner::Array(ref op) => op.nested_validate(site_id),
+            OpInner::String(ref op) => op.validate(site_id),
         }
     }
 }
 
 
-impl IntoJson for JsonValue {
+impl IntoJson for Inner {
     #[inline]
-    fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
+    fn into_json(self, _: Dot) -> Result<Inner, Error> {
         Ok(self)
     }
 }
 
 impl IntoJson for SJValue {
-    fn into_json(self, replica: &Replica) -> Result<JsonValue, Error> {
+    fn into_json(self, dot: Dot) -> Result<Inner, Error> {
         match self {
             SJValue::Object(map) => {
-                let mut map_value = MapValue::new();
+                let mut map_value = MapInner::new();
                 for (key, value) in map.into_iter() {
-                    let _ = map_value.insert(key, value.into_json(replica)?, replica);
+                    let _ = map_value.insert(key, value.into_json(dot)?, dot);
                 }
-                Ok(JsonValue::Object(map_value))
+                Ok(Inner::Object(map_value))
             }
             SJValue::Array(vec) =>
-                vec.into_json(replica),
+                vec.into_json(dot),
             SJValue::String(string) =>
-                string.into_json(replica),
+                string.into_json(dot),
             SJValue::Number(number) =>
-                number.as_f64().ok_or(Error::InvalidJson)?.into_json(replica),
+                number.as_f64().ok_or(Error::InvalidJson)?.into_json(dot),
             SJValue::Bool(bool_value) =>
-                Ok(JsonValue::Bool(bool_value)),
+                Ok(Inner::Bool(bool_value)),
             SJValue::Null =>
-                Ok(JsonValue::Null),
+                Ok(Inner::Null),
         }
     }
 }
 
 impl<S: Into<String> + Hash + Eq, T: IntoJson> IntoJson for HashMap<S, T> {
-    fn into_json(self, replica: &Replica) -> Result<JsonValue, Error> {
-        let mut map_value = MapValue::new();
+    fn into_json(self, dot: Dot) -> Result<Inner, Error> {
+        let mut map_value = MapInner::new();
         for (key, value) in self.into_iter() {
-            let _ = map_value.insert(key.into(), value.into_json(replica)?, replica);
+            let _ = map_value.insert(key.into(), value.into_json(dot)?, dot);
         }
-        Ok(JsonValue::Object(map_value))
+        Ok(Inner::Object(map_value))
     }
 }
 
 impl<T: IntoJson> IntoJson for Vec<T> {
-    fn into_json(self, replica: &Replica) -> Result<JsonValue, Error> {
-        let mut list_value = ListValue::new();
+    fn into_json(self, dot: Dot) -> Result<Inner, Error> {
+        let mut list_inner = ListInner::new();
         for (idx, elt) in self.into_iter().enumerate() {
-            let _ = list_value.insert(idx, elt.into_json(replica)?, replica);
+            let _ = list_inner.insert(idx, elt.into_json(dot)?, dot);
         }
-        Ok(JsonValue::Array(list_value))
+        Ok(Inner::Array(list_inner))
     }
 }
 
 impl<'a> IntoJson for &'a str {
-    fn into_json(self, replica: &Replica) -> Result<JsonValue, Error> {
-        let mut text_value = TextValue::new();
+    fn into_json(self, dot: Dot) -> Result<Inner, Error> {
+        let mut text = TextInner::new();
+
         if !self.is_empty() {
-            text_value.replace(0, 0, self, replica)?;
+            let _ = text.replace(0, 0, self, dot);
         }
-        text_value.1 = None;
-        Ok(JsonValue::String(text_value))
+
+        Ok(Inner::String(text))
     }
 }
 
 impl IntoJson for f64 {
-    fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
+    fn into_json(self, _: Dot) -> Result<Inner, Error> {
         match f64::is_finite(self) {
-            true => Ok(JsonValue::Number(self)),
+            true => Ok(Inner::Number(self)),
             false => Err(Error::InvalidJson),
         }
     }
 }
 
 impl IntoJson for i64 {
-    fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
-        Ok(JsonValue::Number(self as f64))
+    fn into_json(self, _: Dot) -> Result<Inner, Error> {
+        Ok(Inner::Number(self as f64))
     }
 }
 
 impl IntoJson for bool {
-    fn into_json(self, _: &Replica) -> Result<JsonValue, Error> {
-        Ok(JsonValue::Bool(self))
+    fn into_json(self, _: Dot) -> Result<Inner, Error> {
+        Ok(Inner::Bool(self))
     }
 }
 
@@ -561,7 +568,7 @@ mod tests {
     #[test]
     fn test_from_str() {
         let crdt = Json::from_str(r#"{"foo":123, "bar":true, "baz": [1.0,2.0,3.0]}"#).unwrap();
-        assert_matches!(crdt.value, JsonValue::Object(_));
+        assert_matches!(crdt.value, Inner::Object(_));
         assert!(crdt.replica.site_id == 1);
         assert!(crdt.replica.counter == 1);
         assert!(crdt.awaiting_site.is_empty());
@@ -576,19 +583,19 @@ mod tests {
     #[test]
     fn test_object_insert() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
-        let remote_op1 = crdt.insert_str("/foo", r#"{"bar": 3.5}"#).unwrap();
-        let remote_op2 = crdt.insert("/foo/baz", true).unwrap();
+        let op1 = crdt.insert_str("/foo", r#"{"bar": 3.5}"#).unwrap();
+        let op2 = crdt.insert("/foo/baz", true).unwrap();
 
         assert!(crdt.replica.counter == 3);
-        assert!(*nested_value(&mut crdt, "/foo/bar").unwrap() == JsonValue::Number(3.5));
-        assert!(*nested_value(&mut crdt, "/foo/baz").unwrap() == JsonValue::Bool(true));
+        assert!(*nested_value(&mut crdt, "/foo/bar").unwrap() == Inner::Number(3.5));
+        assert!(*nested_value(&mut crdt, "/foo/baz").unwrap() == Inner::Bool(true));
 
-        assert!(remote_op1.pointer.is_empty());
-        assert_matches!(remote_op1.op, RemoteOpInner::Object(map::RemoteOp::Insert{key: _, element: _, removed: _}));
+        assert!(op1.pointer.is_empty());
+        assert_matches!(op1.op, OpInner::Object(map::Op::Insert{key: _, element: _, removed: _}));
 
-        assert!(remote_op2.pointer.len() == 1);
-        assert!(remote_op2.pointer[0] == RemoteUID::Object("foo".to_owned(), Replica::new(1,1)));
-        assert_matches!(remote_op2.op, RemoteOpInner::Object(map::RemoteOp::Insert{key: _, element: _, removed: _}));
+        assert!(op2.pointer.len() == 1);
+        assert!(op2.pointer[0] == Uid::Object("foo".to_owned(), Replica::new(1,1)));
+        assert_matches!(op2.op, OpInner::Object(map::Op::Insert{key: _, element: _, removed: _}));
     }
 
     #[test]
@@ -602,16 +609,16 @@ mod tests {
     fn test_object_insert_replaces_value() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
         let _ = crdt.insert("/foo", 19.7).unwrap();
-        let remote_op = crdt.insert("/foo", 4.6).unwrap();
+        let op = crdt.insert("/foo", 4.6).unwrap();
 
         assert!(crdt.replica.counter == 3);
-        assert!(*nested_value(&mut crdt, "/foo").unwrap() == JsonValue::Number(4.6));
+        assert!(*nested_value(&mut crdt, "/foo").unwrap() == Inner::Number(4.6));
 
-        assert!(remote_op.pointer.is_empty());
-        let (key, element, removed) = map_insert_op_fields(remote_op);
+        assert!(op.pointer.is_empty());
+        let (key, element, removed) = map_insert_op_fields(op);
         assert!(key == "foo");
         assert!(element.0 == Replica::new(1,2));
-        assert!(element.1 == JsonValue::Number(4.6));
+        assert!(element.1 == Inner::Number(4.6));
         assert!(removed[0] == Replica::new(1,1));
     }
 
@@ -630,20 +637,20 @@ mod tests {
 
         assert!(result.unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
-        assert!(*nested_value(&mut crdt2, "/foo").unwrap() == JsonValue::Number(19.7));
+        assert!(*nested_value(&mut crdt2, "/foo").unwrap() == Inner::Number(19.7));
     }
 
     #[test]
     fn test_object_remove() {
         let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
-        let remote_op = crdt.remove("/abc/2/def").unwrap();
+        let op = crdt.remove("/abc/2/def").unwrap();
 
         assert!(nested_value(&mut crdt, "abc/2/def").is_none());
-        assert!(remote_op.pointer.len() == 2);
-        assert!(remote_op.pointer[0] == RemoteUID::Object("abc".to_owned(), Replica::new(1,0)));
-        assert_matches!(remote_op.pointer[1], RemoteUID::Array(_));
+        assert!(op.pointer.len() == 2);
+        assert!(op.pointer[0] == Uid::Object("abc".to_owned(), Replica::new(1,0)));
+        assert_matches!(op.pointer[1], Uid::Array(_));
 
-        let (key, removed) = map_remove_op_fields(remote_op);
+        let (key, removed) = map_remove_op_fields(op);
         assert!(key == "def");
         assert!(removed.len() == 1);
         assert!(removed[0] == Replica::new(1,0));
@@ -675,11 +682,11 @@ mod tests {
     #[test]
     fn test_array_insert() {
         let mut crdt = Json::from_str(r#"{"things":[1,[],2,3]}"#).unwrap();
-        let remote_op = crdt.insert("/things/1/0", true).unwrap();
-        let element = list_insert_op_element(remote_op);
-        assert!(*nested_value(&mut crdt, "/things/1/0").unwrap() == JsonValue::Bool(true));
+        let op = crdt.insert("/things/1/0", true).unwrap();
+        let element = list_insert_op_element(op);
+        assert!(*nested_value(&mut crdt, "/things/1/0").unwrap() == Inner::Bool(true));
         assert!(crdt.replica.counter == 2);
-        assert!(element.1 == JsonValue::Bool(true));
+        assert!(element.1 == Inner::Bool(true));
     }
 
     #[test]
@@ -700,14 +707,14 @@ mod tests {
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         assert!(crdt2.insert("/things/1", true).unwrap_err() == Error::AwaitingSite);
         assert!(crdt2.awaiting_site.len() == 1);
-        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Bool(true));
+        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == Inner::Bool(true));
     }
 
     #[test]
     fn test_array_remove() {
         let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
-        let remote_op = crdt.remove("/things/1/2").unwrap();
-        let uid = list_remove_op_uid(remote_op);
+        let op = crdt.remove("/things/1/2").unwrap();
+        let uid = list_remove_op_uid(op);
         assert!(nested_value(&mut crdt, "/things/1/2").is_none());
         assert!(crdt.replica.counter == 2);
         assert!(uid.site_id == 1 && uid.counter == 0);
@@ -731,22 +738,22 @@ mod tests {
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         assert!(crdt2.remove("/things/1").unwrap_err() == Error::AwaitingSite);
 
-        let remote_op = crdt2.awaiting_site.pop().unwrap();
-        let uid = list_remove_op_uid(remote_op);
-        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == JsonValue::Number(2.0));
+        let op = crdt2.awaiting_site.pop().unwrap();
+        let uid = list_remove_op_uid(op);
+        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == Inner::Number(2.0));
         assert!(uid.site_id == 1 && uid.counter == 0);
     }
 
     #[test]
     fn test_replace_text() {
         let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
-        let remote_op = crdt.replace_text("/1", 1, 2, "åⱡ").unwrap();
-        let remote_op = text_remote_op(remote_op);
+        let op = crdt.replace_text("/1", 1, 2, "åⱡ").unwrap();
+        let op = text_op(op);
         assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
-        assert!(remote_op.removes.len() == 1);
-        assert!(remote_op.inserts[0].text == "h");
-        assert!(remote_op.inserts[1].text == "åⱡ");
-        assert!(remote_op.inserts[2].text == "lo");
+        assert!(op.removes.len() == 1);
+        assert!(op.inserts[0].text == "h");
+        assert!(op.inserts[1].text == "åⱡ");
+        assert!(op.inserts[2].text == "lo");
     }
 
     #[test]
@@ -768,66 +775,66 @@ mod tests {
         assert!(crdt.replace_text("/1", 1, 2, "åⱡ").unwrap_err() == Error::AwaitingSite);
         assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
 
-        let remote_op = text_remote_op(crdt.awaiting_site.pop().unwrap());
-        assert!(remote_op.removes.len() == 1);
-        assert!(remote_op.inserts[0].text == "h");
-        assert!(remote_op.inserts[1].text == "åⱡ");
-        assert!(remote_op.inserts[2].text == "lo");
+        let op = text_op(crdt.awaiting_site.pop().unwrap());
+        assert!(op.removes.len() == 1);
+        assert!(op.inserts[0].text == "h");
+        assert!(op.inserts[1].text == "åⱡ");
+        assert!(op.inserts[2].text == "lo");
     }
 
     #[test]
-    fn test_execute_remote_object() {
+    fn test_execute_op_object() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        let remote_op = crdt1.insert("/baz", 54.0).unwrap();
-        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+        let op = crdt1.insert("/baz", 54.0).unwrap();
+        let local_op  = crdt2.execute_op(&op).unwrap();
 
         assert!(crdt1.value() == crdt2.value());
         if let LocalOp::Insert{pointer, ..} = local_op {
-            assert_eq!(pointer, [LocalUID::Object("baz".to_owned())]);
+            assert_eq!(pointer, [LocalUid::Object("baz".to_owned())]);
         } else {
             panic!("expected an insert op");
         }
     }
 
     #[test]
-    fn test_execute_remote_array() {
+    fn test_execute_op_array() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        let remote_op = crdt1.insert("/foo/0", 54.0).unwrap();
-        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+        let op = crdt1.insert("/foo/0", 54.0).unwrap();
+        let local_op  = crdt2.execute_op(&op).unwrap();
 
 
         assert!(crdt1.value() == crdt2.value());
         if let LocalOp::Insert{pointer, ..} = local_op {
-            assert_eq!(pointer, [LocalUID::Object("foo".to_owned()),LocalUID::Array(0)]);
+            assert_eq!(pointer, [LocalUid::Object("foo".to_owned()),LocalUid::Array(0)]);
         } else {
             panic!("expected an insert op");
         }
     }
 
     #[test]
-    fn test_execute_remote_string() {
+    fn test_execute_op_string() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        let remote_op = crdt1.replace_text("/foo/2", 1, 2, "ab").unwrap();
-        let local_op  = crdt2.execute_remote(&remote_op).unwrap();
+        let op = crdt1.replace_text("/foo/2", 1, 2, "ab").unwrap();
+        let local_op  = crdt2.execute_op(&op).unwrap();
 
         assert!(crdt1.value() == crdt2.value());
         if let LocalOp::ReplaceText{pointer, ..} = local_op {
-            assert_eq!(pointer, [LocalUID::Object("foo".to_owned()), LocalUID::Array(2)]);
+            assert_eq!(pointer, [LocalUid::Object("foo".to_owned()), LocalUid::Array(2)]);
         } else {
             panic!("expected an insert op");
         }
     }
 
     #[test]
-    fn test_execute_remote_missing_pointer() {
+    fn test_execute_op_missing_pointer() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
-        let remote_op = crdt1.remove("/bar").unwrap();
+        let op = crdt1.remove("/bar").unwrap();
         let _         = crdt2.remove("/bar").unwrap();
-        assert!(crdt2.execute_remote(&remote_op).is_none());
+        assert!(crdt2.execute_op(&op).is_none());
     }
 
     #[test]
@@ -860,7 +867,7 @@ mod tests {
         let _ = crdt2.remove("/baz/abc/2");
         let _ = crdt2.remove("/foo");
 
-        let mut remote_ops = crdt2.add_site(11).unwrap().into_iter();
+        let mut ops = crdt2.add_site(11).unwrap().into_iter();
 
         assert!(crdt2.local_value() == json!({"bar":"ello everyone!", "baz":{"abc":[true, 61.0, 84.0]}}));
         assert!(crdt2.site_id() == 11);
@@ -887,27 +894,27 @@ mod tests {
         }
 
         // check that the remote ops' elements have the correct sites
-        let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
+        let (_, element, replicas) = map_insert_op_fields(ops.next().unwrap());
         assert!(element.0.site_id == 11);
         assert!(element.1.validate_site(11).is_ok());
         assert!(replicas.is_empty());
 
-        let element = list_insert_op_element(remote_ops.next().unwrap());
+        let element = list_insert_op_element(ops.next().unwrap());
         assert!(element.0.site_id == 11);
         assert!(element.1.validate_site(11).is_ok());
 
-        let element = text_remote_op(remote_ops.next().unwrap());
+        let element = text_op(ops.next().unwrap());
         assert!(element.removes.is_empty());
         assert!(element.inserts[0].uid.site_id == 11);
 
-        let element = text_remote_op(remote_ops.next().unwrap());
+        let element = text_op(ops.next().unwrap());
         assert!(element.removes[0].site_id == 1);
         assert!(element.inserts[0].uid.site_id == 11);
 
-        let uid = list_remove_op_uid(remote_ops.next().unwrap());
+        let uid = list_remove_op_uid(ops.next().unwrap());
         assert!(uid.site_id == 11);
 
-        let (_, replicas) = map_remove_op_fields(remote_ops.next().unwrap());
+        let (_, replicas) = map_remove_op_fields(ops.next().unwrap());
         assert!(replicas[0].site_id == 1);
     }
 
@@ -920,13 +927,13 @@ mod tests {
             "b": {"cat": true, "dog": false}
         }));
 
-        let mut remote_ops = crdt2.add_site(22).unwrap().into_iter();
+        let mut ops = crdt2.add_site(22).unwrap().into_iter();
         assert!(crdt2.site_id() == 22);
 
         let object = nested_value(&mut crdt2, "/foo").unwrap();
         assert!(object.validate_site(22).is_ok());
 
-        let (_, element, replicas) = map_insert_op_fields(remote_ops.next().unwrap());
+        let (_, element, replicas) = map_insert_op_fields(ops.next().unwrap());
         assert!(element.0.site_id == 22);
         assert!(element.1.validate_site(22).is_ok());
         assert!(replicas.is_empty());
@@ -942,12 +949,12 @@ mod tests {
     }
 
     #[test]
-    fn test_execute_remote_dupe() {
+    fn test_execute_op_dupe() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        let remote_op = crdt1.remove("/bar").unwrap();
-        assert!(crdt2.execute_remote(&remote_op).is_some());
-        assert!(crdt2.execute_remote(&remote_op).is_none());
+        let op = crdt1.remove("/bar").unwrap();
+        assert!(crdt2.execute_op(&op).is_some());
+        assert!(crdt2.execute_op(&op).is_none());
     }
 
     #[test]
@@ -969,39 +976,39 @@ mod tests {
 
         let s_json = serde_json::to_string(crdt.value()).unwrap();
         let s_msgpack = rmp_serde::to_vec(crdt.value()).unwrap();
-        let value2: JsonValue = serde_json::from_str(&s_json).unwrap();
-        let value3: JsonValue = rmp_serde::from_slice(&s_msgpack).unwrap();
+        let value2: Inner = serde_json::from_str(&s_json).unwrap();
+        let value3: Inner = rmp_serde::from_slice(&s_msgpack).unwrap();
 
         assert!(*crdt.value() == value2);
         assert!(*crdt.value() == value3);
     }
 
     #[test]
-    fn test_serialize_remote_op() {
+    fn test_serialize_op() {
         let mut crdt = Json::from_str(r#"{"foo":{}}"#).unwrap();
-        let remote_op1 = crdt.insert("/foo/bar", json!({
+        let op1 = crdt.insert("/foo/bar", json!({
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}
         })).unwrap();
 
-        let s_json = serde_json::to_string(&remote_op1).unwrap();
-        let s_msgpack = rmp_serde::to_vec(&remote_op1).unwrap();
-        let remote_op2: RemoteOp = serde_json::from_str(&s_json).unwrap();
-        let remote_op3: RemoteOp = rmp_serde::from_slice(&s_msgpack).unwrap();
+        let s_json = serde_json::to_string(&op1).unwrap();
+        let s_msgpack = rmp_serde::to_vec(&op1).unwrap();
+        let op2: Op = serde_json::from_str(&s_json).unwrap();
+        let op3: Op = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-        assert!(remote_op1 == remote_op2);
-        assert!(remote_op1 == remote_op3);
+        assert!(op1 == op2);
+        assert!(op1 == op3);
     }
 
     #[test]
     fn test_serialize_local_op() {
         let mut crdt1 = Json::from_str(r#"{"foo":{}}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
-        let remote_op = crdt1.insert("/foo/bar", json!({
+        let op = crdt1.insert("/foo/bar", json!({
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}
         })).unwrap();
-        let local_op1 = crdt2.execute_remote(&remote_op).unwrap();
+        let local_op1 = crdt2.execute_op(&op).unwrap();
 
         let s_json = serde_json::to_string(&local_op1).unwrap();
         let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
@@ -1013,68 +1020,68 @@ mod tests {
         assert_eq!(local_op1, local_op3);
     }
 
-    fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a JsonValue> {
-        let pointer = try_opt!(JsonValue::split_pointer(pointer).ok());
+    fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a Inner> {
+        let pointer = try_opt!(Inner::split_pointer(pointer).ok());
         let (value, _) = try_opt!(crdt.value.get_nested_local(&pointer).ok());
         Some(value)
     }
 
-    fn local_json(json_value: &JsonValue) -> String {
+    fn local_json(json_value: &Inner) -> String {
         serde_json::to_string(&json_value.local_value()).unwrap()
     }
 
-    fn map_insert_op_fields(remote_op: RemoteOp) -> (String, map::Element<JsonValue>, Vec<Replica>) {
-        match remote_op.op {
-            RemoteOpInner::Object(map::RemoteOp::Insert{key: k, element: e, removed: r}) => (k, e, r),
+    fn map_insert_op_fields(op: Op) -> (String, map::Element<Inner>, Vec<Replica>) {
+        match op.op {
+            OpInner::Object(map::Op::Insert{key: k, element: e, removed: r}) => (k, e, r),
             _ => panic!(),
         }
     }
 
-    fn map_remove_op_fields(remote_op: RemoteOp) -> (String, Vec<Replica>) {
-        match remote_op.op {
-            RemoteOpInner::Object(map::RemoteOp::Remove{key: k, removed: r}) => (k, r),
+    fn map_remove_op_fields(op: Op) -> (String, Vec<Replica>) {
+        match op.op {
+            OpInner::Object(map::Op::Remove{key: k, removed: r}) => (k, r),
             _ => panic!(),
         }
     }
 
-    fn list_insert_op_element(remote_op: RemoteOp) -> list::Element<JsonValue> {
-        match remote_op.op {
-            RemoteOpInner::Array(list::RemoteOp::Insert(element)) => element,
+    fn list_insert_op_element(op: Op) -> list::Element<Inner> {
+        match op.op {
+            OpInner::Array(list::Op::Insert(element)) => element,
             _ => panic!(),
         }
     }
 
-    fn list_remove_op_uid(remote_op: RemoteOp) -> sequence::uid::UID {
-        match remote_op.op {
-            RemoteOpInner::Array(list::RemoteOp::Remove(uid)) => uid,
+    fn list_remove_op_uid(op: Op) -> sequence::uid::UID {
+        match op.op {
+            OpInner::Array(list::Op::Remove(uid)) => uid,
             _ => panic!(),
         }
     }
 
-    fn text_remote_op(remote_op: RemoteOp) -> text::RemoteOp {
-        match remote_op.op {
-            RemoteOpInner::String(op) => op,
+    fn text_op(op: Op) -> text::Op {
+        match op.op {
+            OpInner::String(op) => op,
             _ => panic!(),
         }
     }
 
-    fn as_map(json_value: &JsonValue) -> &MapValue<String, JsonValue> {
+    fn as_map(json_value: &Inner) -> &MapInner<String, Inner> {
         match *json_value {
-            JsonValue::Object(ref map_value) => map_value,
+            Inner::Object(ref map_value) => map_value,
             _ => panic!(),
         }
     }
 
-    fn as_list(json_value: &JsonValue) -> &ListValue<JsonValue> {
+    fn as_list(json_value: &Inner) -> &ListInner<Inner> {
         match *json_value {
-            JsonValue::Array(ref list_value) => list_value,
+            Inner::Array(ref list_inner) => list_inner,
             _ => panic!(),
         }
     }
 
-    fn as_text(json_value: &JsonValue) -> &TextValue {
+    fn as_text(json_value: &Inner) -> &TextInner {
         match *json_value {
-            JsonValue::String(ref text_value) => text_value,
+            Inner::String(ref text_value) => text_value,
             _ => panic!(),
         }
     }
