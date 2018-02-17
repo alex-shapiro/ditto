@@ -369,7 +369,7 @@ impl<T: Clone + NestedInner> NestedInner for Inner<T> {
                 Ordering::Equal => {
                     let mut element = iter.next().unwrap();
                     let other_element = other_iter.next().unwrap();
-                    element.value.nested_merge(other_element.value, summary, other_summary);
+                    element.value.nested_force_merge(other_element.value, summary, other_summary);
                     self.0.push(element);
                 }
                 Ordering::Greater => {

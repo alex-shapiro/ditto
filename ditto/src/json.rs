@@ -226,9 +226,9 @@ impl Inner {
 
     pub fn execute_op(&mut self, op: Op) -> Option<LocalOp> {
         let (inner, mut pointer) = self.get_nested_remote(&op.pointer)?;
-        match op {
+        match op.op {
             OpInner::Object(op) => {
-                match self.as_map()?.execute_op(op)? {
+                match inner.as_map().ok()?.execute_op(op) {
                     map::LocalOp::Insert{key, value} => {
                         pointer.push(LocalUid::Object(key));
                         Some(LocalOp::Insert{pointer, value: value.local_value()})
@@ -240,7 +240,7 @@ impl Inner {
                 }
             }
             OpInner::Array(op) => {
-                match self.as_list()?.execute_op(op)? {
+                match inner.as_list().ok()?.execute_op(op)? {
                     list::LocalOp::Insert{idx, value} => {
                         pointer.push(LocalUid::Array(idx));
                         Some(LocalOp::Insert{pointer, value: value.local_value()})
@@ -252,7 +252,7 @@ impl Inner {
                 }
             }
             OpInner::String(op) => {
-                let changes = self.as_text()?.execute_op(op);
+                let changes = inner.as_text().ok()?.execute_op(op);
                 if changes.is_empty() { return None };
                 Some(LocalOp::ReplaceText{pointer, changes})
             }
@@ -397,15 +397,16 @@ impl NestedInner for Inner {
         match *self {
             Inner::Object(ref map) => map.nested_validate_all(site_id),
             Inner::Array(ref list) => list.nested_validate_all(site_id),
-            Inner::String(ref text) => text.validate_all(site_id)
+            Inner::String(ref text) => text.validate_all(site_id),
+            _ => Ok(())
         }
     }
 
     fn nested_can_merge(&self, other: &Inner) -> bool {
-        match (*self, *other) {
-            (Inner::Object(ref v1), Inner::Object(ref v2)) => v1.nested_can_merge(v2),
-            (Inner::Array(ref v1), Inner::Array(ref v2)) => v1.nested_can_merge(v2),
-            (Inner::String(ref v1), Inner::String(ref v2)) => true,
+        match (self, other) {
+            (&Inner::Object(ref v1), &Inner::Object(ref v2)) => v1.nested_can_merge(v2),
+            (&Inner::Array(ref v1), &Inner::Array(ref v2)) => v1.nested_can_merge(v2),
+            (&Inner::String(_), &Inner::String(_)) => true,
             _ => false,
         }
     }
@@ -413,10 +414,10 @@ impl NestedInner for Inner {
     fn nested_force_merge(&mut self, other: Inner, summary: &Summary, other_summary: &Summary) {
         match other {
             Inner::Object(other_map) => {
-                self.as_map().unwrap().nested_merge(other_map, summary, other_summary);
+                self.as_map().unwrap().nested_force_merge(other_map, summary, other_summary);
             }
             Inner::Array(other_list) => {
-                self.as_list().unwrap().nested_merge(other_list, summary, other_summary);
+                self.as_list().unwrap().nested_force_merge(other_list, summary, other_summary);
             }
             Inner::String(other_text) =>
                 self.as_text().unwrap().merge(other_text, summary, other_summary),

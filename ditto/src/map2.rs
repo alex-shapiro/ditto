@@ -58,7 +58,8 @@ pub struct MapState<'a, K: Key + 'a, V: Value + 'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Inner<K: Key, V: Value>(#[serde(with = "map_tuple_vec")] pub HashMap<K, Vec<Element<V>>>);
+#[doc(hidden)]
+pub struct Inner<K: Key, V: Value>(#[serde(with = "map_tuple_vec")] pub HashMap<K, Vec<Element<V>>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Op<K, V> {
@@ -347,7 +348,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
             // merge elements that are in both self and other
             for element in other_merge {
                 let idx = elements.binary_search_by(|e| e.cmp(&element)).expect("Element must be present");
-                elements[idx].value.nested_merge(element.value, summary, other_summary);
+                elements[idx].value.nested_force_merge(element.value, summary, other_summary);
             }
 
             // append elements from other that have not been inserted into self
