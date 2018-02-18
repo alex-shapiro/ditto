@@ -149,19 +149,19 @@ fn test_json() {
     let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
     let mut crdt3 = Json::from_state(crdt1.clone_state(), Some(3)).unwrap();
 
-    let remote_op1 = crdt1.insert("/foo", 1.0).unwrap();
-    let remote_op2 = crdt2.insert("/foo", 2.0).unwrap();
-    let remote_op3 = crdt3.insert("/bar", 3.0).unwrap();
+    let op1 = crdt1.insert("/foo", 1.0).unwrap();
+    let op2 = crdt2.insert("/foo", 2.0).unwrap();
+    let op3 = crdt3.insert("/bar", 3.0).unwrap();
 
-    let _ = crdt1.execute_remote(&via_msgpack(&remote_op2));
-    let _ = crdt1.execute_remote(&via_msgpack(&remote_op3));
-    let _ = crdt2.execute_remote(&via_msgpack(&remote_op1));
-    let _ = crdt2.execute_remote(&via_json(&remote_op3));
-    let _ = crdt3.execute_remote(&via_json(&remote_op1));
-    let _ = crdt3.execute_remote(&via_json(&remote_op2));
+    let _ = crdt1.execute_op(via_msgpack(&op2));
+    let _ = crdt1.execute_op(via_msgpack(&op3));
+    let _ = crdt2.execute_op(via_msgpack(&op1));
+    let _ = crdt2.execute_op(via_json(&op3));
+    let _ = crdt3.execute_op(via_json(&op1));
+    let _ = crdt3.execute_op(via_json(&op2));
 
-    assert!(crdt1.value() == crdt2.value());
-    assert!(crdt1.value() == crdt3.value());
+    assert_eq!(crdt1.state(), crdt2.state());
+    assert_eq!(crdt1.state(), crdt3.state());
 }
 
 fn via_json<T>(value: &T) -> T

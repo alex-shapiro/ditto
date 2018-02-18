@@ -569,16 +569,16 @@ mod tests {
     #[test]
     fn test_from_str() {
         let crdt = Json::from_str(r#"{"foo":123, "bar":true, "baz": [1.0,2.0,3.0]}"#).unwrap();
-        assert_matches!(crdt.value, Inner::Object(_));
-        assert!(crdt.replica.site_id == 1);
-        assert!(crdt.replica.counter == 1);
-        assert!(crdt.awaiting_site.is_empty());
+        assert_matches!(crdt.inner, Inner::Object(_));
+        assert_eq!(crdt.site_id, 1);
+        assert_eq!(crdt.summary.get(1), 1);
+        assert_eq!(crdt.cached_ops, vec![]);
     }
 
     #[test]
     fn test_from_str_invalid() {
         let invalid_json_str = r#"{"foo":123, "bar":true, "baz": [1.0,2.0,3.0]"#;
-        assert!(Json::from_str(invalid_json_str).unwrap_err() == Error::InvalidJson);
+        assert_eq!(Json::from_str(invalid_json_str), Err(Error::InvalidJson));
     }
 
     #[test]
@@ -587,23 +587,22 @@ mod tests {
         let op1 = crdt.insert_str("/foo", r#"{"bar": 3.5}"#).unwrap();
         let op2 = crdt.insert("/foo/baz", true).unwrap();
 
-        assert!(crdt.replica.counter == 3);
-        assert!(*nested_value(&mut crdt, "/foo/bar").unwrap() == Inner::Number(3.5));
-        assert!(*nested_value(&mut crdt, "/foo/baz").unwrap() == Inner::Bool(true));
+        assert_eq!(crdt.summary.get(crdt.site_id), 3);
+        assert_eq!(nested_value(&mut crdt, "/foo/bar"), Some(&Inner::Number(3.5)));
+        assert_eq!(nested_value(&mut crdt, "/foo/baz"), Some(&Inner::Bool(true)));
 
-        assert!(op1.pointer.is_empty());
-        assert_matches!(op1.op, OpInner::Object(map::Op::Insert{key: _, element: _, removed: _}));
+        assert_eq!(op1.pointer, vec![]);
+        assert_matches!(op1.op, OpInner::Object(_));
 
-        assert!(op2.pointer.len() == 1);
-        assert!(op2.pointer[0] == Uid::Object("foo".to_owned(), Replica::new(1,1)));
-        assert_matches!(op2.op, OpInner::Object(map::Op::Insert{key: _, element: _, removed: _}));
+        assert_eq!(op2.pointer, vec![Uid::Object("foo".to_owned(), Dot::new(1,1))]);
+        assert_matches!(op2.op, OpInner::Object(_));
     }
 
     #[test]
     fn test_object_insert_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{}"#).unwrap();
         let result = crdt.insert_str("/foo/bar", r#"{"bar": 3.5}"#);
-        assert!(result.unwrap_err() == Error::DoesNotExist);
+        assert_eq!(result, Err(Error::DoesNotExist));
     }
 
     #[test]
@@ -612,15 +611,15 @@ mod tests {
         let _ = crdt.insert("/foo", 19.7).unwrap();
         let op = crdt.insert("/foo", 4.6).unwrap();
 
-        assert!(crdt.replica.counter == 3);
-        assert!(*nested_value(&mut crdt, "/foo").unwrap() == Inner::Number(4.6));
+        assert_eq!(crdt.summary.get(1), 3);
+        assert_eq!(nested_value(&mut crdt, "/foo"), Some(&Inner::Number(4.6)));
+        assert_eq!(op.pointer, vec![]);
 
-        assert!(op.pointer.is_empty());
-        let (key, element, removed) = map_insert_op_fields(op);
-        assert!(key == "foo");
-        assert!(element.0 == Replica::new(1,2));
-        assert!(element.1 == Inner::Number(4.6));
-        assert!(removed[0] == Replica::new(1,1));
+        let map_op = map_op(op.op);
+        assert_eq!(map_op.key(), "foo");
+        assert_eq!(map_op.inserted_element().unwrap().dot, Dot::new(1,2));
+        assert_eq!(map_op.inserted_element().unwrap().value, Inner::Number(4.6));
+        assert_eq!(map_op.removed_dots(), [Dot::new(1,1)]);
     }
 
     #[test]
@@ -631,14 +630,13 @@ mod tests {
     }
 
     #[test]
-    fn test_object_insert_awaiting_site() {
+    fn test_object_insert_awaiting_site_id() {
         let crdt1 = Json::from_str("{}").unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        let result = crdt2.insert("/foo", 19.7);
 
-        assert!(result.unwrap_err() == Error::AwaitingSite);
-        assert!(crdt2.awaiting_site.len() == 1);
-        assert!(*nested_value(&mut crdt2, "/foo").unwrap() == Inner::Number(19.7));
+        assert_eq!(crdt2.insert("/foo", 19.7), Err(Error::AwaitingSite));
+        assert_eq!(crdt2.cached_ops.len(), 1);
+        assert_eq!(nested_value(&mut crdt2, "/foo"), Some(&Inner::Number(19.7)));
     }
 
     #[test]
@@ -646,38 +644,36 @@ mod tests {
         let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
         let op = crdt.remove("/abc/2/def").unwrap();
 
-        assert!(nested_value(&mut crdt, "abc/2/def").is_none());
-        assert!(op.pointer.len() == 2);
-        assert!(op.pointer[0] == Uid::Object("abc".to_owned(), Replica::new(1,0)));
+        assert_eq!(nested_value(&mut crdt, "abc/2/def"), None);
+        assert_eq!(op.pointer.len(), 2);
+        assert_eq!(op.pointer[0], Uid::Object("abc".to_owned(), Dot::new(1,0)));
         assert_matches!(op.pointer[1], Uid::Array(_));
 
-        let (key, removed) = map_remove_op_fields(op);
-        assert!(key == "def");
-        assert!(removed.len() == 1);
-        assert!(removed[0] == Replica::new(1,0));
+        let map_op = map_op(op.op);
+        assert_eq!(map_op.key(), "def");
+        assert_eq!(map_op.inserted_element(), None);
+        assert_eq!(map_op.removed_dots(), [Dot::new(1,0)]);
     }
 
     #[test]
     fn test_object_remove_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
-        let result = crdt.remove("/uhoh/11/def");
-        assert!(result.unwrap_err() == Error::DoesNotExist);
+        assert_eq!(crdt.remove("/uhoh/11/def"), Err(Error::DoesNotExist));
     }
 
     #[test]
     fn test_object_remove_does_not_exist() {
         let mut crdt = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
-        let result = crdt.remove("/abc/2/zebra!");
-        assert!(result.unwrap_err() == Error::DoesNotExist);
+        assert_eq!(crdt.remove("/abc/2/zebra!"), Err(Error::DoesNotExist));
     }
 
     #[test]
     fn test_object_remove_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"abc":[1.5,true,{"def":false}]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        assert!(crdt2.remove("/abc/2/def").unwrap_err() == Error::AwaitingSite);
-        assert!(crdt2.awaiting_site.len() == 1);
-        assert!(nested_value(&mut crdt2, "/abc/2/def").is_none());
+        assert_eq!(crdt2.remove("/abc/2/def"), Err(Error::AwaitingSite));
+        assert_eq!(crdt2.cached_ops.len(), 1);
+        assert_eq!(nested_value(&mut crdt2, "/abc/2/def"), None);
     }
 
     #[test]
@@ -685,30 +681,30 @@ mod tests {
         let mut crdt = Json::from_str(r#"{"things":[1,[],2,3]}"#).unwrap();
         let op = crdt.insert("/things/1/0", true).unwrap();
         let element = list_insert_op_element(op);
-        assert!(*nested_value(&mut crdt, "/things/1/0").unwrap() == Inner::Bool(true));
-        assert!(crdt.replica.counter == 2);
-        assert!(element.1 == Inner::Bool(true));
+        assert_eq!(nested_value(&mut crdt, "/things/1/0"), Some(&Inner::Bool(true)));
+        assert_eq!(crdt.summary.get(1), 2);
+        assert_eq!(element.value, Inner::Bool(true));
     }
 
     #[test]
     fn test_array_insert_invalid_pointer() {
         let mut crdt = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
-        assert!(crdt.insert("/others/1", true).unwrap_err() == Error::DoesNotExist);
+        assert_eq!(crdt.insert("/others/1", true), Err(Error::DoesNotExist));
     }
 
     #[test]
     fn test_array_insert_out_of_bounds() {
         let mut crdt = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
-        assert!(crdt.insert("/things/4", true).unwrap_err() == Error::OutOfBounds);
+        assert_eq!(crdt.insert("/things/4", true), Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_array_insert_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"things":[1,2,3]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        assert!(crdt2.insert("/things/1", true).unwrap_err() == Error::AwaitingSite);
-        assert!(crdt2.awaiting_site.len() == 1);
-        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == Inner::Bool(true));
+        assert_eq!(crdt2.insert("/things/1", true), Err(Error::AwaitingSite));
+        assert_eq!(crdt2.cached_ops.len(), 1);
+        assert_eq!(nested_value(&mut crdt2, "/things/1"), Some(&Inner::Bool(true)));
     }
 
     #[test]
@@ -716,9 +712,10 @@ mod tests {
         let mut crdt = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
         let op = crdt.remove("/things/1/2").unwrap();
         let uid = list_remove_op_uid(op);
-        assert!(nested_value(&mut crdt, "/things/1/2").is_none());
-        assert!(crdt.replica.counter == 2);
-        assert!(uid.site_id == 1 && uid.counter == 0);
+        assert_eq!(nested_value(&mut crdt, "/things/1/2"), None);
+        assert_eq!(crdt.summary.get(1), 2);
+        assert_eq!(uid.site_id, 1);
+        assert_eq!(uid.counter, 0);
     }
 
     #[test]
@@ -737,12 +734,13 @@ mod tests {
     fn test_array_remove_awaiting_site() {
         let crdt1 = Json::from_str(r#"{"things":[1,[true,false,"hi"],2,3]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        assert!(crdt2.remove("/things/1").unwrap_err() == Error::AwaitingSite);
+        assert_eq!(crdt2.remove("/things/1"), Err(Error::AwaitingSite));
 
-        let op = crdt2.awaiting_site.pop().unwrap();
+        let op = crdt2.cached_ops.pop().unwrap();
         let uid = list_remove_op_uid(op);
-        assert!(*nested_value(&mut crdt2, "/things/1").unwrap() == Inner::Number(2.0));
-        assert!(uid.site_id == 1 && uid.counter == 0);
+        assert_eq!(nested_value(&mut crdt2, "/things/1"), Some(&Inner::Number(2.0)));
+        assert_eq!(uid.site_id, 1);
+        assert_eq!(uid.counter, 0);
     }
 
     #[test]
@@ -750,37 +748,37 @@ mod tests {
         let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
         let op = crdt.replace_text("/1", 1, 2, "åⱡ").unwrap();
         let op = text_op(op);
-        assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
-        assert!(op.removes.len() == 1);
-        assert!(op.inserts[0].text == "h");
-        assert!(op.inserts[1].text == "åⱡ");
-        assert!(op.inserts[2].text == "lo");
+        assert_eq!(local_json(&crdt.inner), r#"[5.0,"håⱡlo"]"#);
+        assert_eq!(op.removed_uids().len(), 1);
+        assert_eq!(op.inserted_elements()[0].text, "h");
+        assert_eq!(op.inserted_elements()[1].text, "åⱡ");
+        assert_eq!(op.inserted_elements()[2].text, "lo");
     }
 
     #[test]
     fn test_replace_text_invalid_pointer() {
         let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
-        assert!(crdt.replace_text("/0", 1, 2, "åⱡ").unwrap_err() == Error::WrongJsonType);
+        assert_eq!(crdt.replace_text("/0", 1, 2, "åⱡ"), Err(Error::WrongJsonType));
     }
 
     #[test]
     fn test_replace_text_out_of_bounds() {
         let mut crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
-        assert!(crdt.replace_text("/1", 1, 6, "åⱡ").unwrap_err() == Error::OutOfBounds);
+        assert_eq!(crdt.replace_text("/1", 1, 6, "åⱡ"), Err(Error::OutOfBounds));
     }
 
     #[test]
     fn test_replace_text_awaiting_site() {
         let remote_crdt = Json::from_str(r#"[5.0,"hello"]"#).unwrap();
         let mut crdt = Json::from_state(remote_crdt.clone_state(), None).unwrap();
-        assert!(crdt.replace_text("/1", 1, 2, "åⱡ").unwrap_err() == Error::AwaitingSite);
-        assert!(local_json(crdt.value()) == r#"[5.0,"håⱡlo"]"#);
+        assert_eq!(crdt.replace_text("/1", 1, 2, "åⱡ"), Err(Error::AwaitingSite));
+        assert_eq!(local_json(&crdt.inner), r#"[5.0,"håⱡlo"]"#);
 
-        let op = text_op(crdt.awaiting_site.pop().unwrap());
-        assert!(op.removes.len() == 1);
-        assert!(op.inserts[0].text == "h");
-        assert!(op.inserts[1].text == "åⱡ");
-        assert!(op.inserts[2].text == "lo");
+        let op = text_op(crdt.cached_ops.pop().unwrap());
+        assert_eq!(op.removed_uids().len(), 1);
+        assert_eq!(op.inserted_elements()[0].text, "h");
+        assert_eq!(op.inserted_elements()[1].text, "åⱡ");
+        assert_eq!(op.inserted_elements()[2].text, "lo");
     }
 
     #[test]
@@ -788,9 +786,9 @@ mod tests {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let op = crdt1.insert("/baz", 54.0).unwrap();
-        let local_op  = crdt2.execute_op(&op).unwrap();
+        let local_op = crdt2.execute_op(op).unwrap();
 
-        assert!(crdt1.value() == crdt2.value());
+        assert_eq!(crdt1.state(), crdt2.state());
         if let LocalOp::Insert{pointer, ..} = local_op {
             assert_eq!(pointer, [LocalUid::Object("baz".to_owned())]);
         } else {
@@ -803,10 +801,10 @@ mod tests {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let op = crdt1.insert("/foo/0", 54.0).unwrap();
-        let local_op  = crdt2.execute_op(&op).unwrap();
+        let local_op  = crdt2.execute_op(op).unwrap();
 
 
-        assert!(crdt1.value() == crdt2.value());
+        assert_eq!(crdt1.state(), crdt2.state());
         if let LocalOp::Insert{pointer, ..} = local_op {
             assert_eq!(pointer, [LocalUid::Object("foo".to_owned()),LocalUid::Array(0)]);
         } else {
@@ -819,9 +817,9 @@ mod tests {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let op = crdt1.replace_text("/foo/2", 1, 2, "ab").unwrap();
-        let local_op  = crdt2.execute_op(&op).unwrap();
+        let local_op  = crdt2.execute_op(op).unwrap();
 
-        assert!(crdt1.value() == crdt2.value());
+        assert_eq!(crdt1.state(), crdt2.state());
         if let LocalOp::ReplaceText{pointer, ..} = local_op {
             assert_eq!(pointer, [LocalUid::Object("foo".to_owned()), LocalUid::Array(2)]);
         } else {
@@ -834,8 +832,8 @@ mod tests {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
         let op = crdt1.remove("/bar").unwrap();
-        let _         = crdt2.remove("/bar").unwrap();
-        assert!(crdt2.execute_op(&op).is_none());
+        let _  = crdt2.remove("/bar").unwrap();
+        assert_eq!(crdt2.execute_op(op), None);
     }
 
     #[test]
@@ -849,12 +847,11 @@ mod tests {
         let _ = crdt2.remove("/x/3").unwrap();
 
         let crdt1_state = crdt1.clone_state();
-        crdt1.merge(crdt2.clone_state());
-        crdt2.merge(crdt1_state);
+        crdt1.merge(crdt2.clone_state()).unwrap();
+        crdt2.merge(crdt1_state).unwrap();
 
-        assert!(crdt1.value == crdt2.value);
-        assert!(crdt1.tombstones == crdt2.tombstones);
-        assert!(crdt1.local_value() == json!({"x":[{"a": 1.0, "e": 222.0}, {"b": 2.0, "e": 444.0}]}));
+        assert_eq!(crdt1.state(), crdt2.state());
+        assert_eq!(crdt1.local_value(), json!({"x":[{"a": 1.0, "e": 222.0}, {"b": 2.0, "e": 444.0}]}));
     }
 
     #[test]
@@ -868,55 +865,55 @@ mod tests {
         let _ = crdt2.remove("/baz/abc/2");
         let _ = crdt2.remove("/foo");
 
-        let mut ops = crdt2.add_site(11).unwrap().into_iter();
+        let mut ops = crdt2.add_site_id(11).unwrap().into_iter();
 
-        assert!(crdt2.local_value() == json!({"bar":"ello everyone!", "baz":{"abc":[true, 61.0, 84.0]}}));
-        assert!(crdt2.site_id() == 11);
+        assert_eq!(crdt2.local_value(), json!({"bar":"ello everyone!", "baz":{"abc":[true, 61.0, 84.0]}}));
+        assert_eq!(crdt2.site_id(), 11);
 
         // check that the CRDT's elements have the correct sites
 
         {
-            let map = as_map(&crdt2.value);
-            assert!(map.0.get("foo").is_none());
-            assert!(map.0.get("bar").unwrap()[0].0.site_id == 1);
-            assert!(map.0.get("baz").unwrap()[0].0.site_id == 11);
+            let map = as_map(&crdt2.inner);
+            assert_eq!(map.0.get("foo"), None);
+            assert_eq!(map.0.get("bar").unwrap()[0].dot.site_id, 1);
+            assert_eq!(map.0.get("baz").unwrap()[0].dot.site_id, 11);
         }
         {
             let text = as_text(nested_value(&mut crdt2, "/bar").unwrap());
             let mut text_elements = text.0.iter();
-            assert!(text_elements.next().unwrap().uid.site_id == 11);
-            assert!(text_elements.next().unwrap().uid.site_id == 11);
+            assert_eq!(text_elements.next().unwrap().uid.site_id, 11);
+            assert_eq!(text_elements.next().unwrap().uid.site_id, 11);
         }
         {
             let list = as_list(nested_value(&mut crdt2, "/baz/abc").unwrap());
-            assert!((list.0.get_elt(0).unwrap().0).0.site_id == 11);
-            assert!((list.0.get_elt(1).unwrap().0).0.site_id == 11);
-            assert!((list.0.get_elt(2).unwrap().0).0.site_id == 11);
+            assert_eq!(list.0[0].uid.site_id, 11);
+            assert_eq!(list.0[1].uid.site_id, 11);
+            assert_eq!(list.0[2].uid.site_id, 11);
         }
 
         // check that the remote ops' elements have the correct sites
-        let (_, element, replicas) = map_insert_op_fields(ops.next().unwrap());
-        assert!(element.0.site_id == 11);
-        assert!(element.1.validate_site(11).is_ok());
-        assert!(replicas.is_empty());
+        let map_op1 = map_op(ops.next().unwrap().op);
+        assert_eq!(map_op1.inserted_element().unwrap().dot.site_id, 11);
+        assert_eq!(map_op1.inserted_element().unwrap().value.nested_validate_all(11), Ok(()));
+        assert_eq!(map_op1.removed_dots(), []);
 
         let element = list_insert_op_element(ops.next().unwrap());
-        assert!(element.0.site_id == 11);
-        assert!(element.1.validate_site(11).is_ok());
+        assert_eq!(element.uid.site_id, 11);
+        assert_eq!(element.value.nested_validate_all(11), Ok(()));
 
         let element = text_op(ops.next().unwrap());
-        assert!(element.removes.is_empty());
-        assert!(element.inserts[0].uid.site_id == 11);
+        assert_eq!(element.removed_uids(), []);
+        assert_eq!(element.inserted_elements()[0].uid.site_id, 11);
 
         let element = text_op(ops.next().unwrap());
-        assert!(element.removes[0].site_id == 1);
-        assert!(element.inserts[0].uid.site_id == 11);
+        assert_eq!(element.removed_uids()[0].site_id, 1);
+        assert_eq!(element.inserted_elements()[0].uid.site_id, 11);
 
         let uid = list_remove_op_uid(ops.next().unwrap());
-        assert!(uid.site_id == 11);
+        assert_eq!(uid.site_id, 11);
 
-        let (_, replicas) = map_remove_op_fields(ops.next().unwrap());
-        assert!(replicas[0].site_id == 1);
+        let map_op2 = map_op(ops.next().unwrap().op);
+        assert_eq!(map_op2.removed_dots(), [Dot::new(1, 0)]);
     }
 
     #[test]
@@ -928,16 +925,16 @@ mod tests {
             "b": {"cat": true, "dog": false}
         }));
 
-        let mut ops = crdt2.add_site(22).unwrap().into_iter();
-        assert!(crdt2.site_id() == 22);
+        let mut ops = crdt2.add_site_id(22).unwrap().into_iter();
+        assert_eq!(crdt2.site_id(), 22);
 
         let object = nested_value(&mut crdt2, "/foo").unwrap();
-        assert!(object.validate_site(22).is_ok());
+        assert_eq!(object.nested_validate_all(22), Ok(()));
 
-        let (_, element, replicas) = map_insert_op_fields(ops.next().unwrap());
-        assert!(element.0.site_id == 22);
-        assert!(element.1.validate_site(22).is_ok());
-        assert!(replicas.is_empty());
+        let map_op = map_op(ops.next().unwrap().op);
+        assert_eq!(map_op.inserted_element().unwrap().dot.site_id, 22);
+        assert_eq!(map_op.inserted_element().unwrap().value.nested_validate_all(22), Ok(()));
+        assert_eq!(map_op.removed_dots(), []);
     }
 
     #[test]
@@ -946,7 +943,7 @@ mod tests {
         let _ = crdt.insert("/foo", vec![1.0]).unwrap();
         let _ = crdt.insert("/foo/0", "hello").unwrap();
         let _ = crdt.replace_text("/foo/0", 5, 0, " everybody!").unwrap();
-        assert!(crdt.add_site(33).unwrap_err() == Error::AlreadyHasSite);
+        assert_eq!(crdt.add_site_id(33), Err(Error::AlreadyHasSite));
     }
 
     #[test]
@@ -954,16 +951,16 @@ mod tests {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
         let op = crdt1.remove("/bar").unwrap();
-        assert!(crdt2.execute_op(&op).is_some());
-        assert!(crdt2.execute_op(&op).is_none());
+        assert!(crdt2.execute_op(op.clone()).is_some());
+        assert!(crdt2.execute_op(op).is_none());
     }
 
     #[test]
     fn test_serialize() {
         let crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
 
-        let s_json = serde_json::to_string(&crdt1).unwrap();
-        let s_msgpack = rmp_serde::to_vec(&crdt1).unwrap();
+        let s_json      = serde_json::to_string(&crdt1).unwrap();
+        let s_msgpack   = rmp_serde::to_vec(&crdt1).unwrap();
         let crdt2: Json = serde_json::from_str(&s_json).unwrap();
         let crdt3: Json = rmp_serde::from_slice(&s_msgpack).unwrap();
 
@@ -972,16 +969,16 @@ mod tests {
     }
 
     #[test]
-    fn test_serialize_value() {
+    fn test_serialize_state() {
         let crdt = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
 
-        let s_json = serde_json::to_string(crdt.value()).unwrap();
-        let s_msgpack = rmp_serde::to_vec(crdt.value()).unwrap();
-        let value2: Inner = serde_json::from_str(&s_json).unwrap();
-        let value3: Inner = rmp_serde::from_slice(&s_msgpack).unwrap();
+        let s_json            = serde_json::to_string(&crdt.state()).unwrap();
+        let s_msgpack         = rmp_serde::to_vec(&crdt.state()).unwrap();
+        let state2: JsonState = serde_json::from_str(&s_json).unwrap();
+        let state3: JsonState = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-        assert!(*crdt.value() == value2);
-        assert!(*crdt.value() == value3);
+        assert!(crdt.state() == state2);
+        assert!(crdt.state() == state3);
     }
 
     #[test]
@@ -1009,7 +1006,7 @@ mod tests {
             "a": [[1.0],["hello everyone!"],{"x": 3.0}],
             "b": {"cat": true, "dog": false}
         })).unwrap();
-        let local_op1 = crdt2.execute_op(&op).unwrap();
+        let local_op1 = crdt2.execute_op(op).unwrap();
 
         let s_json = serde_json::to_string(&local_op1).unwrap();
         let s_msgpack = rmp_serde::to_vec(&local_op1).unwrap();
@@ -1022,8 +1019,8 @@ mod tests {
     }
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a Inner> {
-        let pointer = try_opt!(Inner::split_pointer(pointer).ok());
-        let (value, _) = try_opt!(crdt.value.get_nested_local(&pointer).ok());
+        let pointer = Inner::split_pointer(pointer).ok()?;
+        let (value, _) = crdt.inner.get_nested_local(&pointer).ok()?;
         Some(value)
     }
 
@@ -1031,17 +1028,10 @@ mod tests {
         serde_json::to_string(&json_value.local_value()).unwrap()
     }
 
-    fn map_insert_op_fields(op: Op) -> (String, map::Element<Inner>, Vec<Replica>) {
-        match op.op {
-            OpInner::Object(map::Op::Insert{key: k, element: e, removed: r}) => (k, e, r),
-            _ => panic!(),
-        }
-    }
-
-    fn map_remove_op_fields(op: Op) -> (String, Vec<Replica>) {
-        match op.op {
-            OpInner::Object(map::Op::Remove{key: k, removed: r}) => (k, r),
-            _ => panic!(),
+    fn map_op(inner_op: OpInner) -> map::Op<String, Inner> {
+        match inner_op {
+            OpInner::Object(map_op) => map_op,
+            _ => panic!()
         }
     }
 

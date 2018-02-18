@@ -31,13 +31,13 @@ fn main() {
     assert_eq!(json2.insert("/bar/1", "Hallo"), Err(Error::AwaitingSite));
 
     // json2 receives its site id and sends its cached ops to site 1.
-    let ops = json2.add_site(2).unwrap();
+    let ops = json2.add_site_id(2).unwrap();
     let encoded_ops = rmp_serde::to_vec(&ops).unwrap();
-    let decoded_ops: Vec<ditto::json::RemoteOp> = rmp_serde::from_slice(&encoded_ops).unwrap();
+    let decoded_ops: Vec<ditto::json::Op> = rmp_serde::from_slice(&encoded_ops).unwrap();
 
     // site 1 executes all the ops sent to it by site 2
     for op in decoded_ops {
-        json1.execute_remote(&op);
+        json1.execute_op(op);
     }
 
     // site 1 and site 2 are in sync with the expected value
