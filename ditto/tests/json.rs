@@ -6,6 +6,16 @@ mod common;
 use ditto::json::*;
 
 #[test]
+fn test_len() {
+    let crdt = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
+    assert_eq!(crdt.len(""), Some(2));
+    assert_eq!(crdt.len("/foo"), Some(3));
+    assert_eq!(crdt.len("/foo/2"), Some(5));
+    assert_eq!(crdt.len("/foo/1"), None);
+    assert_eq!(crdt.len("/baz"), None);
+}
+
+#[test]
 fn test_serialize() {
     let crdt = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
     let state = crdt.clone_state();

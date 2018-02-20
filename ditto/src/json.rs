@@ -117,6 +117,19 @@ impl Json {
         Ok(crdt)
     }
 
+    /// Returns the number of elements in a container at the given
+    /// pointer in the `Json` CRDT. If there is no container at the
+    /// given pointer, returns `None`.
+    pub fn len(&self, pointer: &str) -> Option<usize> {
+        let pointer = Inner::split_pointer(pointer).ok()?;
+        match *self.inner.get_nested_local(&pointer)? {
+            Inner::Object(ref map) => Some(map.len()),
+            Inner::Array(ref list) => Some(list.0.len()),
+            Inner::String(ref text) => Some(text.len()),
+            _ => None,
+        }
+    }
+
     /// Inserts a value into the Json CRDT at the given json pointer.
     /// The enclosing value may be an object or an array and the
     /// inserted value must satisfy the [`IntoJson`](IntoJson.t.html) trait.
@@ -178,7 +191,7 @@ impl Inner {
     pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T, dot: Dot) -> Result<Op, Error> {
         let mut pointer = Self::split_pointer(pointer)?;
         let key = pointer.pop().ok_or(Error::DoesNotExist)?;
-        let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
+        let (json_value, remote_pointer) = self.mut_nested_local(&pointer)?;
         let value = value.into_json(dot)?;
 
         match *json_value {
@@ -200,7 +213,7 @@ impl Inner {
     pub fn remove(&mut self, pointer: &str) -> Result<Op, Error> {
         let mut pointer = Self::split_pointer(pointer)?;
         let key = pointer.pop().ok_or(Error::DoesNotExist)?;
-        let (json_value, remote_pointer) = self.get_nested_local(&pointer)?;
+        let (json_value, remote_pointer) = self.mut_nested_local(&pointer)?;
 
         match *json_value {
             Inner::Object(ref mut map) => {
@@ -218,7 +231,7 @@ impl Inner {
 
     pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str, dot: Dot) -> Result<Op, Error> {
         let pointer = Self::split_pointer(pointer)?;
-        let (inner, remote_pointer) = self.get_nested_local(&pointer)?;
+        let (inner, remote_pointer) = self.mut_nested_local(&pointer)?;
         let text_inner = inner.as_text()?;
         let op = text_inner.replace(index, len, text, dot).ok_or(Error::Noop)?;
         Ok(Op{pointer: remote_pointer, op: OpInner::String(op)})
@@ -306,14 +319,33 @@ impl Inner {
         Ok(pointer_str.split("/").skip(1).collect())
     }
 
-    fn get_nested_local(&mut self, pointer: &[&str]) -> Result<(&mut Inner, Vec<Uid>), Error> {
+    fn get_nested_local(&self, pointer: &[&str]) -> Option<&Inner> {
+        let mut value = self;
+
+        for key in pointer {
+            value = match *value {
+                Inner::Object(ref map_inner) =>
+                    &map_inner.0.get(*key)?[0].value,
+                Inner::Array(ref list_inner) => {
+                    let idx = usize::from_str(key).ok()?;
+                    let element = list_inner.0.get(idx)?;
+                    &element.value
+                }
+                _ => return None,
+            };
+        }
+
+        Some(value)
+    }
+
+    fn mut_nested_local(&mut self, pointer: &[&str]) -> Result<(&mut Inner, Vec<Uid>), Error> {
         let mut value = Some(self);
         let mut remote_pointer = vec![];
 
         for key in pointer {
             value = match value.unwrap() {
-                &mut Inner::Object(ref mut map_value) => {
-                    let element = map_value.get_mut(*key).ok_or(Error::DoesNotExist)?;
+                &mut Inner::Object(ref mut map_inner) => {
+                    let element = map_inner.get_mut(*key).ok_or(Error::DoesNotExist)?;
                     let uid = Uid::Object(key.to_string(), element.dot);
                     remote_pointer.push(uid);
                     Some(&mut element.value)
@@ -973,7 +1005,7 @@ mod tests {
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a Inner> {
         let pointer = Inner::split_pointer(pointer).ok()?;
-        let (value, _) = crdt.inner.get_nested_local(&pointer).ok()?;
+        let (value, _) = crdt.inner.mut_nested_local(&pointer).ok()?;
         Some(value)
     }
 
