@@ -626,7 +626,7 @@ mod tests {
     fn test_object_insert_same_value() {
         let mut crdt = Json::from_str("{}").unwrap();
         assert!(crdt.insert("/foo", 19.7).is_ok());
-        assert!(crdt.insert("/foo", 19.7).unwrap_err() == Error::AlreadyExists);
+        assert_eq!(crdt.insert("/foo", 19.7), Err(Error::AlreadyExists));
     }
 
     #[test]
@@ -964,8 +964,8 @@ mod tests {
         let crdt2: Json = serde_json::from_str(&s_json).unwrap();
         let crdt3: Json = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-        assert!(crdt1 == crdt2);
-        assert!(crdt1 == crdt3);
+        assert_eq!(crdt1, crdt2);
+        assert_eq!(crdt1, crdt3);
     }
 
     #[test]
@@ -977,8 +977,8 @@ mod tests {
         let state2: JsonState = serde_json::from_str(&s_json).unwrap();
         let state3: JsonState = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-        assert!(crdt.state() == state2);
-        assert!(crdt.state() == state3);
+        assert_eq!(crdt.state(), state2);
+        assert_eq!(crdt.state(), state3);
     }
 
     #[test]
@@ -994,8 +994,8 @@ mod tests {
         let op2: Op = serde_json::from_str(&s_json).unwrap();
         let op3: Op = rmp_serde::from_slice(&s_msgpack).unwrap();
 
-        assert!(op1 == op2);
-        assert!(op1 == op3);
+        assert_eq!(op1, op2);
+        assert_eq!(op1, op3);
     }
 
     #[test]
