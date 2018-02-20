@@ -411,6 +411,9 @@ impl NestedInner for Inner {
             (&Inner::Object(ref v1), &Inner::Object(ref v2)) => v1.nested_can_merge(v2),
             (&Inner::Array(ref v1), &Inner::Array(ref v2)) => v1.nested_can_merge(v2),
             (&Inner::String(_), &Inner::String(_)) => true,
+            (&Inner::Number(_), &Inner::Number(_)) => true,
+            (&Inner::Bool(_),   &Inner::Bool(_))   => true,
+            (&Inner::Null,      &Inner::Null)      => true,
             _ => false,
         }
     }
@@ -847,17 +850,16 @@ mod tests {
         let mut crdt1 = Json::from_str(r#"{"x":[{"a": 1},{"b": 2},{"c":true},{"d":false}]}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), Some(2)).unwrap();
         let _ = crdt1.insert("/x/0/e", 222.0).unwrap();
-        let _ = crdt1.insert("/x/3/e", 333.0).unwrap();
+        let _ = crdt1.insert("/x/3/f", 333.0).unwrap();
         let _ = crdt1.remove("/x/2").unwrap();
-        let _ = crdt2.insert("/x/1/e", 444.0).unwrap();
+        let _ = crdt2.insert("/x/1/g", 444.0).unwrap();
         let _ = crdt2.remove("/x/3").unwrap();
 
         let crdt1_state = crdt1.clone_state();
-        crdt1.merge(crdt2.clone_state()).unwrap();
-        crdt2.merge(crdt1_state).unwrap();
-
+        assert_matches!(crdt1.merge(crdt2.clone_state()), Ok(_));
+        assert_matches!(crdt2.merge(crdt1_state), Ok(_));
         assert_eq!(crdt1.state(), crdt2.state());
-        assert_eq!(crdt1.local_value(), json!({"x":[{"a": 1.0, "e": 222.0}, {"b": 2.0, "e": 444.0}]}));
+        assert_eq!(crdt1.local_value(), json!({"x":[{"a": 1.0, "e": 222.0}, {"b": 2.0, "g": 444.0}]}));
     }
 
     #[test]

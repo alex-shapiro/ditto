@@ -16,7 +16,7 @@ fn test_serialize() {
 #[test]
 fn test_serialize_op() {
     let mut crdt = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
-    let op = crdt.insert("/foo/bar", json!({
+    let op = crdt.insert("/foo/0", json!({
         "a": [[1.0],["hello everyone!"],{"x": 3.0}],
         "b": {"cat": true, "dog": false}
     })).unwrap();
