@@ -228,7 +228,11 @@ impl Inner {
         let (inner, mut pointer) = self.get_nested_remote(&op.pointer)?;
         match op.op {
             OpInner::Object(op) => {
-                match inner.as_map().ok()?.execute_op(op) {
+                let map_inner = inner.as_map().ok()?;
+                if !map_inner.0.contains_key(op.key()) && op.inserted_element().is_none() {
+                    return None
+                }
+                match map_inner.execute_op(op) {
                     map::LocalOp::Insert{key, value} => {
                         pointer.push(LocalUid::Object(key));
                         Some(LocalOp::Insert{pointer, value: value.local_value()})
@@ -952,9 +956,17 @@ mod tests {
     fn test_execute_op_dupe() {
         let mut crdt1 = Json::from_str(r#"{"foo":[1.0,true,"hello"],"bar":null}"#).unwrap();
         let mut crdt2 = Json::from_state(crdt1.clone_state(), None).unwrap();
-        let op        = crdt1.remove("/bar").unwrap();
-        assert_matches!(crdt2.execute_op(op.clone()), Some(_));
-        assert_matches!(crdt2.execute_op(op.clone()), Some(_));
+        let op1 = crdt1.remove("/bar").unwrap();
+        let op2 = crdt1.remove("/foo/1").unwrap();
+        let op3 = crdt1.replace_text("/foo/1",0,1,"H").unwrap();
+
+        assert_matches!(crdt2.execute_op(op1.clone()), Some(_));
+        assert_matches!(crdt2.execute_op(op2.clone()), Some(_));
+        assert_matches!(crdt2.execute_op(op3.clone()), Some(_));
+
+        assert_eq!(crdt2.execute_op(op1), None);
+        assert_eq!(crdt2.execute_op(op2), None);
+        assert_eq!(crdt2.execute_op(op3), None);
     }
 
     fn nested_value<'a>(crdt: &'a mut Json, pointer: &str) -> Option<&'a Inner> {
