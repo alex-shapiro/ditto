@@ -5,7 +5,9 @@ extern crate serde_json;
 extern crate rmp_serde as rmps;
 
 use ditto::{Json, List, Map, Register, Set, Text};
-use ditto::{list, map, set};
+use ditto::list2 as list;
+use ditto::map2 as map;
+use ditto::set;
 
 #[test]
 fn test_list() {
@@ -13,32 +15,32 @@ fn test_list() {
     let mut list2: List<i64> = List::from_state(list1.clone_state(), Some(2)).unwrap();
     let mut list3: List<i64> = List::from_state(list1.clone_state(), Some(3)).unwrap();
 
-    let remote_op1 = list1.insert(0, 5).unwrap();
-    let remote_op2 = list2.insert(0, 10).unwrap();
-    let remote_op3 = list3.insert(0, 15).unwrap();
-    let remote_op4 = list1.remove(0).unwrap();
+    let op1 = list1.insert(0, 5).unwrap();
+    let op2 = list2.insert(0, 10).unwrap();
+    let op3 = list3.insert(0, 15).unwrap();
+    let op4 = list1.remove(0).1.unwrap();
 
-    let local_op11 = list1.execute_remote(&via_json(&remote_op2)).unwrap();
-    let local_op12 = list1.execute_remote(&via_msgpack(&remote_op3)).unwrap();
-    assert_matches!(local_op11, list::LocalOp::Insert{index: 0, value: 10});
-    assert_matches!(local_op12, list::LocalOp::Insert{index: _, value: 15});
+    let local_op11 = list1.execute_op(via_json(&op2)).unwrap();
+    let local_op12 = list1.execute_op(via_msgpack(&op3)).unwrap();
+    assert_matches!(local_op11, list::LocalOp::Insert{idx: 0, value: 10});
+    assert_matches!(local_op12, list::LocalOp::Insert{idx: _, value: 15});
 
-    let local_op21 = list2.execute_remote(&via_msgpack(&remote_op1)).unwrap();
-    let local_op22 = list2.execute_remote(&via_json(&remote_op3)).unwrap();
-    let local_op23 = list2.execute_remote(&via_msgpack(&remote_op4)).unwrap();
-    assert_matches!(local_op21, list::LocalOp::Insert{index: _, value: 5});
-    assert_matches!(local_op22, list::LocalOp::Insert{index: _, value: 15});
-    assert_matches!(local_op23, list::LocalOp::Remove{index: _});
+    let local_op21 = list2.execute_op(via_msgpack(&op1)).unwrap();
+    let local_op22 = list2.execute_op(via_json(&op3)).unwrap();
+    let local_op23 = list2.execute_op(via_msgpack(&op4)).unwrap();
+    assert_matches!(local_op21, list::LocalOp::Insert{idx: _, value: 5});
+    assert_matches!(local_op22, list::LocalOp::Insert{idx: _, value: 15});
+    assert_matches!(local_op23, list::LocalOp::Remove{idx: _});
 
-    let local_op31 = list3.execute_remote(&via_json(&remote_op1)).unwrap();
-    let local_op32 = list3.execute_remote(&via_msgpack(&remote_op2)).unwrap();
-    let local_op33 = list3.execute_remote(&via_json(&remote_op4)).unwrap();
-    assert_matches!(local_op31, list::LocalOp::Insert{index: _, value: 5});
-    assert_matches!(local_op32, list::LocalOp::Insert{index: _, value: 10});
-    assert_matches!(local_op33, list::LocalOp::Remove{index: _});
+    let local_op31 = list3.execute_op(via_json(&op1)).unwrap();
+    let local_op32 = list3.execute_op(via_msgpack(&op2)).unwrap();
+    let local_op33 = list3.execute_op(via_json(&op4)).unwrap();
+    assert_matches!(local_op31, list::LocalOp::Insert{idx: _, value: 5});
+    assert_matches!(local_op32, list::LocalOp::Insert{idx: _, value: 10});
+    assert_matches!(local_op33, list::LocalOp::Remove{idx: _});
 
-    assert!(list1.value() == list2.value());
-    assert!(list1.value() == list3.value());
+    assert_eq!(list1.state(), list2.state());
+    assert_eq!(list1.state(), list3.state());
 }
 
 #[test]
@@ -47,32 +49,32 @@ fn test_map() {
     let mut map2: Map<i32, bool> = Map::from_state(map1.clone_state(), Some(2)).unwrap();
     let mut map3: Map<i32, bool> = Map::from_state(map1.clone_state(), Some(3)).unwrap();
 
-    let remote_op1 = map1.insert(0, true).unwrap();
-    let remote_op2 = map2.insert(0, false).unwrap();
-    let remote_op3 = map3.insert(1, true).unwrap();
-    let remote_op4 = map1.remove(&0).unwrap();
+    let op1 = map1.insert(0, true).unwrap();
+    let op2 = map2.insert(0, false).unwrap();
+    let op3 = map3.insert(1, true).unwrap();
+    let op4 = map1.remove(&0).unwrap().unwrap();
 
-    let local_op11 = map1.execute_remote(&via_json(&remote_op2)).unwrap();
-    let local_op12 = map1.execute_remote(&via_msgpack(&remote_op3)).unwrap();
+    let local_op11 = map1.execute_op(via_json(&op2));
+    let local_op12 = map1.execute_op(via_msgpack(&op3));
     assert_matches!(local_op11, map::LocalOp::Insert{key: 0, value: false});
     assert_matches!(local_op12, map::LocalOp::Insert{key: 1, value: true});
 
-    let local_op21 = map2.execute_remote(&via_json(&remote_op1)).unwrap();
-    let local_op22 = map2.execute_remote(&via_msgpack(&remote_op3)).unwrap();
-    let local_op23 = map2.execute_remote(&via_json(&remote_op4)).unwrap();
+    let local_op21 = map2.execute_op(via_json(&op1));
+    let local_op22 = map2.execute_op(via_msgpack(&op3));
+    let local_op23 = map2.execute_op(via_json(&op4));
     assert_matches!(local_op21, map::LocalOp::Insert{key: 0, value: true});
     assert_matches!(local_op22, map::LocalOp::Insert{key: 1, value: true});
     assert_matches!(local_op23, map::LocalOp::Insert{key: 0, value: false});
 
-    let local_op31 = map3.execute_remote(&via_msgpack(&remote_op1)).unwrap();
-    let local_op32 = map3.execute_remote(&via_json(&remote_op2));
-    let local_op33 = map3.execute_remote(&via_msgpack(&remote_op4)).unwrap();
-    assert_matches!(local_op31, map::LocalOp::Insert{key: 0, value: true});
-    assert_matches!(local_op32, None);
-    assert_matches!(local_op33, map::LocalOp::Insert{key: 0, value: false});
+    let local_op31 = map3.execute_op(via_msgpack(&op1));
+    let local_op32 = map3.execute_op(via_json(&op2));
+    let local_op33 = map3.execute_op(via_msgpack(&op4));
+    assert_eq!(local_op31, map::LocalOp::Insert{key: 0, value: true});
+    assert_eq!(local_op32, map::LocalOp::Insert{key: 0, value: true});
+    assert_eq!(local_op33, map::LocalOp::Insert{key: 0, value: false});
 
-    assert!(map1.value() == map2.value());
-    assert!(map1.value() == map3.value());
+    assert!(map1.state() == map2.state());
+    assert!(map1.state() == map3.state());
 }
 
 #[test]
@@ -128,19 +130,19 @@ fn test_text() {
     let mut text2 = Text::from_state(text1.clone_state(), Some(2)).unwrap();
     let mut text3 = Text::from_state(text1.clone_state(), Some(3)).unwrap();
 
-    let remote_op1 = text1.replace(0, 0, "Hello! ").unwrap();
-    let remote_op2 = text2.replace(0, 0, "Bonjour. ").unwrap();
-    let remote_op3 = text3.replace(0, 0, "Buenos dias. ").unwrap();
+    let op1 = text1.replace(0, 0, "Hello! ").unwrap().unwrap();
+    let op2 = text2.replace(0, 0, "Bonjour. ").unwrap().unwrap();
+    let op3 = text3.replace(0, 0, "Buenos dias. ").unwrap().unwrap();
 
-    let _ = text1.execute_remote(&via_json(&remote_op2)).unwrap();
-    let _ = text1.execute_remote(&via_msgpack(&remote_op3)).unwrap();
-    let _ = text2.execute_remote(&via_msgpack(&remote_op1)).unwrap();
-    let _ = text2.execute_remote(&via_json(&remote_op3)).unwrap();
-    let _ = text3.execute_remote(&via_json(&remote_op1)).unwrap();
-    let _ = text3.execute_remote(&via_msgpack(&remote_op2)).unwrap();
+    let _ = text1.execute_op(via_json(&op2));
+    let _ = text1.execute_op(via_msgpack(&op3));
+    let _ = text2.execute_op(via_msgpack(&op1));
+    let _ = text2.execute_op(via_json(&op3));
+    let _ = text3.execute_op(via_json(&op1));
+    let _ = text3.execute_op(via_msgpack(&op2));
 
-    assert!(text1.value() == text2.value());
-    assert!(text1.value() == text3.value());
+    assert!(text1.state() == text2.state());
+    assert!(text1.state() == text3.state());
 }
 
 #[test]

@@ -217,7 +217,7 @@ impl<T: SetElement> Op<T> {
     pub fn value(&self) -> &T { &self.value }
 
     /// Returns a reference to the `Op`'s inserted dot.
-    pub fn inserted_dot(&self) -> Option<&Dot> { self.inserted_dot.as_ref() }
+    pub fn inserted_dot(&self) -> Option<Dot> { self.inserted_dot }
 
     /// Returns a reference to the `Op`'s removed dots.
     pub fn removed_dots(&self) -> &[Dot] { &self.removed_dots }
@@ -235,7 +235,7 @@ impl<T: SetElement> Op<T> {
     /// Validates that the `Op`'s site id is equal to the given site id.
     pub fn validate(&self, site_id: SiteId) -> Result<(), Error> {
         if let Some(ref r) = self.inserted_dot {
-            try_assert!(r.site_id == site_id, Error::InvalidOp);
+            if r.site_id != site_id { return Err(Error::InvalidOp) };
         }
         Ok(())
     }

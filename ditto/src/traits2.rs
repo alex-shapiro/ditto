@@ -78,7 +78,7 @@ macro_rules! crdt_impl2 {
         /// from the correct site. For untrusted ops, used `validate_and_execute_op`.
         pub fn execute_op(&mut self, op: $op) -> $local_op {
             for dot in op.inserted_dots() {
-                self.summary.insert(&dot);
+                self.summary.insert(dot);
             }
             self.inner.execute_op(op)
         }
