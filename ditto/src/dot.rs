@@ -11,7 +11,7 @@ pub struct Dot {
     pub counter: Counter,
 }
 
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
+#[derive(Debug, Clone, Default, PartialEq, Serialize, Deserialize)]
 pub struct Summary(#[serde(with = "map_tuple_vec")] HashMap<u32,u32>);
 
 impl Dot {
@@ -21,10 +21,6 @@ impl Dot {
 }
 
 impl Summary {
-    pub fn new() -> Self {
-        Summary(HashMap::new())
-    }
-
     pub fn get(&self, site_id: SiteId) -> Counter {
         *self.0.get(&site_id).unwrap_or(&0)
     }

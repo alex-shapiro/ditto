@@ -60,7 +60,7 @@ impl UID {
     }
 
     pub fn max() -> Self {
-        let position = big((1 << BASE_LEVEL+1) - 1);
+        let position = big((1 << (BASE_LEVEL+1)) - 1);
         UID::new(position, u32::max_value(), u32::max_value())
     }
 
@@ -152,8 +152,8 @@ impl UID {
 
     fn from_vlq(vlq: &[u8]) -> Result<Self, Error> {
         let (position, vlq_rest1) = vlq::decode_biguint(vlq)?;
-        let (site_id, vlq_rest2) = vlq::decode_u32(&vlq_rest1)?;
-        let (counter, _) = vlq::decode_u32(&vlq_rest2)?;
+        let (site_id, vlq_rest2) = vlq::decode_u32(vlq_rest1)?;
+        let (counter, _) = vlq::decode_u32(vlq_rest2)?;
         Ok(UID{position, site_id, counter})
     }
 }
@@ -178,9 +178,9 @@ impl Ord for UID {
 
         // truncate
         if self_bits > other_bits {
-            self_position = self_position >> (self_bits - other_bits);
+            self_position >>= self_bits - other_bits;
         } else {
-            other_position = other_position >> (other_bits - self_bits);
+            other_position >>= other_bits - self_bits;
         }
 
         // compare
@@ -252,7 +252,7 @@ impl<'de> Deserialize<'de> for UID {
             }
 
             fn visit_bytes<E>(self, v: &[u8]) -> Result<Self::Value, E> where E: de::Error {
-                Ok(UID::from_vlq(&v).map_err(|_| de::Error::missing_field("invalid VLQ value"))?)
+                Ok(UID::from_vlq(v).map_err(|_| de::Error::missing_field("invalid VLQ value"))?)
             }
         }
 

@@ -61,7 +61,7 @@ impl<T: Clone> Register<T> {
         let site_id = 1;
         let counter = 1;
         let mut elements = BTreeMap::new();
-        let mut summary = Summary::new();
+        let mut summary = Summary::default();
         let _ = elements.insert(site_id, SiteValue{value, counter});
         summary.insert_pair(site_id, counter);
         Register{elements, summary, site_id, cached_op: None}

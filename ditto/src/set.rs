@@ -76,7 +76,7 @@ impl<T: SetElement> Set<T> {
     /// The set has site 1 and counter 0.
     pub fn new() -> Self {
         let inner   = Inner::new();
-        let summary = Summary::new();
+        let summary = Summary::default();
         let site_id = 1;
         Set{inner, summary, site_id, cached_ops: vec![]}
     }

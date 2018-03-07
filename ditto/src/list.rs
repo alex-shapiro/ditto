@@ -90,7 +90,7 @@ impl<T: Clone> List<T> {
     /// Constructs and returns a new List with site id 1.
     pub fn new() -> Self {
         let inner   = Inner::new();
-        let summary = Summary::new();
+        let summary = Summary::default();
         let site_id = 1;
         List{inner, summary, site_id, cached_ops: vec![]}
     }

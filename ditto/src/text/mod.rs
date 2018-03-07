@@ -75,7 +75,7 @@ impl Text {
     /// Constructs and returns a new Text CRDT with site id 1.
     pub fn new() -> Self {
         let inner   = Inner::new();
-        let summary = Summary::new();
+        let summary = Summary::default();
         let site_id = 1;
         Text{inner, summary, site_id, cached_ops: vec![]}
     }
@@ -91,6 +91,12 @@ impl Text {
     /// Returns the number of unicode characters in the text.
     pub fn len(&self) -> usize {
         self.inner.0.len()
+    }
+
+    /// Returns true if the Text CRDT has a length of 0.
+    /// Returns false otherwise.
+    pub fn is_empty(&self) -> bool {
+        self.inner.0.len() == 0
     }
 
     /// Replaces the text in the range [idx..<idx+len] with new text.
