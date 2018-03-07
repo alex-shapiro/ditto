@@ -9,7 +9,6 @@ use order_statistic_tree::{self, Tree};
 use sequence::uid::UID;
 use std::borrow::Cow;
 use std::cmp::Ordering;
-use std::mem;
 
 pub type LocalOp = TextEdit;
 
@@ -243,6 +242,14 @@ impl Inner {
 
     pub fn validate_no_unassigned_sites(&self) -> Result<(), Error> {
         if self.0.iter().any(|e| e.uid.site_id == 0) {
+            Err(Error::InvalidSiteId)
+        } else {
+            Ok(())
+        }
+    }
+
+    pub fn validate_all(&self, site_id: SiteId) -> Result<(), Error> {
+        if self.0.iter().any(|e| e.uid.site_id != site_id) {
             Err(Error::InvalidSiteId)
         } else {
             Ok(())

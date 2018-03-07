@@ -9,7 +9,6 @@ use serde::de::DeserializeOwned;
 use std::borrow::Cow;
 use std::collections::{HashMap, HashSet};
 use std::hash::Hash;
-use std::mem;
 
 pub trait SetElement: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}

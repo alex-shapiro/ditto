@@ -11,7 +11,6 @@ use std::borrow::{Borrow, Cow};
 use std::cmp::Ordering;
 use std::collections::HashMap;
 use std::hash::Hash;
-use std::mem;
 
 pub trait Key: Clone + Eq + Hash + Serialize + DeserializeOwned {}
 impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> Key for T {}
@@ -59,7 +58,8 @@ pub struct MapState<'a, K: Key + 'a, V: Value + 'a> {
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
-pub(crate) struct Inner<K: Key, V: Value>(#[serde(with = "map_tuple_vec")] pub HashMap<K, Vec<Element<V>>>);
+#[doc(hidden)]
+pub struct Inner<K: Key, V: Value>(#[serde(with = "map_tuple_vec")] pub HashMap<K, Vec<Element<V>>>);
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Op<K, V> {
@@ -168,30 +168,30 @@ impl<K: Key, V: Value> Inner<K, V> {
         Inner(HashMap::new())
     }
 
-    // pub fn len(&self) -> usize {
-    //     self.0.len()
-    // }
+    pub fn len(&self) -> usize {
+        self.0.len()
+    }
 
-    // pub fn iter(&self) -> hash_map::Iter<K,Vec<Element<V>>> {
-    //     self.0.iter()
-    // }
+    pub fn iter(&self) -> ::std::collections::hash_map::Iter<K,Vec<Element<V>>> {
+        self.0.iter()
+    }
 
-    // pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut Element<V>>
-    //     where Q: Hash + Eq,
-    //           K: Borrow<Q>,
-    // {
-    //     let elements = self.0.get_mut(key)?;
-    //     Some(&mut elements[0])
-    // }
+    pub fn get_mut<Q: ?Sized>(&mut self, key: &Q) -> Option<&mut Element<V>>
+        where Q: Hash + Eq,
+              K: Borrow<Q>,
+    {
+        let elements = self.0.get_mut(key)?;
+        Some(&mut elements[0])
+    }
 
-    // pub fn get_mut_element<Q: ?Sized>(&mut self, key: &Q, dot: Dot) -> Option<&mut Element<V>>
-    //     where Q: Hash + Eq,
-    //           K: Borrow<Q>,
-    // {
-    //     let elements = self.0.get_mut(key)?;
-    //     let idx = elements.binary_search_by(|e| e.dot.cmp(&dot)).ok()?;
-    //     Some(&mut elements[idx])
-    // }
+    pub fn get_mut_element<Q: ?Sized>(&mut self, key: &Q, dot: Dot) -> Option<&mut Element<V>>
+        where Q: Hash + Eq,
+              K: Borrow<Q>,
+    {
+        let elements = self.0.get_mut(key)?;
+        let idx = elements.binary_search_by(|e| e.dot.cmp(&dot)).ok()?;
+        Some(&mut elements[idx])
+    }
 
     pub fn insert(&mut self, key: K, value: V, dot: Dot) -> Op<K, V> {
         let inserted_element = Element{value, dot};
@@ -316,8 +316,23 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
         Ok(())
     }
 
+    fn nested_can_merge(&self, other: &Inner<K,V>) -> bool {
+        for (key, elements) in &self.0 {
+            if let Some(other_elements) = other.0.get(key) {
+                for element in elements {
+                    if let Ok(idx) = other_elements.binary_search_by(|e| e.cmp(&element)) {
+                        let ref other_value = other_elements[idx].value;
+                        if !element.value.nested_can_merge(other_value) {
+                            return false
+                        }
+                    }
+                }
+            }
+        }
+        true
+    }
 
-    fn nested_merge(&mut self, other: Inner<K, V>, summary: &Summary, other_summary: &Summary) {
+    fn nested_force_merge(&mut self, other: Inner<K, V>, summary: &Summary, other_summary: &Summary) {
         let mut other_values = other.0;
 
         self.0.retain(|key, elements| {
@@ -333,7 +348,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
             // merge elements that are in both self and other
             for element in other_merge {
                 let idx = elements.binary_search_by(|e| e.cmp(&element)).expect("Element must be present");
-                elements[idx].value.nested_merge(element.value, summary, other_summary);
+                elements[idx].value.nested_force_merge(element.value, summary, other_summary);
             }
 
             // append elements from other that have not been inserted into self
