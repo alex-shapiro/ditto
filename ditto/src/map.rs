@@ -29,7 +29,7 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 /// via [`merge`](#method.merge). State-based replication allows
 /// out-of-order delivery but op-based replication does not.
 ///
-/// Map's performance characteristics are similar to HashMap:
+/// Map's performance characteristics are similar to `HashMap`:
 ///
 ///   * [`insert`](#method.insert): *O(1)*
 ///   * [`remove`](#method.remove): *O(1)*
@@ -91,7 +91,7 @@ impl<V> Eq for Element<V> {}
 
 impl<V> PartialOrd for Element<V> {
     fn partial_cmp(&self, other: &Element<V>) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
@@ -163,7 +163,6 @@ impl<K: Key, V: Value> From<HashMap<K, V>> for Map<K, V> {
 }
 
 impl<K: Key, V: Value> Inner<K, V> {
-
     pub fn new() -> Self {
         Inner(HashMap::new())
     }
@@ -195,7 +194,7 @@ impl<K: Key, V: Value> Inner<K, V> {
 
     pub fn insert(&mut self, key: K, value: V, dot: Dot) -> Op<K, V> {
         let inserted_element = Element{value, dot};
-        let removed_elements = self.0.insert(key.clone(), vec![inserted_element.clone()]).unwrap_or(vec![]);
+        let removed_elements = self.0.insert(key.clone(), vec![inserted_element.clone()]).unwrap_or_else(|| vec![]);
         let removed_dots = removed_elements.into_iter().map(|e| e.dot).collect();
         Op{key, inserted_element: Some(inserted_element), removed_dots}
     }
@@ -210,7 +209,7 @@ impl<K: Key, V: Value> Inner<K, V> {
     }
 
     pub fn execute_op(&mut self, op: Op<K, V>) -> LocalOp<K, V> {
-        let mut elements = self.0.remove(&op.key).unwrap_or(vec![]);
+        let mut elements = self.0.remove(&op.key).unwrap_or_else(|| vec![]);
         elements.retain(|e| !op.removed_dots.contains(&e.dot));
 
         if let Some(new_element) = op.inserted_element {
@@ -235,7 +234,7 @@ impl<K: Key, V: Value> Inner<K, V> {
         // - the element is in both self and other, OR
         // - the element has not been inserted into other
         self.0.retain(|key, elements| {
-            let mut other_elements = other_values.remove(&key).unwrap_or(vec![]);
+            let mut other_elements = other_values.remove(key).unwrap_or_else(|| vec![]);
             elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.dot));
             other_elements.retain(|e| !elements.contains(e) && !summary.contains(&e.dot));
             elements.append(&mut other_elements);
@@ -253,7 +252,7 @@ impl<K: Key, V: Value> Inner<K, V> {
     }
 
     pub fn add_site_id(&mut self, site_id: SiteId) {
-        for (_, elements) in &mut self.0 {
+        for elements in self.0.values_mut() {
             for element in elements {
                 if element.dot.site_id == 0 { element.dot.site_id = site_id };
             }
@@ -282,7 +281,7 @@ impl<K: Key, V: Value> Inner<K, V> {
 
 impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
     fn nested_add_site_id(&mut self, site_id: SiteId) {
-        for (_, elements) in &mut self.0 {
+        for elements in self.0.values_mut() {
             for element in elements {
                 element.value.nested_add_site_id(site_id);
                 if element.dot.site_id == 0 {
@@ -320,8 +319,8 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
         for (key, elements) in &self.0 {
             if let Some(other_elements) = other.0.get(key) {
                 for element in elements {
-                    if let Ok(idx) = other_elements.binary_search_by(|e| e.cmp(&element)) {
-                        let ref other_value = other_elements[idx].value;
+                    if let Ok(idx) = other_elements.binary_search_by(|e| e.cmp(element)) {
+                        let other_value = &other_elements[idx].value;
                         if !element.value.nested_can_merge(other_value) {
                             return false
                         }
@@ -336,7 +335,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
         let mut other_values = other.0;
 
         self.0.retain(|key, elements| {
-            let mut other_elements = other_values.remove(key).unwrap_or(vec![]);
+            let mut other_elements = other_values.remove(key).unwrap_or_else(|| vec![]);
 
             // remove elements that have been removed from other
             elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.dot));

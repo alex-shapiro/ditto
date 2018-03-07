@@ -147,7 +147,7 @@ impl Json {
     /// If the CRDT does not have a site id allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert_str(&mut self, pointer: &str, value: &str) -> Result<Op, Error> {
-        let json: SJValue = serde_json::from_str(&value)?;
+        let json: SJValue = serde_json::from_str(value)?;
         self.insert(pointer, json)
     }
 
@@ -310,10 +310,10 @@ impl Inner {
     }
 
     fn split_pointer(pointer_str: &str) -> Result<Vec<&str>, Error> {
-        if !(pointer_str.is_empty() || pointer_str.starts_with("/")) {
+        if !(pointer_str.is_empty() || pointer_str.starts_with('/')) {
             return Err(Error::DoesNotExist)
         }
-        Ok(pointer_str.split("/").skip(1).collect())
+        Ok(pointer_str.split('/').skip(1).collect())
     }
 
     fn get_nested_local(&self, pointer: &[&str]) -> Option<&Inner> {
@@ -340,14 +340,14 @@ impl Inner {
         let mut remote_pointer = vec![];
 
         for key in pointer {
-            value = match value.unwrap() {
-                &mut Inner::Object(ref mut map_inner) => {
+            value = match *value.unwrap() {
+                Inner::Object(ref mut map_inner) => {
                     let element = map_inner.get_mut(*key).ok_or(Error::DoesNotExist)?;
                     let uid = Uid::Object(key.to_string(), element.dot);
                     remote_pointer.push(uid);
                     Some(&mut element.value)
                 }
-                &mut Inner::Array(ref mut list_inner) => {
+                Inner::Array(ref mut list_inner) => {
                     let idx = usize::from_str(key)?;
                     let element = list_inner.0.get_mut(idx).ok_or(Error::DoesNotExist)?;
                     let uid = Uid::Array(element.uid.clone());
@@ -439,9 +439,9 @@ impl NestedInner for Inner {
         match (self, other) {
             (&Inner::Object(ref v1), &Inner::Object(ref v2)) => v1.nested_can_merge(v2),
             (&Inner::Array(ref v1), &Inner::Array(ref v2)) => v1.nested_can_merge(v2),
-            (&Inner::String(_), &Inner::String(_)) => true,
-            (&Inner::Number(_), &Inner::Number(_)) => true,
-            (&Inner::Bool(_),   &Inner::Bool(_))   => true,
+            (&Inner::String(_), &Inner::String(_)) |
+            (&Inner::Number(_), &Inner::Number(_)) |
+            (&Inner::Bool(_),   &Inner::Bool(_))   |
             (&Inner::Null,      &Inner::Null)      => true,
             _ => false,
         }
@@ -484,7 +484,7 @@ impl Op {
 impl NestedOp for Op {
     fn nested_add_site_id(&mut self, site_id: SiteId) {
         // update site ids in the pointer
-        for uid in self.pointer.iter_mut() {
+        for uid in &mut self.pointer {
             match *uid {
                 Uid::Object(_, ref mut dot) => {
                     if dot.site_id == 0 { dot.site_id = site_id; }
@@ -525,7 +525,7 @@ impl IntoJson for SJValue {
         match self {
             SJValue::Object(map) => {
                 let mut map_value = MapInner::new();
-                for (key, value) in map.into_iter() {
+                for (key, value) in map {
                     let _ = map_value.insert(key, value.into_json(dot)?, dot);
                 }
                 Ok(Inner::Object(map_value))
@@ -547,7 +547,7 @@ impl IntoJson for SJValue {
 impl<S: Into<String> + Hash + Eq, T: IntoJson> IntoJson for HashMap<S, T> {
     fn into_json(self, dot: Dot) -> Result<Inner, Error> {
         let mut map_value = MapInner::new();
-        for (key, value) in self.into_iter() {
+        for (key, value) in self {
             let _ = map_value.insert(key.into(), value.into_json(dot)?, dot);
         }
         Ok(Inner::Object(map_value))
@@ -578,10 +578,7 @@ impl<'a> IntoJson for &'a str {
 
 impl IntoJson for f64 {
     fn into_json(self, _: Dot) -> Result<Inner, Error> {
-        match f64::is_finite(self) {
-            true => Ok(Inner::Number(self)),
-            false => Err(Error::InvalidJson),
-        }
+        if f64::is_finite(self) { Ok(Inner::Number(self)) } else { Err(Error::InvalidJson) }
     }
 }
 

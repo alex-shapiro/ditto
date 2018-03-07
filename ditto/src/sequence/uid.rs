@@ -65,8 +65,8 @@ impl UID {
     }
 
     pub fn between(uid1: &UID, uid2: &UID, dot: Dot) -> Self {
-        let ref position1        = uid1.position;
-        let ref position2        = uid2.position;
+        let position1            = &uid1.position;
+        let position2            = &uid2.position;
         let mut position         = big(1);
         let mut significant_bits = 1;
 

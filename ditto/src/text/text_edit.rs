@@ -102,7 +102,7 @@ impl TextEdit {
     fn should_overwrite(&mut self, idx: usize, len: usize) -> bool {
         self.can_merge(idx, len)
         && self.text.len() < MAX_EDIT_LEN
-        && !self.text.ends_with("\n")
+        && !self.text.ends_with('\n')
     }
 
     // Checks whether the TextEdit and new edit can merge.

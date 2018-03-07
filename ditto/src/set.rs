@@ -139,7 +139,7 @@ impl<T: SetElement> Inner<T> {
     }
 
     fn execute_op(&mut self, op: Op<T>) -> Option<LocalOp<T>> {
-        let mut dots  = self.0.remove(&op.value).unwrap_or(vec![]);
+        let mut dots  = self.0.remove(&op.value).unwrap_or_else(|| vec![]);
         let exists_before = !dots.is_empty();
         dots.retain(|r| !op.removed_dots.contains(r));
 
@@ -170,7 +170,7 @@ impl<T: SetElement> Inner<T> {
         // - the element is in in both self and other, OR
         // - the element has not been inserted into other
         self.0.retain(|value, dots| {
-            let mut other_dots = other_elements.remove(value).unwrap_or(vec![]);
+            let mut other_dots = other_elements.remove(value).unwrap_or_else(|| vec![]);
             dots.retain(|r| other_dots.contains(r) || !other_summary.contains(r));
             other_dots.retain(|r| !dots.contains(r) && !summary.contains(r));
             dots.append(&mut other_dots);
@@ -208,7 +208,7 @@ impl<T: SetElement> Inner<T> {
 
 
     fn local_value(&self) -> HashSet<T> {
-        self.0.keys().map(|value| value.clone()).collect()
+        self.0.keys().cloned().collect()
     }
 }
 
@@ -241,9 +241,6 @@ impl<T: SetElement> Op<T> {
     }
 
     pub(crate) fn inserted_dots(&self) -> Vec<Dot> {
-        match self.inserted_dot {
-            Some(ref r) => vec![r.clone()],
-            None => vec![],
-        }
+        if let Some(dot) = self.inserted_dot { vec![dot] } else { vec![] }
     }
 }
