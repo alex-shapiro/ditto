@@ -194,7 +194,7 @@ impl<K: Key, V: Value> Inner<K, V> {
 
     pub fn insert(&mut self, key: K, value: V, dot: Dot) -> Op<K, V> {
         let inserted_element = Element{value, dot};
-        let removed_elements = self.0.insert(key.clone(), vec![inserted_element.clone()]).unwrap_or(vec![]);
+        let removed_elements = self.0.insert(key.clone(), vec![inserted_element.clone()]).unwrap_or_else(|| vec![]);
         let removed_dots = removed_elements.into_iter().map(|e| e.dot).collect();
         Op{key, inserted_element: Some(inserted_element), removed_dots}
     }
@@ -209,7 +209,7 @@ impl<K: Key, V: Value> Inner<K, V> {
     }
 
     pub fn execute_op(&mut self, op: Op<K, V>) -> LocalOp<K, V> {
-        let mut elements = self.0.remove(&op.key).unwrap_or(vec![]);
+        let mut elements = self.0.remove(&op.key).unwrap_or_else(|| vec![]);
         elements.retain(|e| !op.removed_dots.contains(&e.dot));
 
         if let Some(new_element) = op.inserted_element {
@@ -234,7 +234,7 @@ impl<K: Key, V: Value> Inner<K, V> {
         // - the element is in both self and other, OR
         // - the element has not been inserted into other
         self.0.retain(|key, elements| {
-            let mut other_elements = other_values.remove(&key).unwrap_or(vec![]);
+            let mut other_elements = other_values.remove(key).unwrap_or_else(|| vec![]);
             elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.dot));
             other_elements.retain(|e| !elements.contains(e) && !summary.contains(&e.dot));
             elements.append(&mut other_elements);
@@ -335,7 +335,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
         let mut other_values = other.0;
 
         self.0.retain(|key, elements| {
-            let mut other_elements = other_values.remove(key).unwrap_or(vec![]);
+            let mut other_elements = other_values.remove(key).unwrap_or_else(|| vec![]);
 
             // remove elements that have been removed from other
             elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.dot));
