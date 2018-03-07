@@ -217,7 +217,7 @@ impl<T: SetElement> Op<T> {
     pub fn value(&self) -> &T { &self.value }
 
     /// Returns a reference to the `Op`'s inserted dot.
-    pub fn inserted_dot(&self) -> Option<&Dot> { self.inserted_dot.as_ref() }
+    pub fn inserted_dot(&self) -> Option<Dot> { self.inserted_dot }
 
     /// Returns a reference to the `Op`'s removed dots.
     pub fn removed_dots(&self) -> &[Dot] { &self.removed_dots }
