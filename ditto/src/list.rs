@@ -3,7 +3,7 @@
 use Error;
 use dot::{Dot, Summary, SiteId};
 use sequence::uid::{self, UID};
-use traits2::*;
+use traits::*;
 use std::borrow::Cow;
 use std::mem;
 use std::cmp::Ordering;

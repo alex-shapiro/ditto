@@ -200,16 +200,16 @@ extern crate assert_matches;
 #[cfg(test)]
 extern crate rmp_serde;
 
-#[macro_use] mod traits2;
+#[macro_use] mod traits;
 
 pub mod dot;
 pub mod counter;
 pub mod json;
-pub mod list2;
-pub mod map2;
+pub mod list;
+pub mod map;
 pub mod register;
 pub mod set;
-pub mod text2;
+pub mod text;
 
 mod error;
 mod map_tuple_vec;
@@ -221,8 +221,8 @@ pub use dot::{Replica, Tombstones};
 
 pub use counter::{Counter, CounterState};
 pub use json::{Json, JsonState};
-pub use list2::{List, ListState};
-pub use map2::{Map, MapState};
+pub use list::{List, ListState};
+pub use map::{Map, MapState};
 pub use register::{Register, RegisterState};
 pub use set::{Set, SetState};
-pub use text2::{Text, TextState};
+pub use text::{Text, TextState};

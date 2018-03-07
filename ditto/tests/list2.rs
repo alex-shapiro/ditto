@@ -2,7 +2,7 @@ extern crate ditto;
 
 mod common;
 use ditto::Error;
-use ditto::list2::*;
+use ditto::list::*;
 
 #[test]
 fn test_new() {

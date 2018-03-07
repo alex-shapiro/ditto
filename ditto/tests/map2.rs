@@ -3,7 +3,7 @@ extern crate ditto;
 mod common;
 use ditto::Error;
 use ditto::dot::Dot;
-use ditto::map2::*;
+use ditto::map::*;
 
 #[test]
 fn test_new() {

@@ -3,7 +3,7 @@
 use Error;
 use dot::{Dot, Summary, SiteId};
 use map_tuple_vec;
-use traits2::*;
+use traits::*;
 
 use serde::ser::Serialize;
 use serde::de::DeserializeOwned;
