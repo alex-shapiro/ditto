@@ -1,11 +1,11 @@
 //! A variant of a Tree that supports four operations:
 //!
-//! * insert(e) inserts an element into the tree.
-//! * remove(id) removes an element from the tree.
-//! * lookup(id) finds an element in the tree.
-//! * get_elt(idx) finds the tree element at index i and the
+//! * `insert(e)` inserts an element into the tree.
+//! * `remove(id)` removes an element from the tree.
+//! * `lookup(id)` finds an element in the tree.
+//! * `get_elt(idx)` finds the tree element at index i and the
 //!   distance from its beginning to idx.
-//! * get_idx(id) finds the start index of the tree element
+//! * `get_idx(id)` finds the start index of the tree element
 //!   with id == x.
 //!
 //! All operations can be performed in O(log n) time.
@@ -44,7 +44,6 @@ pub enum Error {
     DuplicateId,
 }
 
-
 impl<T: Element> Tree<T> {
     /// Constructs a new, empty Tree.
     pub fn new() -> Self {
@@ -54,6 +53,12 @@ impl<T: Element> Tree<T> {
     /// Returns the length of the tree.
     pub fn len(&self) -> usize {
         self.root.len
+    }
+
+    /// Returns true if the tree has length 0.
+    /// Returns false otherwise.
+    pub fn is_empty(&self) -> bool {
+        self.root.len == 0
     }
 
     /// Inserts an element into the tree or returns an error
@@ -145,7 +150,7 @@ impl<T: Element> Node<T> {
             Ok(idx) => self.elements.get_mut(idx),
             Err(idx) => {
                 if self.is_internal() {
-                    let ref mut child = self.children[idx];
+                    let child = &mut self.children[idx];
                     child.lookup_mut(id)
                 } else {
                     None
@@ -225,7 +230,7 @@ impl<T: Element> Node<T> {
         let mut idx = {
             let id = elt.id();
             self.elements
-                .binary_search_by(|e| e.id().cmp(&id))
+                .binary_search_by(|e| e.id().cmp(id))
                 .err().ok_or(Error::DuplicateId)?
         };
 
@@ -272,7 +277,7 @@ impl<T: Element> Node<T> {
         // the element.
         } else if contains_element {
             if self.child_has_spare_element(idx) {
-                let ref mut prev = self.children[idx];
+                let prev = &mut self.children[idx];
                 let predecessor_id = prev.last_id();
                 let e = prev.remove(&predecessor_id).expect("Element must exist B!");
                 let removed_element = mem::replace(&mut self.elements[idx], e);
@@ -280,7 +285,7 @@ impl<T: Element> Node<T> {
                 Some(removed_element)
 
             } else if self.child_has_spare_element(idx+1) {
-                let ref mut next = self.children[idx+1];
+                let next = &mut self.children[idx+1];
                 let successor_id = next.first_id();
                 let e = next.remove(&successor_id).expect("Element must exist C!");
                 let removed_element = mem::replace(&mut self.elements[idx], e);
@@ -338,7 +343,7 @@ impl<T: Element> Node<T> {
     /// parent node.
     fn split_child(&mut self, child_idx: usize) {
         let (median, new_child) = {
-            let ref mut child = self.children[child_idx];
+            let child = &mut self.children[child_idx];
 
             let elements = child.elements.split_off(B);
             let median   = child.elements.pop().expect("Element must exist A!");
@@ -367,7 +372,7 @@ impl<T: Element> Node<T> {
         let Node{len, mut elements, mut children, ..} = self.children.remove(idx+1);
 
         {
-            let ref mut child = self.children[idx];
+            let child = &mut self.children[idx];
             child.len += removed_element.element_len() + len;
             child.elements.push(removed_element);
             child.elements.append(&mut elements);
@@ -437,7 +442,7 @@ impl<T: Element> Node<T> {
 
     fn last_id(&self) -> T::Id {
         let mut node = self;
-        while node.is_internal() { node = &node.children.last().expect("Child must exist!") }
+        while node.is_internal() { node = node.children.last().expect("Child must exist!") }
         node.elements.last().expect("Element must exist E!").id().to_owned()
     }
 }
@@ -468,7 +473,7 @@ impl<'a, T: Element> Iterator for Iter<'a, T> {
 
     fn next(&mut self) -> Option<Self::Item> {
         loop {
-            if let Some(ref element) = self.node.elements.get(self.next_idx) {
+            if let Some(element) = self.node.elements.get(self.next_idx) {
                 self.next_idx += 1;
                 while self.node.is_internal() {
                     self.stack.push((self.node, self.next_idx));
@@ -476,13 +481,11 @@ impl<'a, T: Element> Iterator for Iter<'a, T> {
                     self.next_idx = 0;
                 }
                 return Some(element)
+            } else if let Some((node, next_idx)) = self.stack.pop() {
+                self.node = node;
+                self.next_idx = next_idx;
             } else {
-                if let Some((node, next_idx)) = self.stack.pop() {
-                    self.node = node;
-                    self.next_idx = next_idx;
-                } else {
-                    return None
-                }
+                return None
             }
         }
     }
@@ -536,6 +539,12 @@ impl<T: 'static + Element + Serialize> Serialize for Tree<T> {
 impl<'de, T: Element + Deserialize<'de>> Deserialize<'de> for Tree<T> {
     fn deserialize<D>(deserializer: D) -> Result<Tree<T>, D::Error> where D: Deserializer<'de> {
         Ok(Vec::deserialize(deserializer)?.into_iter().collect::<Tree<T>>())
+    }
+}
+
+impl<T: Element> Default for Tree<T> {
+    fn default() -> Self {
+        Tree::new()
     }
 }
 

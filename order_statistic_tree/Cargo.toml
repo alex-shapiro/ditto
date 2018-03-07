@@ -8,3 +8,4 @@ rand = "0.3"
 
 [dependencies]
 serde = "1.0"
+clippy = { version = "*", optional = true }
