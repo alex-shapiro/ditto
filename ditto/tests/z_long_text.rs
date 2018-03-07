@@ -2,7 +2,7 @@ extern crate ditto;
 extern crate rand;
 extern crate rmp_serde;
 
-use ditto::text2::Text;
+use ditto::text::Text;
 use rand::{Rng, ThreadRng};
 
 #[test]

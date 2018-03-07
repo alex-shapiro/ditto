@@ -2,11 +2,11 @@
 
 use Error;
 use dot::{Dot, Summary, SiteId};
-use list2::{self as list, Inner as ListInner};
-use map2::{self as map, Inner as MapInner};
-use text2::{self as text, Inner as TextInner};
+use list::{self, Inner as ListInner};
+use map::{self, Inner as MapInner};
+use text::{self, Inner as TextInner};
 use sequence;
-use traits2::*;
+use traits::*;
 
 use serde_json::{self, Value as SJValue};
 use std::borrow::Cow;
