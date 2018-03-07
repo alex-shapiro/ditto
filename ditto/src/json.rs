@@ -100,7 +100,7 @@ impl Json {
     /// value that satisfies the [`IntoJson`](IntoJson.t.html) trait.
     pub fn new<T: IntoJson>(local_value: T) -> Result<Self, Error> {
         let site_id = 1;
-        let mut summary = Summary::new();
+        let mut summary = Summary::default();
         let dot = summary.get_dot(site_id);
         let inner = local_value.into_json(dot)?;
         Ok(Json{inner, summary, site_id, cached_ops: vec![]})

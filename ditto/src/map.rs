@@ -107,7 +107,7 @@ impl<K: Key, V: Value> Map<K, V> {
     /// The map has site id 1.
     pub fn new() -> Self {
         let inner   = Inner::new();
-        let summary = Summary::new();
+        let summary = Summary::default();
         let site_id = 1;
         Map{inner, summary, site_id, cached_ops: vec![]}
     }
