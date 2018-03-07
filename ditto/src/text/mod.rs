@@ -216,7 +216,7 @@ impl Inner {
 
         for uid in &op.removed_uids {
             if let Some(idx) = self.0.get_idx(uid) {
-                let element = self.0.remove(&uid).expect("Element must exist H!");
+                let element = self.0.remove(uid).expect("Element must exist H!");
                 TextEdit::push(&mut local_ops, idx, element.text.len(), "");
             }
         }
@@ -261,7 +261,7 @@ impl Inner {
         for uid in uids {
             let mut element = self.0.remove(&uid).unwrap();
             element.uid.site_id = site_id;
-            let _ = self.0.insert(element).unwrap();
+            self.0.insert(element).unwrap();
         }
     }
 
@@ -385,7 +385,7 @@ impl Eq for Element { }
 
 impl PartialOrd for Element {
     fn partial_cmp(&self, other: &Element) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 

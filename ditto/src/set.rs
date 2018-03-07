@@ -241,9 +241,6 @@ impl<T: SetElement> Op<T> {
     }
 
     pub(crate) fn inserted_dots(&self) -> Vec<Dot> {
-        match self.inserted_dot {
-            Some(ref r) => vec![r.clone()],
-            None => vec![],
-        }
+        if let Some(dot) = self.inserted_dot { vec![dot] } else { vec![] }
     }
 }

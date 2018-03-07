@@ -1,5 +1,5 @@
-//! Serialize and Deserialize a HashMap as a Vec of tuples.
-//! This allows a serialized HashMap to have keys of any type
+//! Serialize and Deserialize a `HashMap` as a Vec of tuples.
+//! This allows a serialized `HashMap` to have keys of any type
 //! instead of only Strings.
 
 use serde::{Serialize, Serializer, Deserialize, Deserializer};

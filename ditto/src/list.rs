@@ -75,7 +75,7 @@ impl<T> Eq for Element<T> {}
 
 impl<T> PartialOrd for Element<T> {
     fn partial_cmp(&self, other: &Element<T>) -> Option<Ordering> {
-        Some(self.cmp(&other))
+        Some(self.cmp(other))
     }
 }
 
@@ -98,6 +98,12 @@ impl<T: Clone> List<T> {
     /// Returns the number of elements in the list.
     pub fn len(&self) -> usize {
         self.inner.0.len()
+    }
+
+    /// Returns true if the List has a length of 0.
+    /// Returns false otherwise
+    pub fn is_empty(&self) -> bool {
+        self.inner.0.is_empty()
     }
 
     /// Returns a reference to the element at position `idx`.
@@ -331,8 +337,8 @@ impl<T: Clone + NestedInner> NestedInner for Inner<T> {
                     iter1.next();
                 }
                 Ordering::Equal => {
-                    let ref v1 = iter1.next().unwrap().value;
-                    let ref v2 = iter2.next().unwrap().value;
+                    let v1 = &iter1.next().unwrap().value;
+                    let v2 = &iter2.next().unwrap().value;
                     if !v1.nested_can_merge(v2) {
                         return false
                     }
