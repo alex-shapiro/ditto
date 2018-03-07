@@ -39,12 +39,12 @@
 //!     // Whenever you edit a CRDT, you receive an op that can be sent
 //!     // to other sites.
 //!     let op1 = list1.insert(0, 400).unwrap();
-//!     let op2 = list2.remove(0).unwrap();
+//!     let op2 = list2.remove(0).1.unwrap();
 //!
 //!     // Each site sends its op to the other site for execution.
 //!     // The encoding and decoding has been left out for brevity.
-//!     list1.execute_remote(&op2);
-//!     list2.execute_remote(&op1);
+//!     list1.execute_op(op2);
+//!     list2.execute_op(op1);
 //!
 //!     // Now both sites have the same value:
 //!     assert_eq!(list1.state(), list2.state());
@@ -200,20 +200,15 @@ extern crate assert_matches;
 #[cfg(test)]
 extern crate rmp_serde;
 
-#[macro_use] mod macros;
-#[macro_use] mod traits;
 #[macro_use] mod traits2;
 
 pub mod dot;
 pub mod counter;
 pub mod json;
-pub mod list;
 pub mod list2;
-pub mod map;
 pub mod map2;
 pub mod register;
 pub mod set;
-pub mod text;
 pub mod text2;
 
 mod error;
@@ -221,14 +216,13 @@ mod map_tuple_vec;
 mod sequence;
 mod vlq;
 
-pub use traits::CrdtRemoteOp;
 pub use error::Error;
 pub use dot::{Replica, Tombstones};
 
 pub use counter::{Counter, CounterState};
 pub use json::{Json, JsonState};
-pub use list::{List, ListState};
-pub use map::{Map, MapState};
+pub use list2::{List, ListState};
+pub use map2::{Map, MapState};
 pub use register::{Register, RegisterState};
 pub use set::{Set, SetState};
-pub use text::{Text, TextState};
+pub use text2::{Text, TextState};

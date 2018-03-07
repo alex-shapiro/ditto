@@ -76,8 +76,9 @@ impl Summary {
     }
 
     pub fn add_site_id(&mut self, site_id: SiteId) {
-        let counter = some!(self.0.remove(&0));
-        self.0.insert(site_id, counter);
+        if let Some(counter) = self.0.remove(&0) {
+            self.0.insert(site_id, counter);
+        }
     }
 
     pub fn validate_no_unassigned_sites(&self) -> Result<(), ::Error> {

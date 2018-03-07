@@ -235,7 +235,7 @@ impl<T: SetElement> Op<T> {
     /// Validates that the `Op`'s site id is equal to the given site id.
     pub fn validate(&self, site_id: SiteId) -> Result<(), Error> {
         if let Some(ref r) = self.inserted_dot {
-            try_assert!(r.site_id == site_id, Error::InvalidOp);
+            if r.site_id != site_id { return Err(Error::InvalidOp) };
         }
         Ok(())
     }

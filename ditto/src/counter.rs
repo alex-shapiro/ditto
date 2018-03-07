@@ -198,8 +198,9 @@ impl CounterInner {
     }
 
     fn add_site_id(&mut self, site_id: SiteId) {
-        let site_inc = some!(self.0.remove(&0));
-        self.0.insert(site_id, site_inc);
+        if let Some(site_inc) = self.0.remove(&0) {
+            self.0.insert(site_id, site_inc);
+        }
     }
 }
 
