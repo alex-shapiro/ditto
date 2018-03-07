@@ -22,7 +22,6 @@ pub enum Error {
     InvalidRemoteOp,
     InvalidSite,
     InvalidSiteId,
-    InvalidXml,
     KeyDoesNotExist,
     Noop,
     OutOfBounds,

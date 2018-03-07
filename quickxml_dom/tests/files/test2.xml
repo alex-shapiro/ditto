@@ -1,5 +1,0 @@
-<?xml version="1.0" encoding="UTF-8"?>
-<Entities>
-    <Entity first-name="&lt;Bob&gt;">&quot;</Entity>
-    <Entity last-name="O&apos;Malley">&amp;</Entity>
-</Entities>
