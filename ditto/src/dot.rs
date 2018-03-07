@@ -2,10 +2,8 @@ use map_tuple_vec;
 use std::cmp::max;
 use std::collections::HashMap;
 
-pub type Replica = Dot;
 pub type SiteId = u32;
 pub type Counter = u32;
-pub type Tombstones = Summary;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize)]
 pub struct Dot {
@@ -56,7 +54,7 @@ impl Summary {
         }
     }
 
-    pub fn insert(&mut self, dot: &Dot) {
+    pub fn insert(&mut self, dot: Dot) {
         let entry = self.0.entry(dot.site_id).or_insert(dot.counter);
         *entry = max(*entry, dot.counter);
     }

@@ -217,8 +217,6 @@ mod sequence;
 mod vlq;
 
 pub use error::Error;
-pub use dot::{Replica, Tombstones};
-
 pub use counter::{Counter, CounterState};
 pub use json::{Json, JsonState};
 pub use list::{List, ListState};
