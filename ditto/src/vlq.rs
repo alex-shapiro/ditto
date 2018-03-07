@@ -10,7 +10,7 @@ pub fn encode_u32(mut value: u32) -> Vec<u8> {
     let mut vec = Vec::with_capacity(4);
     while value > 0 {
         let mut byte = (value & 0x7f) as u8;
-        value = value >> 7;
+        value >>= 7;
 
         if !vec.is_empty() {
             byte |= 0x80;
@@ -33,7 +33,7 @@ pub fn encode_biguint(value: &BigUint) -> Vec<u8> {
     let mut vec = Vec::with_capacity(4);
     while !value.is_zero() {
         let mut byte = (&value & big(0x7f)).to_u8().unwrap();
-        value = value >> 7;
+        value >>= 7;
 
         if !vec.is_empty() {
             byte |= 0x80;
@@ -50,7 +50,7 @@ pub fn decode_u32(bytes: &[u8]) -> Result<(u32, &[u8]), Error> {
     let mut value = 0;
     for (i, byte) in bytes.iter().enumerate() {
         let decoded_byte = byte & 0x7F;
-        value = (value << 7) + (decoded_byte as u32);
+        value = (value << 7) + u32::from(decoded_byte);
 
         if byte < &0x80 {
             let lower = i+1;

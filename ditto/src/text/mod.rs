@@ -17,6 +17,25 @@ lazy_static! {
     pub static ref END_ELEMENT: Element = Element{uid: UID::max(), text: String::new()};
 }
 
+/// Text is a `String`-like UTF-encoded growable string.
+/// It contains a number of optimizations that improve
+/// replacement and op execution performance on large strings.
+///
+/// Internally, Text is based on LSEQ. It allows op-based replication
+/// via [`execute_op`](#method.execute_op) and state-based replication
+/// via [`merge`](#method.merge). State-based replication allows
+/// out-of-order delivery but op-based replication does not.
+///
+/// Text has the following performance characteristics:
+///
+/// * [`replace`](#method.replace): *O(log N)*
+/// * [`execute_op`](#method.execute_op): *O(log N)*
+/// * [`merge`](#method.merge): *O(N1 + N2 + S1 + S2)*, where *N1* and
+///   *N2* are the number of values in each Text being merged,
+///   and *S1* and *S2* are the number of sites that have edited
+///   each Text being merged.
+///
+///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Text {
     inner:      Inner,
@@ -190,14 +209,14 @@ impl Inner {
         let mut local_ops = vec![];
 
         for uid in &op.removed_uids {
-            if let Some(idx) = self.0.get_idx(&uid) {
+            if let Some(idx) = self.0.get_idx(uid) {
                 let element = self.0.remove(&uid).expect("Element must exist H!");
                 TextEdit::push(&mut local_ops, idx, element.text.len(), "");
             }
         }
 
         for element in &op.inserted_elements {
-            if let Ok(_) = self.0.insert(element.clone()) {
+            if self.0.insert(element.clone()).is_ok() {
                 let idx = self.0.get_idx(&element.uid).expect("Element must exist I!");
                 TextEdit::push(&mut local_ops, idx, 0, &element.text);
             }

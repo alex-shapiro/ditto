@@ -336,7 +336,7 @@ impl<K: Key, V: Value + NestedInner> NestedInner for Inner<K, V> {
         let mut other_values = other.0;
 
         self.0.retain(|key, elements| {
-            let mut other_elements = other_values.remove(&key).unwrap_or(vec![]);
+            let mut other_elements = other_values.remove(key).unwrap_or(vec![]);
 
             // remove elements that have been removed from other
             elements.retain(|e| other_elements.contains(e) || !other_summary.contains(&e.dot));
@@ -397,7 +397,7 @@ impl<K: Key, V: Value> Op<K, V> {
 
     pub(crate) fn inserted_dots(&self) -> Vec<Dot> {
         match self.inserted_element {
-            Some(ref e) => vec![e.dot.clone()],
+            Some(ref e) => vec![e.dot],
             None => vec![],
         }
     }

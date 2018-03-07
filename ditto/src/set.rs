@@ -129,7 +129,7 @@ impl<T: SetElement> Inner<T> {
 
     fn insert(&mut self, value: T, site_id: SiteId, counter: Counter) -> Op<T> {
         let inserted_dot = Dot{site_id, counter};
-        let removed_dots = self.0.insert(value.clone(), vec![inserted_dot.clone()]).unwrap_or(vec![]);
+        let removed_dots = self.0.insert(value.clone(), vec![inserted_dot]).unwrap_or(vec![]);
         Op{value, inserted_dot: Some(inserted_dot), removed_dots}
     }
 
@@ -170,7 +170,7 @@ impl<T: SetElement> Inner<T> {
         // - the element is in in both self and other, OR
         // - the element has not been inserted into other
         self.0.retain(|value, dots| {
-            let mut other_dots = other_elements.remove(&value).unwrap_or(vec![]);
+            let mut other_dots = other_elements.remove(value).unwrap_or(vec![]);
             dots.retain(|r| other_dots.contains(r) || !other_summary.contains(r));
             other_dots.retain(|r| !dots.contains(r) && !summary.contains(r));
             dots.append(&mut other_dots);
@@ -188,7 +188,7 @@ impl<T: SetElement> Inner<T> {
     }
 
     fn add_site_id(&mut self, site_id: SiteId) {
-        for (_, dots) in &mut self.0 {
+        for dots in self.0.values_mut() {
             for dot in dots {
                 if dot.site_id == 0 { dot.site_id = site_id };
             }

@@ -85,9 +85,10 @@ impl<T: Clone> Register<T> {
         let removed_dots = mem::replace(&mut self.elements, new_elements)
             .into_iter()
             .filter_map(|(site_id, site_value)|
-                match site_id == self.site_id {
-                    true => None,
-                    false => Some(Dot::new(site_id, site_value.counter)),
+                if site_id == self.site_id {
+                    None
+                } else {
+                    Some(Dot::new(site_id, site_value.counter))
                 })
             .collect();
 
@@ -222,7 +223,7 @@ impl<T: Clone> Register<T> {
         Ok(Register{
             elements: state.elements.into_owned(),
             summary: state.summary.into_owned(),
-            site_id: site_id,
+            site_id,
             cached_op: None,
         })
     }

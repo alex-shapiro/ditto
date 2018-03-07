@@ -37,7 +37,7 @@ impl Summary {
     pub fn increment(&mut self, site_id: SiteId) -> Counter {
         let entry = self.0.entry(site_id).or_insert(0);
         *entry += 1;
-        return *entry;
+        *entry
     }
 
     pub fn contains(&self, dot: &Dot) -> bool {
