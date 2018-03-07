@@ -6,15 +6,15 @@ use self::text_edit::TextEdit;
 use dot::{Dot, Summary, SiteId};
 use Error;
 use order_statistic_tree::{self, Tree};
-use sequence::uid::UID;
+use sequence::uid::Uid;
 use std::borrow::Cow;
 use std::cmp::Ordering;
 
 pub type LocalOp = TextEdit;
 
 lazy_static! {
-    pub static ref START_ELEMENT: Element = Element{uid: UID::min(), text: String::new()};
-    pub static ref END_ELEMENT: Element = Element{uid: UID::max(), text: String::new()};
+    pub static ref START_ELEMENT: Element = Element{uid: Uid::min(), text: String::new()};
+    pub static ref END_ELEMENT: Element = Element{uid: Uid::max(), text: String::new()};
 }
 
 /// Text is a `String`-like UTF-encoded growable string.
@@ -58,7 +58,7 @@ pub struct Inner(pub Tree<Element>, pub Option<TextEdit>);
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Element {
     #[serde(rename = "u")]
-    pub uid: UID,
+    pub uid: Uid,
     #[serde(rename = "t")]
     pub text: String,
 }
@@ -68,7 +68,7 @@ pub struct Op {
     #[serde(rename = "i")]
     inserted_elements: Vec<Element>,
     #[serde(rename = "r")]
-    removed_uids: Vec<UID>,
+    removed_uids: Vec<Uid>,
 }
 
 impl Text {
@@ -234,7 +234,7 @@ impl Inner {
 
     pub fn merge(&mut self, other: Inner, summary: &Summary, other_summary: &Summary) {
         // ids that are in other_summary and not in other
-        let removed_uids: Vec<UID> = self.0.iter()
+        let removed_uids: Vec<Uid> = self.0.iter()
             .filter(|e| other.0.get_idx(&e.uid).is_none() && other_summary.contains(&e.uid.dot()))
             .map(|e| e.uid.clone())
             .collect();
@@ -257,7 +257,7 @@ impl Inner {
     }
 
     pub fn add_site_id(&mut self, site_id: SiteId) {
-        let uids: Vec<UID> = self.0.iter().filter(|e| e.uid.site_id == 0).map(|e| e.uid.clone()).collect();
+        let uids: Vec<Uid> = self.0.iter().filter(|e| e.uid.site_id == 0).map(|e| e.uid.clone()).collect();
         for uid in uids {
             let mut element = self.0.remove(&uid).unwrap();
             element.uid.site_id = site_id;
@@ -291,10 +291,10 @@ impl Inner {
 
     fn remove_at(&mut self, idx: usize) -> (Element, usize) {
         let (uid, offset) = {
-            let (element, offset) = self.0.get_elt(idx).expect("Element must exist for UID!");
+            let (element, offset) = self.0.get_elt(idx).expect("Element must exist for Uid!");
             (element.uid.clone(), offset)
         };
-        let element = self.0.remove(&uid).expect("Element must exist for UID!");
+        let element = self.0.remove(&uid).expect("Element must exist for Uid!");
         (element, offset)
     }
 
@@ -364,14 +364,14 @@ impl Op {
     }
 
     #[doc(hidden)]
-    pub fn removed_uids(&self) -> &[UID] {
+    pub fn removed_uids(&self) -> &[Uid] {
         &self.removed_uids
     }
 }
 
 impl Element {
     fn between(elt1: &Element, elt2: &Element, text: String, dot: Dot) -> Self {
-        Element{text, uid: UID::between(&elt1.uid, &elt2.uid, dot)}
+        Element{text, uid: Uid::between(&elt1.uid, &elt2.uid, dot)}
     }
 }
 
@@ -396,9 +396,9 @@ impl Ord for Element {
 }
 
 impl order_statistic_tree::Element for Element {
-    type Id = UID;
+    type Id = Uid;
 
-    fn id(&self) -> &UID {
+    fn id(&self) -> &Uid {
         &self.uid
     }
 

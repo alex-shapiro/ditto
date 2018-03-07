@@ -72,7 +72,7 @@ pub enum OpInner {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Uid {
     Object(String, Dot),
-    Array(sequence::uid::UID),
+    Array(sequence::uid::Uid),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -1021,7 +1021,7 @@ mod tests {
         }
     }
 
-    fn list_remove_op_uid(op: Op) -> sequence::uid::UID {
+    fn list_remove_op_uid(op: Op) -> sequence::uid::Uid {
         match op.op {
             OpInner::Array(list::Op::Remove(uid)) => uid,
             _ => panic!(),

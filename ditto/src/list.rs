@@ -2,7 +2,7 @@
 
 use Error;
 use dot::{Dot, Summary, SiteId};
-use sequence::uid::{self, UID};
+use sequence::uid::{self, Uid};
 use traits::*;
 use std::borrow::Cow;
 use std::mem;
@@ -50,7 +50,7 @@ pub struct Inner<T: 'static>(pub Vec<Element<T>>);
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub enum Op<T> {
     Insert(Element<T>),
-    Remove(UID),
+    Remove(Uid),
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -61,7 +61,7 @@ pub enum LocalOp<T> {
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct Element<T> {
-    pub uid: UID,
+    pub uid: Uid,
     pub value: T,
 }
 
@@ -191,7 +191,7 @@ impl<T: Clone> Inner<T> {
             let len = self.0.len();
             let uid1 = if len == 0 { &*uid::MIN } else { &self.0[len-1].uid };
             let uid2 = &*uid::MAX;
-            UID::between(uid1, uid2, dot)
+            Uid::between(uid1, uid2, dot)
         };
 
         let element = Element{uid, value};
@@ -204,7 +204,7 @@ impl<T: Clone> Inner<T> {
             let len = self.0.len();
             let uid1 = if idx == 0 { &*uid::MIN } else { &self.0[idx-1].uid };
             let uid2 = if idx == len { &*uid::MAX } else { &self.0[idx].uid };
-            UID::between(uid1, uid2, dot)
+            Uid::between(uid1, uid2, dot)
         };
 
         let element = Element{uid, value};
@@ -292,7 +292,7 @@ impl<T: Clone> Inner<T> {
         self.0.iter().map(|e| e.value.clone()).collect()
     }
 
-    pub(crate) fn get_idx(&mut self, uid: &UID) -> Option<usize> {
+    pub(crate) fn get_idx(&mut self, uid: &Uid) -> Option<usize> {
         self.0.binary_search_by(|e| e.uid.cmp(uid)).ok()
     }
 
@@ -394,7 +394,7 @@ impl<T> Op<T> {
         if let Op::Insert(ref elt) = *self { Some(elt) } else { None }
     }
 
-    pub fn removed_uid(&self) -> Option<&UID> {
+    pub fn removed_uid(&self) -> Option<&Uid> {
         if let Op::Remove(ref uid) = *self { Some(uid) } else { None }
     }
 

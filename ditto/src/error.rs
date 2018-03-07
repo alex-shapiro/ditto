@@ -6,9 +6,9 @@ pub enum Error {
     AlreadyHasSiteId,
     AwaitingSiteId,
     CannotMerge,
-    DeserializeSequenceUID,
+    DeserializeSequenceUid,
     DoesNotExist,
-    DuplicateUID,
+    DuplicateUid,
     InvalidIndex,
     InvalidJson,
     InvalidLocalOp,
@@ -18,7 +18,7 @@ pub enum Error {
     KeyDoesNotExist,
     Noop,
     OutOfBounds,
-    UIDDoesNotExist,
+    UidDoesNotExist,
     VLQNoTerminatingByte,
     WrongJsonType,
 }
@@ -39,7 +39,7 @@ impl From<::order_statistic_tree::Error> for Error {
     fn from(err: ::order_statistic_tree::Error) -> Error {
         match err {
             ::order_statistic_tree::Error::OutOfBounds => Error::OutOfBounds,
-            ::order_statistic_tree::Error::DuplicateId => Error::DuplicateUID,
+            ::order_statistic_tree::Error::DuplicateId => Error::DuplicateUid,
         }
     }
 }
