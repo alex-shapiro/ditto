@@ -13,7 +13,6 @@ a number of commonly used data types:
 * **List\<T\>:** A Vec-like ordered sequence of elements
 * **Text:** A String-like container for mutable text
 * **Json:** A JSON value
-* **Xml:** An XML document
 
 Ditto's goal is to be as fast and easy to use as possible. If you have any
 questions, suggestions, or other feedback, feel free to open an issue
