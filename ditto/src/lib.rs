@@ -221,8 +221,8 @@ pub use dot::{Replica, Tombstones};
 
 pub use counter::{Counter, CounterState};
 pub use json::{Json, JsonState};
-pub use list2::{List, ListState};
-pub use map2::{Map, MapState};
+pub use list::{List, ListState};
+pub use map::{Map, MapState};
 pub use register::{Register, RegisterState};
 pub use set::{Set, SetState};
-pub use text2::{Text, TextState};
+pub use text::{Text, TextState};
