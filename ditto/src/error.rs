@@ -3,14 +3,9 @@ use std::num::ParseIntError;
 
 #[derive(Clone,PartialEq,Debug)]
 pub enum Error {
-    AlreadyExists,
-    AlreadyHasSite,
     AlreadyHasSiteId,
-    AwaitingSite,
     AwaitingSiteId,
     CannotMerge,
-    DecodeCompact,
-    DeserializeObjectUID,
     DeserializeSequenceUID,
     DoesNotExist,
     DuplicateUID,
@@ -19,8 +14,6 @@ pub enum Error {
     InvalidLocalOp,
     InvalidOp,
     InvalidPointer,
-    InvalidRemoteOp,
-    InvalidSite,
     InvalidSiteId,
     KeyDoesNotExist,
     Noop,

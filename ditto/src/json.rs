@@ -21,17 +21,14 @@ use std::str::FromStr;
 ///
 /// Internally, Json is built on Ditto's [`Map`](../map/Map.t.html),
 /// [`List`](../list/List.t.html), and [`Text`](../text/Text.t.html)
-/// CRDTs. It can be used as a CmRDT or a CvRDT, providing both
-/// op-based and state-based replication. This flexibility comes
-/// with tradeoffs:
-///
-///   * Unlike a pure CmRDT, it requires tombstones, which increase size.
-///   * Unlike a pure CvRDT, it requires each site to replicate its ops
-///     in their order of generation.
+/// CRDTs. It allows op-based replication via [`execute_op`](#method.execute_op)
+/// and state-based replication via [`merge`](#method.merge).
+/// State-based replication allows out-of-order delivery but
+/// op-based replication does not.
 ///
 /// The root value of a Json CRDT (typically an object or array) cannot
 /// be replaced; for example, a Json CRDT whose root is an array will
-/// always have its root be an array. This constraint means that any Json
+/// always have an array as its root. This constraint means that any Json
 /// CRDT with a numeric, boolean, or null root is immutable.
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -134,7 +131,7 @@ impl Json {
     /// The enclosing value may be an object or an array and the
     /// inserted value must satisfy the [`IntoJson`](IntoJson.t.html) trait.
     ///
-    /// If the CRDT does not have a site allocated, it caches
+    /// If the CRDT does not have a site id allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert<T: IntoJson>(&mut self, pointer: &str, value: T) -> Result<Op, Error> {
         let dot   = self.summary.get_dot(self.site_id);
@@ -147,7 +144,7 @@ impl Json {
     /// The enclosing value may be an object or an array and the
     /// value being inserted is stringified JSON.
     ///
-    /// If the CRDT does not have a site allocated, it caches
+    /// If the CRDT does not have a site id allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn insert_str(&mut self, pointer: &str, value: &str) -> Result<Op, Error> {
         let json: SJValue = serde_json::from_str(&value)?;
@@ -159,7 +156,7 @@ impl Json {
     /// pair. If the enclosing value is an array, it deletes the value
     /// at the array index.
     ///
-    /// If the CRDT does not have a site allocated, it caches
+    /// If the CRDT does not have a site id allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn remove(&mut self, pointer: &str) -> Result<Op, Error> {
         let op = self.inner.remove(pointer)?;
@@ -167,7 +164,7 @@ impl Json {
     }
 
     /// Replaces a text range in a text value in the Json CRDT.
-    /// If the CRDT does not have a site allocated, it caches
+    /// If the CRDT does not have a site id allocated, it caches
     /// the op and returns an `AwaitingSite` error.
     pub fn replace_text(&mut self, pointer: &str, index: usize, len: usize, text: &str) -> Result<Op, Error> {
         let dot = self.summary.get_dot(self.site_id);

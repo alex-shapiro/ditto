@@ -108,7 +108,7 @@ impl Counter {
 
         Ok(Counter{
             inner: state.0.into_owned(),
-            site_id: site_id,
+            site_id,
             awaiting_site_id: None,
         })
     }

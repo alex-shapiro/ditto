@@ -61,7 +61,7 @@ macro_rules! crdt_impl2 {
             };
 
             Ok($self_ident{
-                site_id: site_id,
+                site_id,
                 inner: state.inner.into_owned(),
                 summary: state.summary.into_owned(),
                 cached_ops: vec![],

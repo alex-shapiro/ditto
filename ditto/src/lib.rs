@@ -1,3 +1,6 @@
+#![cfg_attr(feature="clippy", feature(plugin))]
+#![cfg_attr(feature="clippy", plugin(clippy))]
+
 //! # Ditto
 //!
 //! Ditto is a library for using [CRDTs](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type),
@@ -14,7 +17,7 @@
 //! * **[Text:](text/Text.t.html)** A String-like container for mutable text
 //! * **[Json:](json/Json.t.html)** A JSON value
 //!
-//! Ditto's goal is to be as fast and easy to use as possible. If you have any
+//! Ditto's goal is to be fast, correct, and easy to use. If you have any
 //! questions, suggestions, or other feedback, feel free to open an issue
 //! or a pull request or contact the Ditto developers directly.
 //!
@@ -69,18 +72,19 @@
 //!   * How to send ops/state from one site to another
 //!   * How to assign a site id to each site.
 //!
-//! Sending changes and assigning sites are covered in the sections below.
+//! Ditto does not include a networking layer. However, you can find
+//! info on how to send changes and assign site IDs in the docs below.
 //!
 //! ### Sending ops and state
 //!
 //! CRDTs and ops are serializable with [Serde](https://serde.rs).
 //! Serialization is tested against [`serde_json`](https://github.com/serde-rs/json)
-//! (JSON) and [`rmp-serde`](https://github.com/3Hren/msgpack-rust)
-//! (MsgPack) but may work with other formats as well.
+//! (`JSON`) and [`rmp-serde`](https://github.com/3Hren/msgpack-rust)
+//! (`MsgPack`) but may work with other formats as well.
 //!
 //! Ops must be sent in the order they were generated. That is, if
-//! a site performs edit A and then edit B, it must replicate op A before
-//! it replicates op B. State can be sent in any order.
+//! a site performs edit A and then edit B, it must send op A before
+//! it sends op B. State can be sent in any order.
 //!
 //! Similarly, ops must be sent over a network that guarantees in-order
 //! delivery. TCP fits this requirement, so any protocol sitting atop
@@ -90,11 +94,11 @@
 //!
 //! In general, when replicating a CRDT state you should send its
 //! state struct, not the CRDT struct, because the CRDT struct includes
-//! the site id. For example, to replicate a
-//! `Json` CRDT you should send the serialized `JsonState`, which
-//! can be created by calling `json_crdt.state()`.
+//! the site ID. For example, to replicate a `Json` CRDT you should
+//! send the serialized `JsonState`, which can be created by calling
+//! `json_crdt.state()`.
 //!
-//! ### Assigning Sites
+//! ### Assigning Site IDs
 //!
 //! A CRDT may be distributed across multiple *sites*. A site is
 //! just a fancy distributed systems term for "client". Each
@@ -102,19 +106,19 @@
 //! identifier.
 //!
 //! The site that creates the CRDT is automatically assigned to
-//! id 1. ***You*** are responsible for assigning all other sites;
+//! ID 1. ***You*** are responsible for assigning all other sites;
 //! Ditto will not do it for you.
 //!
 //! Here are some strategies for assigning site identifiers:
 //!
 //! * Reuse existing site identifiers (e.g. numeric client ids)
 //! * Use a central server to assign site ids on a per-CRDT basis
-//! * Use a consensus algorithm like Raft or Paxos decide on a new site's id
+//! * Use a consensus algorithm like Raft or Paxos to determine a new site's ID
 //!
-//! Site ids can be assigned lazily. If a site only needs read access
-//! to a CRDT, it doesn't need a site id. If a site without an id edits
+//! Site IDs can be assigned lazily. If a site only needs read access
+//! to a CRDT, it doesn't need a site ID. If a site without an ID edits
 //! the CRDT, the CRDT will update locally but ops will be cached and
-//! unavailable to the user. When the site receives an id, that id
+//! unavailable to the user. When the site receives an ID, that ID
 //! will be retroactively applied to the site's edits, and the cached ops
 //! will be returned to be sent over the network.
 //!
@@ -124,7 +128,7 @@
 //! consistency; you can use them in peer-to-peer protocols,
 //! client-server applications, federated services, or any other
 //! environment. However you *do* need a way to assign unique site
-//! identifiers, as explained in the section [Assigning Sites](#assigning-sites).
+//! identifiers, as explained in the section [Assigning Site IDs](#assigning-site-ids).
 //! A centralized server is one way to do that, but not the only way.
 //!
 //! A server may also be useful as an op cache for unavailable
@@ -164,8 +168,8 @@
 //!
 //! Ditto is licensed under either of
 //!
-//! * Apache License, Version 2.0 (https://www.apache.org/licenses/LICENSE-2.0)
-//! * MIT license (https://opensource.org/licenses/MIT)
+//! * [Apache License, Version 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+//! * [MIT license](https://opensource.org/licenses/MIT)
 //!
 //! at your option.
 //!

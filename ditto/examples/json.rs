@@ -27,8 +27,8 @@ fn main() {
 
     // when json2 inserts a new value, the state updates but an AwaitingSite
     // error is returned and the op to distribute the edit is cached.
-    assert_eq!(json2.insert("/bar/0", "Bonjour"), Err(Error::AwaitingSite));
-    assert_eq!(json2.insert("/bar/1", "Hallo"), Err(Error::AwaitingSite));
+    assert_eq!(json2.insert("/bar/0", "Bonjour"), Err(Error::AwaitingSiteId));
+    assert_eq!(json2.insert("/bar/1", "Hallo"), Err(Error::AwaitingSiteId));
 
     // json2 receives its site id and sends its cached ops to site 1.
     let ops = json2.add_site_id(2).unwrap();

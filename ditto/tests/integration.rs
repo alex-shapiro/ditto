@@ -23,21 +23,21 @@ fn test_list() {
     let local_op11 = list1.execute_op(via_json(&op2)).unwrap();
     let local_op12 = list1.execute_op(via_msgpack(&op3)).unwrap();
     assert_matches!(local_op11, list::LocalOp::Insert{idx: 0, value: 10});
-    assert_matches!(local_op12, list::LocalOp::Insert{idx: _, value: 15});
+    assert_matches!(local_op12, list::LocalOp::Insert{value: 15, ..});
 
     let local_op21 = list2.execute_op(via_msgpack(&op1)).unwrap();
     let local_op22 = list2.execute_op(via_json(&op3)).unwrap();
     let local_op23 = list2.execute_op(via_msgpack(&op4)).unwrap();
-    assert_matches!(local_op21, list::LocalOp::Insert{idx: _, value: 5});
-    assert_matches!(local_op22, list::LocalOp::Insert{idx: _, value: 15});
-    assert_matches!(local_op23, list::LocalOp::Remove{idx: _});
+    assert_matches!(local_op21, list::LocalOp::Insert{value: 5, ..});
+    assert_matches!(local_op22, list::LocalOp::Insert{value: 15, ..});
+    assert_matches!(local_op23, list::LocalOp::Remove{..});
 
     let local_op31 = list3.execute_op(via_json(&op1)).unwrap();
     let local_op32 = list3.execute_op(via_msgpack(&op2)).unwrap();
     let local_op33 = list3.execute_op(via_json(&op4)).unwrap();
-    assert_matches!(local_op31, list::LocalOp::Insert{idx: _, value: 5});
-    assert_matches!(local_op32, list::LocalOp::Insert{idx: _, value: 10});
-    assert_matches!(local_op33, list::LocalOp::Remove{idx: _});
+    assert_matches!(local_op31, list::LocalOp::Insert{value: 5, ..});
+    assert_matches!(local_op32, list::LocalOp::Insert{value: 10, ..});
+    assert_matches!(local_op33, list::LocalOp::Remove{..});
 
     assert_eq!(list1.state(), list2.state());
     assert_eq!(list1.state(), list3.state());
