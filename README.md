@@ -1,5 +1,7 @@
 # Ditto
 
+[![Build Status](https://travis-ci.org/alex-shapiro/ditto.svg?branch=master)](https://travis-ci.org/alex-shapiro/ditto)
+
 Ditto is a library for using [CRDTs](https://en.wikipedia.org/wiki/Conflict-free_replicated_data_type),
 or conflict-free replicated data types. CRDTs are data structures
 which can be replicated across multiple sites, edited concurrently,
