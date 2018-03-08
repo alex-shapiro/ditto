@@ -181,8 +181,6 @@
 //! or conditions.
 
 extern crate base64;
-extern crate char_fns;
-extern crate either;
 #[macro_use] extern crate lazy_static;
 extern crate num;
 extern crate order_statistic_tree;
