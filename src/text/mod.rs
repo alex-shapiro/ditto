@@ -5,7 +5,7 @@ mod text_edit;
 use self::text_edit::TextEdit;
 use dot::{Dot, Summary, SiteId};
 use Error;
-use ditto_tree::{self, Tree};
+use tree::{self, Tree};
 use sequence::uid::Uid;
 use std::borrow::Cow;
 use std::cmp::Ordering;
@@ -395,7 +395,7 @@ impl Ord for Element {
     }
 }
 
-impl ditto_tree::Element for Element {
+impl tree::Element for Element {
     type Id = Uid;
 
     fn id(&self) -> &Uid {

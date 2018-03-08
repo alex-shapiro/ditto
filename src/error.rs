@@ -34,12 +34,3 @@ impl From<serde_json::Error> for Error {
         Error::InvalidJson
     }
 }
-
-impl From<::ditto_tree::Error> for Error {
-    fn from(err: ::ditto_tree::Error) -> Error {
-        match err {
-            ::ditto_tree::Error::OutOfBounds => Error::OutOfBounds,
-            ::ditto_tree::Error::DuplicateId => Error::DuplicateUid,
-        }
-    }
-}
