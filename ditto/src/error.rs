@@ -35,11 +35,11 @@ impl From<serde_json::Error> for Error {
     }
 }
 
-impl From<::order_statistic_tree::Error> for Error {
-    fn from(err: ::order_statistic_tree::Error) -> Error {
+impl From<::ditto_tree::Error> for Error {
+    fn from(err: ::ditto_tree::Error) -> Error {
         match err {
-            ::order_statistic_tree::Error::OutOfBounds => Error::OutOfBounds,
-            ::order_statistic_tree::Error::DuplicateId => Error::DuplicateUid,
+            ::ditto_tree::Error::OutOfBounds => Error::OutOfBounds,
+            ::ditto_tree::Error::DuplicateId => Error::DuplicateUid,
         }
     }
 }

@@ -18,7 +18,7 @@ base64 = "0.8"
 clippy = { version = "*", optional = true }
 lazy_static = "1.0"
 num = "0.1"
-order_statistic_tree = { path = "../order_statistic_tree" }
+ditto_tree = { path = "../ditto_tree" }
 rand = "0.3"
 serde = "1.0"
 serde_derive = "1.0"
