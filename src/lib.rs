@@ -183,7 +183,6 @@
 extern crate base64;
 #[macro_use] extern crate lazy_static;
 extern crate num;
-extern crate ditto_tree;
 extern crate rand;
 extern crate serde;
 #[macro_use] extern crate serde_derive;
@@ -216,6 +215,7 @@ pub mod text;
 mod error;
 mod map_tuple_vec;
 mod sequence;
+mod tree;
 mod vlq;
 
 pub use error::Error;

@@ -1,4 +1,4 @@
-//! A variant of a Tree that supports four operations:
+//! A variant of BTree that supports four operations:
 //!
 //! * `insert(e)` inserts an element into the tree.
 //! * `remove(id)` removes an element from the tree.
@@ -10,6 +10,7 @@
 //!
 //! All operations can be performed in O(log n) time.
 
+use error::Error;
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
 use std::mem;
 use std::iter::FromIterator;
@@ -36,12 +37,6 @@ pub trait Element {
     fn id(&self) -> &Self::Id;
 
     fn element_len(&self) -> usize { 1 }
-}
-
-#[derive(Debug, PartialEq)]
-pub enum Error {
-    OutOfBounds,
-    DuplicateId,
 }
 
 impl<T: Element> Tree<T> {
@@ -231,7 +226,7 @@ impl<T: Element> Node<T> {
             let id = elt.id();
             self.elements
                 .binary_search_by(|e| e.id().cmp(id))
-                .err().ok_or(Error::DuplicateId)?
+                .err().ok_or(Error::DuplicateUid)?
         };
 
         let elt_len = elt.element_len();
@@ -652,7 +647,7 @@ mod test {
         }
 
         let element = TextElement{id: 275, text: "asdf".into()};
-        assert!(tree.insert(element).unwrap_err() == Error::DuplicateId);
+        assert!(tree.insert(element).unwrap_err() == Error::DuplicateUid);
         assert!(tree.len() == 300);
     }
 
