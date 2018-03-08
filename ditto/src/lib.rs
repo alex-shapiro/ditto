@@ -183,7 +183,7 @@
 extern crate base64;
 #[macro_use] extern crate lazy_static;
 extern crate num;
-extern crate order_statistic_tree;
+extern crate ditto_tree;
 extern crate rand;
 extern crate serde;
 #[macro_use] extern crate serde_derive;

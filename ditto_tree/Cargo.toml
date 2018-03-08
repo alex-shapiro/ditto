@@ -1,5 +1,5 @@
 [package]
-name = "order_statistic_tree"
+name = "ditto_tree"
 version = "0.1.0"
 authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
 
