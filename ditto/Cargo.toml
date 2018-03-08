@@ -2,10 +2,16 @@
 name = "ditto"
 version = "0.1.0"
 authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
+license = "MIT/Apache-2.0"
+description = "A library of commonly-useful CRDTs"
+repository = "https://github.com/alex-shapiro/ditto"
+documentation = "https://docs.serde.rs/ditto/"
+keywords = ["crdt", "ot", "conflict-free", "concurrent", "distributed"]
+categories = ["data-structures"]
 
 [dev-dependencies]
 assert_matches = "1.1"
-rmp-serde = { git = "ssh://git@github.com/3Hren/msgpack-rust.git" }
+rmp-serde = "*"
 
 [dependencies]
 base64 = "0.8"
