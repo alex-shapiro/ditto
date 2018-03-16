@@ -524,7 +524,7 @@ impl IntoJson for SJValue {
     fn into_json(self, dot: Dot) -> Result<Inner, Error> {
         match self {
             SJValue::Object(map) => {
-                let mut map_value = MapInner::new();
+                let mut map_value = MapInner::with_capacity(map.len());
                 for (key, value) in map {
                     let _ = map_value.insert(key, value.into_json(dot)?, dot);
                 }
@@ -546,7 +546,7 @@ impl IntoJson for SJValue {
 
 impl<S: Into<String> + Hash + Eq, T: IntoJson> IntoJson for HashMap<S, T> {
     fn into_json(self, dot: Dot) -> Result<Inner, Error> {
-        let mut map_value = MapInner::new();
+        let mut map_value = MapInner::with_capacity(self.len());
         for (key, value) in self {
             let _ = map_value.insert(key.into(), value.into_json(dot)?, dot);
         }
@@ -556,7 +556,7 @@ impl<S: Into<String> + Hash + Eq, T: IntoJson> IntoJson for HashMap<S, T> {
 
 impl<T: IntoJson> IntoJson for Vec<T> {
     fn into_json(self, dot: Dot) -> Result<Inner, Error> {
-        let mut list_inner = ListInner::new();
+        let mut list_inner = ListInner::with_capacity(self.len());
         for (idx, elt) in self.into_iter().enumerate() {
             let _ = list_inner.insert(idx, elt.into_json(dot)?, dot);
         }

@@ -167,6 +167,10 @@ impl<K: Key, V: Value> Inner<K, V> {
         Inner(HashMap::new())
     }
 
+    pub fn with_capacity(capacity: usize) -> Self {
+        Inner(HashMap::with_capacity(capacity))
+    }
+
     pub fn len(&self) -> usize {
         self.0.len()
     }
