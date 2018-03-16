@@ -524,7 +524,7 @@ impl IntoJson for SJValue {
     fn into_json(self, dot: Dot) -> Result<Inner, Error> {
         match self {
             SJValue::Object(map) => {
-                let mut map_value = MapInner::new();
+                let mut map_value = MapInner::with_capacity(map.len());
                 for (key, value) in map {
                     let _ = map_value.insert(key, value.into_json(dot)?, dot);
                 }
