@@ -1,11 +1,11 @@
 [package]
 name = "ditto"
-version = "0.2.0"
+version = "0.2.1"
 authors = ["Alex Shapiro <alexander.max.shapiro@gmail.com>"]
 license = "MIT/Apache-2.0"
 description = "CRDTs for common data structures like maps, sets, vecs, strings, and JSON"
 repository = "https://github.com/alex-shapiro/ditto"
-documentation = "https://docs.serde.rs/ditto/"
+documentation = "https://docs.rs/ditto"
 readme = "README.md"
 keywords = ["crdt", "ot", "conflict-free", "concurrent", "distributed"]
 categories = ["data-structures"]
