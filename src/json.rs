@@ -246,7 +246,7 @@ impl Inner {
                 match map_inner.execute_op(op) {
                     map::LocalOp::Insert{key, value} => {
                         pointer.push(LocalUid::Object(key));
-                        Some(LocalOp::Insert{pointer, value: value.local_value()}])
+                        Some(LocalOp::Insert{pointer, value: value.local_value()})
                     }
                     map::LocalOp::Remove{key} => {
                         pointer.push(LocalUid::Object(key));
@@ -258,7 +258,7 @@ impl Inner {
                 match inner.as_list().ok()?.execute_op(op)? {
                     list::LocalOp::Insert{idx, value} => {
                         pointer.push(LocalUid::Array(idx));
-                        Some(LocalOp::Insert{pointer, value: value.local_value()}])
+                        Some(LocalOp::Insert{pointer, value: value.local_value()})
                     }
                     list::LocalOp::Remove{idx} => {
                         pointer.push(LocalUid::Array(idx));

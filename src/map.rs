@@ -44,10 +44,11 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
 pub struct Map<K: Key, V: Value> {
-    inner:      Inner<K, V>,
-    summary:    Summary,
-    site_id:    SiteId,
-    cached_ops: Vec<Op<K, V>>,
+    inner:          Inner<K, V>,
+    summary:        Summary,
+    site_id:        SiteId,
+    outoforder_ops: Vec<Op<K, V>>,
+    cached_ops:     Vec<Op<K, V>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -109,7 +110,7 @@ impl<K: Key, V: Value> Map<K, V> {
         let inner   = Inner::new();
         let summary = Summary::default();
         let site_id = 1;
-        Map{inner, summary, site_id, cached_ops: vec![]}
+        Map{inner, summary, site_id, outoforder_ops: vec![], cached_ops: vec![]}
     }
 
     /// Returns true iff the map has the key.
@@ -149,7 +150,7 @@ impl<K: Key, V: Value> Map<K, V> {
         MapState,
         Inner<K, V>,
         Op<K, V>,
-        LocalOp<K, V>,
+        Option<LocalOp<K, V>>,
         HashMap<K, V>,
     }
 }
