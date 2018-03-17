@@ -32,10 +32,11 @@ use std::cmp::Ordering;
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct List<T: 'static> {
-    inner:      Inner<T>,
-    summary:    Summary,
-    site_id:    SiteId,
-    cached_ops: Vec<Op<T>>,
+    inner:          Inner<T>,
+    summary:        Summary,
+    site_id:        SiteId,
+    outoforder_ops: Vec<Op<T>>,
+    cached_ops:     Vec<Op<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -92,7 +93,7 @@ impl<T: Clone> List<T> {
         let inner   = Inner::new();
         let summary = Summary::default();
         let site_id = 1;
-        List{inner, summary, site_id, cached_ops: vec![]}
+        List{inner, summary, site_id, outoforder_ops: vec![], cached_ops: vec![]}
     }
 
     /// Returns the number of elements in the list.
@@ -421,6 +422,13 @@ impl<T> Op<T> {
             vec![Dot::new(elt.uid.site_id, elt.uid.counter)]
         } else {
             vec![]
+        }
+    }
+
+    pub(crate) fn removed_dots(&self) -> Vec<Dot> {
+        match *self {
+            Op::Insert(_) => vec![],
+            Op::Remove(ref uid) => vec![uid.dot()],
         }
     }
 }
