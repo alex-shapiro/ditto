@@ -64,6 +64,7 @@ macro_rules! crdt_impl2 {
                 site_id,
                 inner: state.inner.into_owned(),
                 summary: state.summary.into_owned(),
+                outoforder_ops: vec![],
                 cached_ops: vec![],
             })
         }
@@ -80,7 +81,12 @@ macro_rules! crdt_impl2 {
             for dot in op.inserted_dots() {
                 self.summary.insert(dot);
             }
-            self.inner.execute_op(op)
+            if Self::is_outoforder(&op, &self.summary) {
+                self.outoforder_ops.push(op);
+                None
+            } else {
+                self.inner.execute_op(op)
+            }
         }
 
         /// Validates that an op only inserts elements from a given site id,
@@ -114,6 +120,10 @@ macro_rules! crdt_impl2 {
                 .into_iter()
                 .map(|mut op| { op.add_site_id(site_id); op})
                 .collect())
+        }
+
+        fn is_outoforder(op: &$op, summary: &Summary) -> bool {
+            op.removed_dots().iter().any(|dot| !summary.contains(dot))
         }
 
         fn after_op(&mut self, op: $op) -> Result<$op, Error> {

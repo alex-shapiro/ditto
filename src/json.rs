@@ -33,10 +33,11 @@ use std::str::FromStr;
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Json {
-    inner:      Inner,
-    summary:    Summary,
-    site_id:    SiteId,
-    cached_ops: Vec<Op>,
+    inner:          Inner,
+    summary:        Summary,
+    site_id:        SiteId,
+    outoforder_ops: Vec<Op>,
+    cached_ops:     Vec<Op>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -103,7 +104,7 @@ impl Json {
         let mut summary = Summary::default();
         let dot = summary.get_dot(site_id);
         let inner = local_value.into_json(dot)?;
-        Ok(Json{inner, summary, site_id, cached_ops: vec![]})
+        Ok(Json{inner, summary, site_id, outoforder_ops: vec![], cached_ops: vec![]})
     }
 
     /// Constructs and returns a new `Json` CRDT with site 1 from an
@@ -245,7 +246,7 @@ impl Inner {
                 match map_inner.execute_op(op) {
                     map::LocalOp::Insert{key, value} => {
                         pointer.push(LocalUid::Object(key));
-                        Some(LocalOp::Insert{pointer, value: value.local_value()})
+                        Some(LocalOp::Insert{pointer, value: value.local_value()}])
                     }
                     map::LocalOp::Remove{key} => {
                         pointer.push(LocalUid::Object(key));
@@ -257,7 +258,7 @@ impl Inner {
                 match inner.as_list().ok()?.execute_op(op)? {
                     list::LocalOp::Insert{idx, value} => {
                         pointer.push(LocalUid::Array(idx));
-                        Some(LocalOp::Insert{pointer, value: value.local_value()})
+                        Some(LocalOp::Insert{pointer, value: value.local_value()}])
                     }
                     list::LocalOp::Remove{idx} => {
                         pointer.push(LocalUid::Array(idx));
@@ -267,7 +268,7 @@ impl Inner {
             }
             OpInner::String(op) => {
                 let changes = inner.as_text().ok()?.execute_op(op);
-                if changes.is_empty() { return None };
+                if changes.is_empty() { return vec![] };
                 Some(LocalOp::ReplaceText{pointer, changes})
             }
         }
@@ -477,6 +478,14 @@ impl Op {
             OpInner::Object(ref op) => op.inserted_dots(),
             OpInner::Array(ref op) => op.inserted_dots(),
             OpInner::String(ref op) => op.inserted_dots(),
+        }
+    }
+
+    fn removed_dots(&self) -> Vec<Dot> {
+        match self.op {
+            OpInner::Object(ref op) => op.removed_dots(),
+            OpInner::Array(ref op) => op.removed_dots(),
+            OpInner::String(ref op) => op.removed_dots(),
         }
     }
 }
