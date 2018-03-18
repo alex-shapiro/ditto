@@ -48,6 +48,7 @@ pub struct Map<K: Key, V: Value> {
     summary:    Summary,
     site_id:    SiteId,
     cached_ops: Vec<Op<K, V>>,
+    outoforder_ops: Vec<Op<K, V>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -109,7 +110,7 @@ impl<K: Key, V: Value> Map<K, V> {
         let inner   = Inner::new();
         let summary = Summary::default();
         let site_id = 1;
-        Map{inner, summary, site_id, cached_ops: vec![]}
+        Map{inner, summary, site_id, outoforder_ops: vec![], cached_ops: vec![]}
     }
 
     /// Returns true iff the map has the key.
@@ -378,7 +379,7 @@ impl<K: Key, V: Value> Op<K, V> {
     pub fn inserted_element(&self) -> Option<&Element<V>> { self.inserted_element.as_ref() }
 
     /// Returns a reference to the `Op`'s removed dots.
-    pub fn removed_dots(&self) -> &[Dot] { &self.removed_dots }
+    pub fn removed_dots(&self) -> Vec<Dot> { self.removed_dots.clone() }
 
     /// Assigns a site id to any unassigned inserts and removes
     pub fn add_site_id(&mut self, site_id: SiteId) {

@@ -42,6 +42,7 @@ pub struct Text {
     site_id:    SiteId,
     summary:    Summary,
     cached_ops: Vec<Op>,
+    outoforder_ops: Vec<Op>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -77,7 +78,7 @@ impl Text {
         let inner   = Inner::new();
         let summary = Summary::default();
         let site_id = 1;
-        Text{inner, summary, site_id, cached_ops: vec![]}
+        Text{inner, summary, site_id, outoforder_ops: vec![], cached_ops: vec![]}
     }
 
     /// Constructs and returns a new Text CRDT from a string.
@@ -117,7 +118,7 @@ impl Text {
         TextState,
         Inner,
         Op,
-        Vec<LocalOp>,
+        LocalOp,
         String,
     }
 }
@@ -356,6 +357,10 @@ impl Op {
 
     pub fn inserted_dots(&self) -> Vec<Dot> {
         self.inserted_elements.iter().map(|elt| elt.uid.dot()).collect()
+    }
+
+    pub fn removed_dots(&self) -> Vec<Dot> {
+        self.removed_uids.iter().map(|uid| uid.dot()).collect()
     }
 
     #[doc(hidden)]
