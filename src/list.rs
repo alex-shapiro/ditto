@@ -159,7 +159,7 @@ impl<T: Clone> List<T> {
         ListState,
         Inner<T>,
         Op<T>,
-        Option<LocalOp<T>>,
+        LocalOp<T>,
         Vec<T>,
     }
 }

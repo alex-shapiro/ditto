@@ -113,7 +113,7 @@ impl<T: SetElement> Set<T> {
         SetState,
         Inner<T>,
         Op<T>,
-        Option<LocalOp<T>>,
+        LocalOp<T>,
         HashSet<T>,
     }
 }

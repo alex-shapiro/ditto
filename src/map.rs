@@ -150,7 +150,7 @@ impl<K: Key, V: Value> Map<K, V> {
         MapState,
         Inner<K, V>,
         Op<K, V>,
-        Option<LocalOp<K, V>>,
+        LocalOp<K, V>,
         HashMap<K, V>,
     }
 }
@@ -379,7 +379,7 @@ impl<K: Key, V: Value> Op<K, V> {
     pub fn inserted_element(&self) -> Option<&Element<V>> { self.inserted_element.as_ref() }
 
     /// Returns a reference to the `Op`'s removed dots.
-    pub fn removed_dots(&self) -> &[Dot] { &self.removed_dots }
+    pub fn removed_dots(&self) -> Vec<Dot> { self.removed_dots.clone() }
 
     /// Assigns a site id to any unassigned inserts and removes
     pub fn add_site_id(&mut self, site_id: SiteId) {

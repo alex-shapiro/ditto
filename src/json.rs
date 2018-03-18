@@ -180,7 +180,7 @@ impl Json {
         JsonState,
         Inner,
         Op,
-        Option<LocalOp>,
+        LocalOp,
         SJValue,
     }
 }
@@ -268,7 +268,7 @@ impl Inner {
             }
             OpInner::String(op) => {
                 let changes = inner.as_text().ok()?.execute_op(op);
-                if changes.is_empty() { return vec![] };
+                if changes.is_empty() { return None };
                 Some(LocalOp::ReplaceText{pointer, changes})
             }
         }

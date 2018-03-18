@@ -11,7 +11,6 @@ macro_rules! crdt_impl2 {
      $local_op:ty,
      $local_value:ty,
     ) => {
-
         /// Returns the site id.
         pub fn site_id(&self) -> SiteId {
             self.site_id
@@ -77,21 +76,30 @@ macro_rules! crdt_impl2 {
         /// Executes an op and returns the equivalent local op.
         /// This function assumes that the op always inserts values
         /// from the correct site. For untrusted ops, used `validate_and_execute_op`.
-        pub fn execute_op(&mut self, op: $op) -> $local_op {
+        pub fn execute_op(&mut self, op: $op) -> Vec<$local_op> {
+            use traits::IntoVec;
+
             for dot in op.inserted_dots() {
                 self.summary.insert(dot);
             }
+
             if Self::is_outoforder(&op, &self.summary) {
                 self.outoforder_ops.push(op);
-                None
-            } else {
-                self.inner.execute_op(op)
+                return vec![]
             }
+
+            let mut local_ops: Vec<$local_op> = self.inner.execute_op(op).into_vec();
+
+            while let Some(op) = self.pop_outoforder_op() {
+                local_ops.append(&mut self.inner.execute_op(op).into_vec());
+            }
+
+            local_ops
         }
 
         /// Validates that an op only inserts elements from a given site id,
         /// then executes the op and returns the equivalent local op.
-        pub fn validate_and_execute_op(&mut self, op: $op, site_id: SiteId) -> Result<$local_op, Error> {
+        pub fn validate_and_execute_op(&mut self, op: $op, site_id: SiteId) -> Result<Vec<$local_op>, Error> {
             op.validate(site_id)?;
             Ok(self.execute_op(op))
         }
@@ -126,6 +134,11 @@ macro_rules! crdt_impl2 {
             op.removed_dots().iter().any(|dot| !summary.contains(dot))
         }
 
+        fn pop_outoforder_op(&mut self) -> Option<$op> {
+            let idx = self.outoforder_ops.iter().position(|op| Self::is_outoforder(&op, &self.summary))?;
+            Some(self.outoforder_ops.remove(idx))
+        }
+
         fn after_op(&mut self, op: $op) -> Result<$op, Error> {
             if self.site_id == 0 {
                 self.cached_ops.push(op);
@@ -135,6 +148,26 @@ macro_rules! crdt_impl2 {
             }
         }
     }
+}
+
+pub(crate) trait IntoVec<T> {
+    fn into_vec(self) -> Vec<T>;
+}
+
+impl<T> IntoVec<T> for Option<T> {
+    fn into_vec(self) -> Vec<T> {
+        if let Some(value) = self { vec![value] } else { vec![] }
+    }
+}
+
+impl<T> IntoVec<T> for T {
+    fn into_vec(self) -> Vec<T> {
+        vec![self]
+    }
+}
+
+impl<T> IntoVec<T> for Vec<T> {
+    fn into_vec(self) -> Vec<T> { self }
 }
 
 pub(crate) trait NestedInner: Sized {
