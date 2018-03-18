@@ -44,11 +44,11 @@ impl<T: Clone + PartialEq + Serialize + DeserializeOwned> Value for T {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
 pub struct Map<K: Key, V: Value> {
-    inner:          Inner<K, V>,
-    summary:        Summary,
-    site_id:        SiteId,
+    inner:      Inner<K, V>,
+    summary:    Summary,
+    site_id:    SiteId,
+    cached_ops: Vec<Op<K, V>>,
     outoforder_ops: Vec<Op<K, V>>,
-    cached_ops:     Vec<Op<K, V>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

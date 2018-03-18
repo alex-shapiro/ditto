@@ -32,11 +32,11 @@ use std::cmp::Ordering;
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct List<T: 'static> {
-    inner:          Inner<T>,
-    summary:        Summary,
-    site_id:        SiteId,
+    inner:      Inner<T>,
+    summary:    Summary,
+    site_id:    SiteId,
+    cached_ops: Vec<Op<T>>,
     outoforder_ops: Vec<Op<T>>,
-    cached_ops:     Vec<Op<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

@@ -41,11 +41,11 @@ impl<T: Clone + Eq + Hash + Serialize + DeserializeOwned> SetElement for T {}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(bound(deserialize = ""))]
 pub struct Set<T: SetElement> {
-    inner:          Inner<T>,
-    summary:        Summary,
-    site_id:        SiteId,
+    inner:      Inner<T>,
+    summary:    Summary,
+    site_id:    SiteId,
+    cached_ops: Vec<Op<T>>,
     outoforder_ops: Vec<Op<T>>,
-    cached_ops:     Vec<Op<T>>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

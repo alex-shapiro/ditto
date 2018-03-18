@@ -38,11 +38,11 @@ lazy_static! {
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Text {
-    inner:          Inner,
-    site_id:        SiteId,
-    summary:        Summary,
+    inner:      Inner,
+    site_id:    SiteId,
+    summary:    Summary,
+    cached_ops: Vec<Op>,
     outoforder_ops: Vec<Op>,
-    cached_ops:     Vec<Op>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]

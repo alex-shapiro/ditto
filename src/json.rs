@@ -33,11 +33,11 @@ use std::str::FromStr;
 ///
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 pub struct Json {
-    inner:          Inner,
-    summary:        Summary,
-    site_id:        SiteId,
+    inner:      Inner,
+    summary:    Summary,
+    site_id:    SiteId,
+    cached_ops: Vec<Op>,
     outoforder_ops: Vec<Op>,
-    cached_ops:     Vec<Op>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
