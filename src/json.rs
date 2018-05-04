@@ -37,6 +37,7 @@ pub struct Json {
     summary:    Summary,
     site_id:    SiteId,
     cached_ops: Vec<Op>,
+    outoforder_ops: Vec<Op>,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -103,7 +104,7 @@ impl Json {
         let mut summary = Summary::default();
         let dot = summary.get_dot(site_id);
         let inner = local_value.into_json(dot)?;
-        Ok(Json{inner, summary, site_id, cached_ops: vec![]})
+        Ok(Json{inner, summary, site_id, outoforder_ops: vec![], cached_ops: vec![]})
     }
 
     /// Constructs and returns a new `Json` CRDT with site 1 from an
@@ -179,7 +180,7 @@ impl Json {
         JsonState,
         Inner,
         Op,
-        Option<LocalOp>,
+        LocalOp,
         SJValue,
     }
 }
@@ -477,6 +478,14 @@ impl Op {
             OpInner::Object(ref op) => op.inserted_dots(),
             OpInner::Array(ref op) => op.inserted_dots(),
             OpInner::String(ref op) => op.inserted_dots(),
+        }
+    }
+
+    fn removed_dots(&self) -> Vec<Dot> {
+        match self.op {
+            OpInner::Object(ref op) => op.removed_dots(),
+            OpInner::Array(ref op) => op.removed_dots(),
+            OpInner::String(ref op) => op.removed_dots(),
         }
     }
 }
