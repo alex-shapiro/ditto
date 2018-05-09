@@ -274,3 +274,49 @@ fn test_serialize_local_op() {
     common::test_serde(op1);
     common::test_serde(op2);
 }
+
+#[test]
+fn test_iter() {
+    let mut list: List<u8> = List::new();
+
+    {
+        let mut iter = list.iter();
+        assert_eq!(None, iter.next()); // nothing in the list
+        assert_eq!(None, iter.next()); // double check.. still nothing
+    }
+
+    list.push(0).unwrap();
+
+    {
+        let mut iter = list.iter();
+        assert_eq!(Some(&0), iter.next());
+        assert_eq!(None, iter.next());
+    }
+
+    list.push(1).unwrap();
+
+    {
+        let mut iter = list.iter();
+        assert_eq!(Some(&0), iter.next());
+        assert_eq!(Some(&1), iter.next());
+        assert_eq!(None, iter.next());
+    }
+
+    list.pop().unwrap();
+    list.pop().unwrap();
+    assert_eq!(list.len(), 0);
+
+    list.push(0).unwrap();
+    list.push(2).unwrap();
+    list.push(4).unwrap();
+    list.push(12).unwrap();
+    list.push(6).unwrap();
+
+    // map, filter, zip.. etc come predefined with the Iterator trait
+    let iter_0123 = list.iter() //=> &0 &2 &4 &12 &6
+        .map(|&x| x / 2)        //=> 0 1 2 6 3 (a clone happens here)
+        .filter(|&x| x <= 3);   //=> 0 1 2 3
+    for (a, b) in iter_0123.zip(0..3u8) {
+        assert_eq!(a, b);
+    }
+}

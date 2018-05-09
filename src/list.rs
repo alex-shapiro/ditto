@@ -65,6 +65,12 @@ pub struct Element<T> {
     pub value: T,
 }
 
+#[derive(Debug)]
+pub struct Iter<'a, T:'static + Clone> {
+    idx: usize,
+    list: &'a List<T>,
+}
+
 impl<T> PartialEq for Element<T> {
     fn eq(&self, other: &Element<T>) -> bool {
         self.uid == other.uid
@@ -149,6 +155,14 @@ impl<T: Clone> List<T> {
     pub fn remove(&mut self, idx: usize) -> (T, Result<Op<T>, Error>) {
         let (value, op) = self.inner.remove(idx);
         (value, self.after_op(op))
+    }
+
+    /// Returns an `Iterator` over references to elements in the list
+    pub fn iter(&self) -> Iter<T> {
+        Iter {
+            idx: 0,
+            list: &self,
+        }
     }
 
     crdt_impl2! {
@@ -444,5 +458,19 @@ impl<T: NestedInner> NestedOp for Op<T> {
             elt.value.nested_validate_all(site_id)?;
         }
         Ok(())
+    }
+}
+
+impl<'a, T: Clone> Iterator for Iter<'a, T> {
+    type Item = &'a T;
+    fn next(&mut self) -> Option<Self::Item> {
+        // `List::get` performs a bounds check for us, no need to do it twice
+        let res = self.list.get(self.idx);
+        if res.is_some() {
+            // res will be `None` if out of bounds
+            // only increment while still in bounds
+            self.idx += 1
+        }
+        res
     }
 }
