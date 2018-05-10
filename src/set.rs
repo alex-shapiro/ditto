@@ -105,6 +105,11 @@ impl<T: SetElement> Set<T> {
         Some(self.after_op(op))
     }
 
+    /// Returns an `Iterator` over references to elements in the set
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.inner.iter()
+    }
+
     crdt_impl2! {
         Set,
         SetState<T>,
@@ -204,6 +209,10 @@ impl<T: SetElement> Inner<T> {
             }
         }
         Ok(())
+    }
+
+    fn iter(&self) -> impl Iterator<Item = &T> {
+        self.0.keys()
     }
 
 

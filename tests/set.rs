@@ -261,3 +261,31 @@ fn test_serialize_local_op() {
     let op = set1.insert(123).unwrap();
     common::test_serde(set2.execute_op(op).unwrap());
 }
+
+#[test]
+fn test_iter() {
+    let mut set :Set<u8> = Set::new();
+
+    {
+        let mut iter = set.iter();
+        assert_eq!(None, iter.next()); // nothing in the set
+        assert_eq!(None, iter.next()); // double check.. still nothing
+    }
+
+    set.insert(0).unwrap();
+
+    {
+        let mut iter = set.iter();
+        assert_eq!(Some(&0), iter.next());
+        assert_eq!(None, iter.next());
+    }
+
+    set.insert(1).unwrap();
+
+    {
+        let mut iter_vec: Vec<&u8> = set.iter().collect();
+        iter_vec.sort();
+
+        assert_eq!(iter_vec, [&0, &1]);
+    }
+}
