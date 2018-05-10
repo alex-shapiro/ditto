@@ -316,7 +316,7 @@ fn test_iter() {
     let iter_0123 = list.iter() //=> &0 &2 &4 &12 &6
         .map(|&x| x / 2)        //=> 0 1 2 6 3 (a clone happens here)
         .filter(|&x| x <= 3);   //=> 0 1 2 3
-    for (a, b) in iter_0123.zip(0..3u8) {
+    for (a, b) in iter_0123.zip(0..=3u8) {
         assert_eq!(a, b);
     }
 }
