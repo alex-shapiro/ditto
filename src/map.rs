@@ -142,6 +142,11 @@ impl<K: Key, V: Value> Map<K, V> {
         Some(self.after_op(op))
     }
 
+    /// Returns an `Iterator` over references to elements in the map
+    pub fn iter(&self) -> impl Iterator<Item = (&K, &V)> {
+        self.inner.iter().map(|(k, v)| (k, &(v[0].value)))
+    }
+
     crdt_impl2! {
         Map,
         MapState<K, V>,

@@ -263,3 +263,31 @@ fn test_serialize_local_op() {
     common::test_serde(op1);
     common::test_serde(op2);
 }
+
+#[test]
+fn test_iter() {
+    let mut map: Map<String, u8> = Map::new();
+
+    {
+        let mut iter = map.iter();
+        assert_eq!(None, iter.next()); // nothing in the map
+        assert_eq!(None, iter.next()); // double check.. still nothing
+    }
+
+    map.insert("dylan".into(), 21).unwrap();
+
+    {
+        let mut iter = map.iter();
+        assert_eq!(Some((&"dylan".into(), &21)), iter.next());
+        assert_eq!(None, iter.next());
+    }
+
+    map.insert("theresa".into(), 45).unwrap();
+
+    {
+        let mut iter_vec: Vec<(&String, &u8)> = map.iter().collect();
+        iter_vec.sort();
+        
+        assert_eq!(iter_vec, [(&"dylan".into(), &21), (&"theresa".into(), &45)]);
+    }
+}

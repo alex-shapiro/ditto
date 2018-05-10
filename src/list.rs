@@ -151,6 +151,11 @@ impl<T: Clone> List<T> {
         (value, self.after_op(op))
     }
 
+    /// Returns an `Iterator` over references to elements in the list
+    pub fn iter(&self) -> impl Iterator<Item = &T> {
+        self.inner.iter().map(|e| &e.value)
+    }
+
     crdt_impl2! {
         List,
         ListState<T>,
