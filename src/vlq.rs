@@ -1,6 +1,6 @@
 use Error;
-use num::bigint::{BigUint,ToBigUint};
-use num::traits::{Zero,ToPrimitive};
+use num_bigint::{BigUint,ToBigUint};
+use num_traits::{Zero,ToPrimitive};
 
 pub fn encode_u32(mut value: u32) -> Vec<u8> {
     if value == 0 {

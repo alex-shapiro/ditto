@@ -18,8 +18,8 @@
 
 use base64;
 use Error;
-use num::bigint::{BigUint, ToBigUint};
-use num::cast::ToPrimitive;
+use num_bigint::{BigUint, ToBigUint};
+use num_traits::cast::ToPrimitive;
 use rand::distributions::{IndependentSample, Range};
 use rand;
 use dot::{Dot, SiteId, Counter};
