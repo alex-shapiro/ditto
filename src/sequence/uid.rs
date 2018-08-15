@@ -18,9 +18,10 @@
 
 use base64;
 use Error;
-use num::bigint::{BigUint, ToBigUint};
-use num::cast::ToPrimitive;
-use rand::distributions::{IndependentSample, Range};
+use num_bigint::{BigUint, ToBigUint};
+use num_traits::cast::ToPrimitive;
+use rand::distributions::{Range};
+use rand::Rng;
 use rand;
 use dot::{Dot, SiteId, Counter};
 use serde::{Serialize, Serializer, Deserialize, Deserializer};
@@ -129,8 +130,8 @@ impl Uid {
                 let hi_bound = pos2;
                 Range::new(lo_bound, hi_bound)
             };
-        let mut rng = rand::thread_rng();
-        range.ind_sample(&mut rng)
+        let mut rng = rand::rngs::OsRng::new().unwrap();
+        rng.sample(range)
     }
 
     // TODO: Use Boundary- for arrays on odd levels.
@@ -263,7 +264,7 @@ impl<'de> Deserialize<'de> for Uid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use num::bigint::{BigUint, ToBigUint};
+    use num_bigint::{BigUint, ToBigUint};
     use std::str::FromStr;
     use serde_json;
     use rmp_serde;

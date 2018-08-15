@@ -769,7 +769,7 @@ mod test {
         tristique turpis ultricies urna ut vehicula vel venenatis vestibulum
         vitae volutpat"#;
 
-        let mut rng = rand::thread_rng();
+        let mut rng = rand::rngs::OsRng::new().unwrap();
         let mut words: Vec<(usize, &str)> = paragraph.split_whitespace().enumerate().collect();
         let mut indices: Vec<u64> = words.iter().map(|&(i, _)| i as u64).collect();
 
