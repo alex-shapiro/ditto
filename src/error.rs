@@ -1,6 +1,6 @@
 use serde_json;
 use std::num::ParseIntError;
-
+use failure;
 #[derive(Clone,PartialEq,Debug)]
 pub enum Error {
     AlreadyHasSiteId,
@@ -32,5 +32,14 @@ impl From<ParseIntError> for Error {
 impl From<serde_json::Error> for Error {
     fn from(_: serde_json::Error) -> Error {
         Error::InvalidJson
+    }
+}
+
+impl failure::Fail for Error {}
+
+use std::fmt;
+impl fmt::Display for Error {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        write!(f, "{:?}", self)
     }
 }
