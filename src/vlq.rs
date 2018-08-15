@@ -83,7 +83,7 @@ fn big(value: u8) -> BigUint {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use num::bigint::{BigUint,ToBigUint};
+    use num_bigint::{BigUint,ToBigUint};
 
     #[test]
     fn test_encode_zero() {

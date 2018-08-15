@@ -263,7 +263,7 @@ impl<'de> Deserialize<'de> for Uid {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use num::bigint::{BigUint, ToBigUint};
+    use num_bigint::{BigUint, ToBigUint};
     use std::str::FromStr;
     use serde_json;
     use rmp_serde;
