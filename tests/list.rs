@@ -7,7 +7,14 @@ use ditto::list::*;
 #[test]
 fn test_new() {
     let list: List<i64> = List::new();
+    assert_eq!(list.site_id(), 1);
     assert_eq!(list.len(), 0);
+}
+
+#[test]
+fn test_new_with_id() {
+    let list: List<i64> = List::new_with_id(5);
+    assert_eq!(list.site_id(), 5);
 }
 
 #[test]

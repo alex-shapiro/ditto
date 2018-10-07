@@ -74,9 +74,13 @@ pub struct Op {
 impl Text {
     /// Constructs and returns a new Text CRDT with site id 1.
     pub fn new() -> Self {
+        Self::new_with_id(1)
+    }
+
+    /// Constructs and returns a new Text CRDT with the given site id.
+    pub fn new_with_id(site_id: u32) -> Self {
         let inner   = Inner::new();
         let summary = Summary::default();
-        let site_id = 1;
         Text{inner, summary, site_id, cached_ops: vec![]}
     }
 

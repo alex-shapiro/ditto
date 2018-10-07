@@ -14,6 +14,12 @@ fn test_new() {
 }
 
 #[test]
+fn test_new_with_id() {
+    let counter = Counter::new_with_id(4012, 5);
+    assert_eq!(counter.site_id(), 5);
+}
+
+#[test]
 fn test_increment() {
     let mut counter = Counter::new(0);
     let _ = counter.increment(12).unwrap();

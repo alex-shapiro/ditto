@@ -75,9 +75,13 @@ impl<T: SetElement> Set<T> {
     /// Constructs and returns a new set CRDT.
     /// The set has site 1 and counter 0.
     pub fn new() -> Self {
+        Self::new_with_id(1)
+    }
+
+    /// Constructs and returns a new set CRDT with the given site id.
+    pub fn new_with_id(site_id: u32) -> Self {
         let inner   = Inner::new();
         let summary = Summary::default();
-        let site_id = 1;
         Set{inner, summary, site_id, cached_ops: vec![]}
     }
 

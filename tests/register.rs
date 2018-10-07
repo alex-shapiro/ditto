@@ -13,6 +13,12 @@ fn test_new() {
 }
 
 #[test]
+fn test_new_with_id() {
+    let register = Register::new_with_id(8142i64,5);
+    assert_eq!(register.site_id(), 5);
+}
+
+#[test]
 fn test_update() {
     let mut register = Register::new(8142i64);
     let op = register.update(42).unwrap();

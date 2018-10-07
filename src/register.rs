@@ -58,7 +58,11 @@ impl<T: Clone> Register<T> {
 
     /// Constructs and returns a new `Register` with site id 1.
     pub fn new(value: T) -> Self {
-        let site_id = 1;
+        Self::new_with_id(value,1)
+    }
+
+    /// Constructs and returns a new `Register` with the given site id.
+    pub fn new_with_id(value: T, site_id: u32) -> Self {
         let counter = 1;
         let mut elements = BTreeMap::new();
         let mut summary = Summary::default();

@@ -53,7 +53,11 @@ impl Counter {
 
     /// Constructs and returns a new Counter with site id 1.
     pub fn new(value: i64) -> Self {
-        let site_id = 1;
+        Self::new_with_id(value,1)
+    }
+
+    /// Constructs and returns a new Counter with the given site id.
+    pub fn new_with_id(value: i64, site_id: u32) -> Self {
         let inner = CounterInner::new(value, site_id);
         Counter{inner, site_id, awaiting_site_id: None}
     }

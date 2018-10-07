@@ -106,9 +106,13 @@ impl<K: Key, V: Value> Map<K, V> {
     /// Constructs and returns a new map.
     /// The map has site id 1.
     pub fn new() -> Self {
+        Self::new_with_id(1)
+    }
+
+    /// Constructs and returns a new map with the given site id.
+    pub fn new_with_id(site_id: u32) -> Self {
         let inner   = Inner::new();
         let summary = Summary::default();
-        let site_id = 1;
         Map{inner, summary, site_id, cached_ops: vec![]}
     }
 
