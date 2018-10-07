@@ -14,6 +14,12 @@ fn test_new() {
 }
 
 #[test]
+fn test_new_with_id() {
+    let map: Map<i64, bool> = Map::new_with_id(5);
+    assert_eq!(map.site_id(), 5);
+}
+
+#[test]
 fn test_contains_key() {
     let mut map: Map<usize, isize> = Map::new();
     assert!(!map.contains_key(&123));

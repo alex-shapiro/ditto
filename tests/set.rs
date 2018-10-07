@@ -14,6 +14,12 @@ fn test_new() {
 }
 
 #[test]
+fn test_new_with_id() {
+    let set: Set<u8> = Set::new_with_id(5);
+    assert_eq!(set.site_id(), 5);
+}
+
+#[test]
 fn test_contains() {
     let mut set: Set<u8> = Set::new();
     assert_eq!(set.contains(&41), false);

@@ -7,8 +7,15 @@ use ditto::text::*;
 #[test]
 fn test_new() {
     let text = Text::new();
+    assert_eq!(text.site_id(), 1);
     assert_eq!(text.len(), 0);
     assert_eq!(text.local_value(), "");
+}
+
+#[test]
+fn test_new_with_id() {
+    let text = Text::new_with_id(5);
+    assert_eq!(text.site_id(), 5);
 }
 
 #[test]
